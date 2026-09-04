@@ -1,0 +1,219 @@
+using bidding_service.Contracts;
+using bidding_service.Data;
+using bidding_service.Domain;
+using bidding_service.Services;
+using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.EntityFrameworkCore;
+
+namespace bidding_service.Endpoints;
+
+public static class AuctionEndpoints
+{
+    public static RouteGroupBuilder MapAuctionEndpoints(this IEndpointRouteBuilder app)
+    {
+        var group = app.MapGroup("/api/auctions").WithTags("Auctions");
+
+        group.MapGet("/", GetAuctions)
+            .WithName("GetAuctions")
+            .Produces<IReadOnlyList<AuctionSummaryResponse>>();
+
+        group.MapGet("/{id:guid}", GetAuction)
+            .WithName("GetAuction")
+            .Produces<AuctionDetailResponse>()
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{id:guid}/bids", GetBids)
+            .WithName("GetAuctionBids")
+            .Produces<IReadOnlyList<BidResponse>>()
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound);
+
+        group.MapPost("/{id:guid}/bids", PlaceBid)
+            .WithName("PlaceBid")
+            .Produces<PlaceBidResponse>(StatusCodes.Status201Created)
+            .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
+            .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
+
+        return group;
+    }
+
+    private static async Task<Ok<List<AuctionSummaryResponse>>> GetAuctions(BiddingDbContext db, CancellationToken cancellationToken)
+    {
+        var auctions = await db.Auctions
+            .AsNoTracking()
+            .OrderBy(a => a.StartTimeUtc)
+            .Select(a => new AuctionSummaryResponse(
+                a.Id,
+                a.Title,
+                a.StartingPrice,
+                a.MinimumBidIncrement,
+                a.CurrentBidAmount,
+                a.CurrentBidderId,
+                a.CurrentBidAmount == null ? a.StartingPrice : a.CurrentBidAmount.Value + a.MinimumBidIncrement,
+                a.Status.ToString(),
+                a.StartTimeUtc,
+                a.EndTimeUtc,
+                a.Version))
+            .ToListAsync(cancellationToken);
+
+        return TypedResults.Ok(auctions);
+    }
+
+    private static async Task<Results<Ok<AuctionDetailResponse>, NotFound<ApiErrorResponse>>> GetAuction(Guid id, BiddingDbContext db, CancellationToken cancellationToken)
+    {
+        var auction = await db.Auctions.AsNoTracking().FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (auction is null)
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
+
+        return TypedResults.Ok(ToDetailResponse(auction));
+    }
+
+    private static async Task<Results<Ok<List<BidResponse>>, NotFound<ApiErrorResponse>>> GetBids(Guid id, BiddingDbContext db, CancellationToken cancellationToken)
+    {
+        var auctionExists = await db.Auctions.AnyAsync(a => a.Id == id, cancellationToken);
+        if (!auctionExists)
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
+
+        var bids = await db.Bids
+            .AsNoTracking()
+            .Where(b => b.AuctionId == id)
+            .OrderByDescending(b => b.CreatedAtUtc)
+            .Select(b => new BidResponse(b.Id, b.AuctionId, b.BidderId, b.Amount, b.CreatedAtUtc))
+            .ToListAsync(cancellationToken);
+
+        return TypedResults.Ok(bids);
+    }
+
+    private static async Task<Results<Created<PlaceBidResponse>, BadRequest<ApiErrorResponse>, NotFound<ApiErrorResponse>, Conflict<ApiErrorResponse>>> PlaceBid(
+        Guid id,
+        PlaceBidRequest request,
+        BiddingDbContext db,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.BidderId))
+        {
+            return TypedResults.BadRequest(new ApiErrorResponse("invalid_bidder", "BidderId is required."));
+        }
+
+        if (request.Amount <= 0)
+        {
+            return TypedResults.BadRequest(new ApiErrorResponse("invalid_bid_amount", "Bid amount must be greater than zero."));
+        }
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (auction is null)
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var validationError = ValidateBid(auction, request.Amount, now);
+        if (validationError is not null)
+        {
+            return validationError.StatusCode == StatusCodes.Status409Conflict
+                ? TypedResults.Conflict(validationError.Error)
+                : TypedResults.BadRequest(validationError.Error);
+        }
+
+        var bid = new Bid
+        {
+            Id = Guid.NewGuid(),
+            AuctionId = auction.Id,
+            BidderId = request.BidderId.Trim(),
+            Amount = request.Amount,
+            CreatedAtUtc = now
+        };
+
+        db.Bids.Add(bid);
+        auction.CurrentBidAmount = request.Amount;
+        auction.CurrentBidderId = bid.BidderId;
+        auction.Version += 1;
+        auction.UpdatedAtUtc = now;
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_concurrency_conflict",
+                "Auction state changed while the bid was being placed. Retry with the latest auction state."));
+        }
+
+        var response = new PlaceBidResponse(
+            bid.Id,
+            auction.Id,
+            bid.BidderId,
+            bid.Amount,
+            auction.CurrentBidAmount.Value,
+            auction.CurrentBidderId!,
+            BidRules.GetMinimumValidBid(auction),
+            auction.Version,
+            bid.CreatedAtUtc);
+
+        return TypedResults.Created($"/api/auctions/{auction.Id}/bids/{bid.Id}", response);
+    }
+
+    private static BidValidationError? ValidateBid(Auction auction, decimal amount, DateTimeOffset now)
+    {
+        if (auction.Status != AuctionStatus.Open)
+        {
+            return new BidValidationError(
+                StatusCodes.Status409Conflict,
+                new ApiErrorResponse("auction_not_open", "Auction is not open for bidding."));
+        }
+
+        if (now < auction.StartTimeUtc)
+        {
+            return new BidValidationError(
+                StatusCodes.Status409Conflict,
+                new ApiErrorResponse("auction_not_started", "Auction has not started yet."));
+        }
+
+        if (now > auction.EndTimeUtc)
+        {
+            return new BidValidationError(
+                StatusCodes.Status409Conflict,
+                new ApiErrorResponse("auction_ended", "Auction has already ended."));
+        }
+
+        var minimumValidBid = BidRules.GetMinimumValidBid(auction);
+        if (amount < minimumValidBid)
+        {
+            return new BidValidationError(
+                StatusCodes.Status400BadRequest,
+                new ApiErrorResponse("bid_below_minimum", "Bid amount does not satisfy the minimum bid.", new { minimumValidBid }));
+        }
+
+        return null;
+    }
+
+    private static AuctionDetailResponse ToDetailResponse(Auction auction)
+    {
+        return new AuctionDetailResponse(
+            auction.Id,
+            auction.Title,
+            auction.Description,
+            auction.StartingPrice,
+            auction.MinimumBidIncrement,
+            auction.CurrentBidAmount,
+            auction.CurrentBidderId,
+            BidRules.GetMinimumValidBid(auction),
+            auction.Status.ToString(),
+            auction.StartTimeUtc,
+            auction.EndTimeUtc,
+            auction.CreatedAtUtc,
+            auction.UpdatedAtUtc,
+            auction.Version);
+    }
+
+    private sealed record BidValidationError(int StatusCode, ApiErrorResponse Error);
+}

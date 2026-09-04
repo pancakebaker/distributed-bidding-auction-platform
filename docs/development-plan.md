@@ -6,11 +6,11 @@ Create the monorepo structure, service shells, infrastructure-only Docker Compos
 
 ## Phase 1: Bidding domain + PostgreSQL schema
 
-Model auctions, bids, bidder identity references, bid state, aggregate versions, and initial persistence boundaries.
+Implemented: Auction and Bid entities, EF Core DbContext, PostgreSQL migration, deterministic demo seed data, baseline REST endpoints, bid validation rules, and integration-style API tests against PostgreSQL.
 
 ## Phase 2: Concurrency-safe bid placement
 
-Implement bid placement with database-backed concurrency controls, validation, versioning, and clear rejection paths.
+Implement hardened simultaneous bid handling around the existing optimistic concurrency token. Define retry/conflict behavior, stale bid responses, and database-backed consistency guarantees for competing bid writes.
 
 ## Phase 3: Transactional outbox + RabbitMQ publisher
 

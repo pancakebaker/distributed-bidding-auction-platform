@@ -78,6 +78,9 @@ docker compose config
 
 ## Expected Ports
 
+If another local PostgreSQL instance already uses port `5432`, set `POSTGRES_PORT=55432` in the ignored root `.env` file and point the Bidding Service local connection string at port `55432`.
+
+
 | Component | URL/Port |
 | --- | --- |
 | Laravel client | http://localhost:8000 |
@@ -88,9 +91,28 @@ docker compose config
 | RabbitMQ management | http://localhost:15672 |
 | Redis | localhost:6379 |
 
+## Bidding API Endpoints
+
+The Bidding Service currently exposes:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/health` | Service health check |
+| GET | `/api/auctions` | Auction summary list |
+| GET | `/api/auctions/{id}` | Auction detail and current bid state |
+| GET | `/api/auctions/{id}/bids` | Bid history, newest first |
+| POST | `/api/auctions/{id}/bids` | Baseline bid placement validation and persistence |
+
+The minimum valid bid rule is:
+
+- If there is no accepted bid, `minimumValidBid = StartingPrice`.
+- Otherwise, `minimumValidBid = CurrentBidAmount + MinimumBidIncrement`.
+
+All auction timing validation uses server-side UTC. Monetary values use `decimal`. The `Auction.Version` field is configured as an EF Core optimistic concurrency token, but true simultaneous bid conflict handling and retry strategy are planned for Phase 2.
+
 ## Current Project Status
 
-Phase 0 foundation is scaffolded. The repository contains initial service shells, infrastructure-only Docker Compose, environment defaults, documentation, and planned worker boundaries. Auction and bid domain logic has intentionally not been implemented yet.
+Phase 1 is implemented for the Bidding Service. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, and a small REST API for auction listing, details, bid history, and baseline bid placement. RabbitMQ publishing, Redis/Socket.IO bid broadcasting, transactional outbox, billing, notifications, and auction scheduling are intentionally not implemented yet.
 
 ## Planned Implementation Phases
 
@@ -104,3 +126,6 @@ Phase 0 foundation is scaffolded. The repository contains initial service shells
 8. Phase 7: Billing and notification workers
 9. Phase 8: Integration/demo scenarios
 10. Phase 9: Tests, documentation, cleanup, and GitHub presentation
+
+
+
