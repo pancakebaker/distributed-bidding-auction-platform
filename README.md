@@ -16,7 +16,7 @@ This repository is a functional architecture demonstration and is not currently 
 
 ## Architecture Overview
 
-The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service will own auction and bid state in PostgreSQL and will persist integration events through a transactional outbox. An outbox publisher will publish durable events to RabbitMQ. Downstream workers and the Live Feed Service will consume those events. The Live Feed Service will use Redis and Socket.IO to broadcast accepted state to connected clients.
+The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Later phases will add a transactional outbox, RabbitMQ publishing, Redis-backed Socket.IO fan-out, billing, notifications, and auction scheduling.
 
 ## Services
 
@@ -24,7 +24,7 @@ The demo is organized as a monorepo with independently understandable services. 
 | --- | --- | --- | --- |
 | Client | `apps/client` | Laravel 13, React, TypeScript, Vite | Browser application and future auction UI |
 | Bidding Service | `apps/bidding-service` | ASP.NET Core Web API on .NET 10 | Authoritative bid validation and auction state |
-| Live Feed Service | `apps/live-feed-service` | Node.js, TypeScript, Socket.IO | Real-time fan-out of accepted events |
+| Live Feed Service | `apps/live-feed-service` | Node.js, TypeScript, Socket.IO | Future real-time fan-out of accepted events |
 | Outbox Publisher | `workers/outbox-publisher` | Planned | Publishes pending outbox records to RabbitMQ |
 | Billing Worker | `workers/billing-worker` | Planned | Handles payment-oriented integration events |
 | Notification Worker | `workers/notification-worker` | Planned | Sends user-facing notifications |
@@ -80,13 +80,12 @@ docker compose config
 
 If another local PostgreSQL instance already uses port `5432`, set `POSTGRES_PORT=55432` in the ignored root `.env` file and point the Bidding Service local connection string at port `55432`.
 
-
 | Component | URL/Port |
 | --- | --- |
 | Laravel client | http://localhost:8000 |
 | Bidding API | http://localhost:5000 |
 | Live Feed | http://localhost:3001 |
-| PostgreSQL | localhost:5432 |
+| PostgreSQL | localhost:5432, or localhost:55432 when overridden locally |
 | RabbitMQ AMQP | localhost:5672 |
 | RabbitMQ management | http://localhost:15672 |
 | Redis | localhost:6379 |
@@ -101,18 +100,30 @@ The Bidding Service currently exposes:
 | GET | `/api/auctions` | Auction summary list |
 | GET | `/api/auctions/{id}` | Auction detail and current bid state |
 | GET | `/api/auctions/{id}/bids` | Bid history, newest first |
-| POST | `/api/auctions/{id}/bids` | Baseline bid placement validation and persistence |
+| POST | `/api/auctions/{id}/bids` | Concurrency-safe bid placement validation and persistence |
 
 The minimum valid bid rule is:
 
 - If there is no accepted bid, `minimumValidBid = StartingPrice`.
 - Otherwise, `minimumValidBid = CurrentBidAmount + MinimumBidIncrement`.
 
-All auction timing validation uses server-side UTC. Monetary values use `decimal`. The `Auction.Version` field is configured as an EF Core optimistic concurrency token, but true simultaneous bid conflict handling and retry strategy are planned for Phase 2.
+All auction timing validation uses server-side UTC through .NET `TimeProvider`. Monetary values use `decimal` and fixed database precision.
+
+## Bid Concurrency Strategy
+
+`Auction.Version` is a monotonic EF Core optimistic concurrency token. Each accepted bid increments the version exactly once. Rejected bids and failed concurrency attempts do not increment the version.
+
+Bid placement runs in one database transaction per attempt. The service inserts the `Bid`, updates the auction current bid fields, increments `Auction.Version`, and commits atomically. EF Core includes the original version in the auction `UPDATE`; when another bid has already advanced the row, PostgreSQL reports zero affected auction rows and EF raises a concurrency exception.
+
+The API uses bounded automatic retry for this demo. On a concurrency conflict it rolls back, clears tracked state, re-reads the authoritative auction row, and re-runs all bid rules against the latest server-side state. If the bid is now below the current minimum, the client receives the normal `bid_below_minimum` response. If retry attempts are exhausted, the client receives `auction_concurrency_conflict` with current auction details where available.
+
+Later live-feed events will use the same monotonic auction version as `aggregateVersion` so consumers can detect stale observations.
 
 ## Current Project Status
 
-Phase 1 is implemented for the Bidding Service. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, and a small REST API for auction listing, details, bid history, and baseline bid placement. RabbitMQ publishing, Redis/Socket.IO bid broadcasting, transactional outbox, billing, notifications, and auction scheduling are intentionally not implemented yet.
+Phase 2 is implemented for the Bidding Service. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, baseline bid validation, optimistic concurrency hardening, bounded retry, and PostgreSQL-backed API/concurrency tests.
+
+RabbitMQ publishing, Redis/Socket.IO bid broadcasting, transactional outbox, billing, notifications, and auction scheduling are intentionally not implemented yet.
 
 ## Planned Implementation Phases
 
@@ -126,6 +137,3 @@ Phase 1 is implemented for the Bidding Service. The repository contains the foun
 8. Phase 7: Billing and notification workers
 9. Phase 8: Integration/demo scenarios
 10. Phase 9: Tests, documentation, cleanup, and GitHub presentation
-
-
-

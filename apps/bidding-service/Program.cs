@@ -1,11 +1,13 @@
 using bidding_service.Data;
 using bidding_service.Endpoints;
+using bidding_service.Services;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddJsonFile(Path.Combine(builder.Environment.ContentRootPath, "appsettings.Development.local.json"), optional: true, reloadOnChange: true);
 builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
+builder.Services.Configure<BidPlacementOptions>(builder.Configuration.GetSection(BidPlacementOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddDbContext<BiddingDbContext>(options =>
 {
@@ -47,4 +49,3 @@ await using (var scope = app.Services.CreateAsyncScope())
 app.Run();
 
 public partial class Program;
-

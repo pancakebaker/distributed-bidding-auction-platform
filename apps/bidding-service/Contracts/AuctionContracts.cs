@@ -50,3 +50,5 @@ public sealed record PlaceBidResponse(
     DateTimeOffset CreatedAtUtc);
 
 public sealed record ApiErrorResponse(string Code, string Message, object? Details = null);
+
+public sealed record BidRuleErrorDetails(decimal? CurrentBidAmount, decimal MinimumValidBid, long AuctionVersion);

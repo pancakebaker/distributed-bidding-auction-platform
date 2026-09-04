@@ -43,9 +43,8 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task GetAuction_ReturnsAuctionDetail()
     {
-        var auction = await _client.GetFromJsonAsync<AuctionDetailResponse>($"/api/auctions/{TestAuctionData.OpenAuctionId}", JsonOptions);
+        var auction = await GetOpenAuctionAsync();
 
-        Assert.NotNull(auction);
         Assert.Equal("MacBook Pro", auction.Title);
         Assert.Equal("Open", auction.Status);
         Assert.Equal(1250m, auction.MinimumValidBid);
@@ -64,7 +63,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_WhenValid_AcceptsBid()
     {
-        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", new PlaceBidRequest("dana", 1250m), JsonOptions);
+        var response = await PlaceBidAsync("dana", 1250m);
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var bid = await response.Content.ReadFromJsonAsync<PlaceBidResponse>(JsonOptions);
@@ -77,7 +76,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_WhenBelowMinimum_RejectsBid()
     {
-        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", new PlaceBidRequest("dana", 1249.99m), JsonOptions);
+        var response = await PlaceBidAsync("dana", 1249.99m);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
@@ -127,10 +126,9 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_WhenSuccessful_UpdatesAuctionState()
     {
-        await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", new PlaceBidRequest("dana", 1250m), JsonOptions);
+        await PlaceBidAsync("dana", 1250m);
 
-        var auction = await _client.GetFromJsonAsync<AuctionDetailResponse>($"/api/auctions/{TestAuctionData.OpenAuctionId}", JsonOptions);
-        Assert.NotNull(auction);
+        var auction = await GetOpenAuctionAsync();
         Assert.Equal(1250m, auction.CurrentBidAmount);
         Assert.Equal("dana", auction.CurrentBidderId);
         Assert.Equal(4, auction.Version);
@@ -139,13 +137,141 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_WhenSuccessful_CreatesBidHistoryRecord()
     {
-        await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", new PlaceBidRequest("dana", 1250m), JsonOptions);
+        await PlaceBidAsync("dana", 1250m);
 
-        var bids = await _client.GetFromJsonAsync<List<BidResponse>>($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", JsonOptions);
-        Assert.NotNull(bids);
+        var bids = await GetOpenAuctionBidsAsync();
         Assert.Equal("dana", bids[0].BidderId);
         Assert.Equal(1250m, bids[0].Amount);
         Assert.Equal(3, bids.Count);
+    }
+
+    [Fact]
+    public async Task ConcurrentValidBids_SerializeSafely_AndFinalStateUsesHighestAcceptedBid()
+    {
+        var aliceTask = PlaceBidAsync("alice-2", 1250m);
+        await Task.Delay(20);
+        var bobTask = PlaceBidAsync("bob-2", 1300m);
+
+        var responses = await Task.WhenAll(aliceTask, bobTask);
+        var accepted = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
+        var auction = await GetOpenAuctionAsync();
+        var bids = await GetOpenAuctionBidsAsync();
+
+        Assert.True(accepted is 1 or 2);
+        Assert.Equal(1300m, auction.CurrentBidAmount);
+        Assert.Equal("bob-2", auction.CurrentBidderId);
+        Assert.Equal(3 + accepted, auction.Version);
+        Assert.Equal(2 + accepted, bids.Count);
+        Assert.Equal(accepted, bids.Count(b => b.Amount is 1250m or 1300m));
+    }
+
+    [Fact]
+    public async Task ConcurrentSameAmount_AllowsOnlyOneAcceptedBid()
+    {
+        var responses = await Task.WhenAll(
+            PlaceBidAsync("alice-2", 1250m),
+            PlaceBidAsync("bob-2", 1250m));
+
+        var accepted = responses.Where(r => r.StatusCode == HttpStatusCode.Created).ToList();
+        var rejected = responses.Where(r => r.StatusCode == HttpStatusCode.BadRequest).ToList();
+        var auction = await GetOpenAuctionAsync();
+        var bids = await GetOpenAuctionBidsAsync();
+
+        Assert.Single(accepted);
+        Assert.Single(rejected);
+        Assert.Equal(1250m, auction.CurrentBidAmount);
+        Assert.Equal(4, auction.Version);
+        Assert.Equal(3, bids.Count);
+        Assert.Single(bids, b => b.Amount == 1250m);
+    }
+
+    [Fact]
+    public async Task ConcurrentLowerBidThatLosesRace_IsRejectedAfterRevalidation()
+    {
+        var highBidTask = PlaceBidAsync("alice-2", 1300m);
+        await Task.Delay(20);
+        var lowerBidTask = PlaceBidAsync("bob-2", 1250m);
+
+        var responses = await Task.WhenAll(highBidTask, lowerBidTask);
+        var accepted = responses.Where(r => r.StatusCode == HttpStatusCode.Created).ToList();
+        var rejected = responses.Where(r => r.StatusCode == HttpStatusCode.BadRequest).ToList();
+        var auction = await GetOpenAuctionAsync();
+        var bids = await GetOpenAuctionBidsAsync();
+
+        Assert.Single(accepted);
+        Assert.Single(rejected);
+        Assert.Equal(1300m, auction.CurrentBidAmount);
+        Assert.Equal("alice-2", auction.CurrentBidderId);
+        Assert.Equal(4, auction.Version);
+        Assert.Equal(3, bids.Count);
+        Assert.DoesNotContain(bids, b => b.BidderId == "bob-2");
+    }
+
+    [Fact]
+    public async Task ManyConcurrentBidders_KeepBidHistoryAndVersionConsistent()
+    {
+        var requests = new[]
+        {
+            ("bidder-01", 1250m),
+            ("bidder-02", 1250m),
+            ("bidder-03", 1300m),
+            ("bidder-04", 1350m),
+            ("bidder-05", 1300m),
+            ("bidder-06", 1400m),
+            ("bidder-07", 1450m),
+            ("bidder-08", 1500m),
+            ("bidder-09", 1400m),
+            ("bidder-10", 1500m)
+        };
+
+        var responses = await Task.WhenAll(requests.Select(r => PlaceBidAsync(r.Item1, r.Item2)));
+        var accepted = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
+        var auction = await GetOpenAuctionAsync();
+        var bids = await GetOpenAuctionBidsAsync();
+        var acceptedDemoBids = bids.Where(b => b.BidderId.StartsWith("bidder-", StringComparison.Ordinal)).ToList();
+
+        Assert.NotEmpty(acceptedDemoBids);
+        Assert.Equal(acceptedDemoBids.Max(b => b.Amount), auction.CurrentBidAmount);
+        Assert.Equal(3 + accepted, auction.Version);
+        Assert.Equal(2 + accepted, bids.Count);
+        Assert.Equal(accepted, acceptedDemoBids.Count);
+        Assert.All(acceptedDemoBids, b => Assert.True(b.Amount >= 1250m));
+        Assert.True(accepted is >= 1 and <= 6);
+    }
+
+    [Fact]
+    public async Task FailedConcurrentAttempt_DoesNotLeavePartialBidRows()
+    {
+        var responses = await Task.WhenAll(
+            PlaceBidAsync("alice-2", 1250m),
+            PlaceBidAsync("bob-2", 1250m));
+
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.Created);
+        Assert.Single(responses, r => r.StatusCode == HttpStatusCode.BadRequest);
+
+        var bids = await GetOpenAuctionBidsAsync();
+        Assert.Equal(3, bids.Count);
+        Assert.Single(bids, b => b.Amount == 1250m);
+        Assert.Equal(1, bids.Count(b => (b.BidderId == "alice-2" || b.BidderId == "bob-2") && b.Amount == 1250m));
+    }
+
+    private Task<HttpResponseMessage> PlaceBidAsync(string bidderId, decimal amount)
+    {
+        return _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", new PlaceBidRequest(bidderId, amount), JsonOptions);
+    }
+
+    private async Task<AuctionDetailResponse> GetOpenAuctionAsync()
+    {
+        var auction = await _client.GetFromJsonAsync<AuctionDetailResponse>($"/api/auctions/{TestAuctionData.OpenAuctionId}", JsonOptions);
+        Assert.NotNull(auction);
+        return auction;
+    }
+
+    private async Task<List<BidResponse>> GetOpenAuctionBidsAsync()
+    {
+        var bids = await _client.GetFromJsonAsync<List<BidResponse>>($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", JsonOptions);
+        Assert.NotNull(bids);
+        return bids;
     }
 }
 
@@ -163,7 +289,9 @@ public sealed class AuctionApiFactory : WebApplicationFactory<Program>
             {
                 ["ConnectionStrings:BiddingDb"] = TestConnectionString,
                 ["Database:ApplyMigrations"] = "false",
-                ["Database:SeedDemoData"] = "false"
+                ["Database:SeedDemoData"] = "false",
+                ["BidPlacement:MaxConcurrencyRetries"] = "2",
+                ["BidPlacement:ArtificialProcessingDelayMilliseconds"] = "75"
             });
         });
 
@@ -283,3 +411,6 @@ public static class TestAuctionData
         await db.SaveChangesAsync();
     }
 }
+
+
+

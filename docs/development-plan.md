@@ -2,7 +2,7 @@
 
 ## Phase 0: Foundation/infrastructure
 
-Create the monorepo structure, service shells, infrastructure-only Docker Compose, documentation, and boot/build verification.
+Implemented: monorepo structure, service shells, infrastructure-only Docker Compose, documentation, and boot/build verification.
 
 ## Phase 1: Bidding domain + PostgreSQL schema
 
@@ -10,7 +10,7 @@ Implemented: Auction and Bid entities, EF Core DbContext, PostgreSQL migration, 
 
 ## Phase 2: Concurrency-safe bid placement
 
-Implement hardened simultaneous bid handling around the existing optimistic concurrency token. Define retry/conflict behavior, stale bid responses, and database-backed consistency guarantees for competing bid writes.
+Implemented: EF Core optimistic concurrency around `Auction.Version`, atomic bid insert plus auction update transactions, bounded retry on stale auction writes, full bid-rule revalidation after conflicts, structured concurrency/minimum-bid responses, and PostgreSQL-backed concurrent request tests.
 
 ## Phase 3: Transactional outbox + RabbitMQ publisher
 
