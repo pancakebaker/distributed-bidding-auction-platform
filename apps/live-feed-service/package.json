@@ -1,0 +1,24 @@
+{
+  "name": "@distributed-bidding-auction-platform/live-feed-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.5",
+    "express": "^5.1.0",
+    "redis": "^5.10.0",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.7",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.0"
+  }
+}

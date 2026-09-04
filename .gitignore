@@ -1,0 +1,55 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+vendor/
+
+# Laravel runtime
+apps/client/storage/*.key
+apps/client/storage/framework/cache/*
+apps/client/storage/framework/sessions/*
+apps/client/storage/framework/testing/*
+apps/client/storage/framework/views/*
+apps/client/storage/logs/*
+apps/client/bootstrap/cache/*.php
+apps/client/public/build/
+apps/client/database/*.sqlite
+!apps/client/database/.gitignore
+
+# .NET
+bin/
+obj/
+TestResults/
+
+# Node/TypeScript build output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Local databases and queues
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE/editor
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
