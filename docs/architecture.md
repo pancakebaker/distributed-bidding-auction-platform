@@ -50,7 +50,13 @@ Phase 3 persists only `BidAccepted` outbox messages. Rejected bids do not create
 
 `AggregateVersion` equals the resulting `Auction.Version`. Later publishers and consumers can use this value for event ordering and stale-event detection. `CorrelationId` comes from `X-Correlation-ID` when provided, otherwise the API generates one; it is included in logs, response headers/body, and outbox rows.
 
-Outbox messages are currently persisted but not published. `PublishedAtUtc` remains `NULL` until the future publisher marks delivery progress.
+The outbox publisher runs as a separate .NET worker in `workers/outbox-publisher`. It polls unpublished messages, claims batches with PostgreSQL `FOR UPDATE SKIP LOCKED`, publishes to RabbitMQ, waits for publisher confirmation, and then marks rows as published.
+
+The publisher uses the durable topic exchange `auction.events`. `BidAccepted` is routed with `auction.bid.accepted`. A development-only debug queue, `auction.events.debug`, can be declared and bound with `auction.#` to inspect messages locally.
+
+If RabbitMQ is unavailable, bid requests still commit because they only write PostgreSQL state and outbox rows. The publisher records concise publish errors, increments `PublishAttempts`, leaves `PublishedAtUtc` null, and retries on later polls.
+
+Publisher confirms reduce the chance of marking undelivered messages as published, but they do not provide exactly-once delivery. A process can crash after RabbitMQ accepts a message and before PostgreSQL is updated. Consumers must therefore assume at-least-once delivery and use `eventId` for idempotency.
 
 ## Live Feed Service
 
@@ -60,9 +66,9 @@ Later events will carry the Bidding Service auction version as `aggregateVersion
 
 ## RabbitMQ
 
-RabbitMQ will carry durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
+RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
 
-RabbitMQ publishing is not implemented yet.
+RabbitMQ publishing is implemented for outbox `BidAccepted` messages only. Consumers are still future work.
 
 ## Server Time
 
@@ -76,4 +82,5 @@ The bidding database is not shared directly with billing, catalog, notification,
 
 The Bidding Service owns Auction, Bid, and OutboxMessage state in PostgreSQL through EF Core and Npgsql. Money is represented with `decimal` and mapped with fixed precision. Auction validity is evaluated with server-side UTC through .NET `TimeProvider`; browser/client time is not trusted.
 
-No RabbitMQ producers or consumers, Redis fan-out, Socket.IO bid broadcasts, billing workflows, notification workflows, or auction scheduler behavior are implemented through Phase 3.
+No RabbitMQ consumers, Redis fan-out, Socket.IO bid broadcasts, billing workflows, notification workflows, or auction scheduler behavior are implemented through Phase 4.
+

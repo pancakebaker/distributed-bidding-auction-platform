@@ -16,7 +16,7 @@ This repository is a functional architecture demonstration and is not currently 
 
 ## Architecture Overview
 
-The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions now persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. Later phases will add RabbitMQ publishing, Redis-backed Socket.IO fan-out, billing, notifications, and auction scheduling.
+The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions now persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. The outbox publisher now drains unpublished rows to RabbitMQ. Later phases will add Redis-backed Socket.IO fan-out, billing, notifications, and auction scheduling.
 
 ## Services
 
@@ -25,7 +25,7 @@ The demo is organized as a monorepo with independently understandable services. 
 | Client | `apps/client` | Laravel 13, React, TypeScript, Vite | Browser application and future auction UI |
 | Bidding Service | `apps/bidding-service` | ASP.NET Core Web API on .NET 10 | Authoritative bid validation, auction state, and durable outbox persistence |
 | Live Feed Service | `apps/live-feed-service` | Node.js, TypeScript, Socket.IO | Future real-time fan-out of accepted events |
-| Outbox Publisher | `workers/outbox-publisher` | Planned | Publishes pending outbox records to RabbitMQ |
+| Outbox Publisher | `workers/outbox-publisher` | .NET 10 Worker, Npgsql, RabbitMQ.Client | Publishes pending outbox records to RabbitMQ |
 | Billing Worker | `workers/billing-worker` | Planned | Handles payment-oriented integration events |
 | Notification Worker | `workers/notification-worker` | Planned | Sends user-facing notifications |
 | Auction Scheduler | `workers/auction-scheduler` | Planned | Emits closure and winner-selection events |
@@ -141,13 +141,23 @@ COMMIT
 
 For Phase 3, only `BidAccepted` messages are persisted. Outbox payloads are explicit JSON contracts stored as PostgreSQL `jsonb`, not serialized EF entities. `CorrelationId` comes from `X-Correlation-ID` when provided, otherwise the API generates a GUID and echoes it in the response header/body. `AggregateVersion` equals the resulting `Auction.Version`, which later consumers can use to reject stale observations.
 
-Outbox messages are currently persisted but not published. `PublishedAtUtc` remains `NULL` until a future publisher handles delivery.
+Outbox messages are published by the .NET worker in `workers/outbox-publisher`. The publisher polls unpublished rows in small batches, claims them with PostgreSQL `FOR UPDATE SKIP LOCKED`, publishes to the durable RabbitMQ topic exchange `auction.events`, waits for publisher confirmation, and only then sets `PublishedAtUtc`.
+
+For local verification, the publisher declares a development debug queue named `auction.events.debug` bound with `auction.#`. This queue exists to inspect real messages during demos; it is not a production consumer.
+
+RabbitMQ routing for Phase 4:
+
+| Event | Exchange | Routing key |
+| --- | --- | --- |
+| BidAccepted | `auction.events` | `auction.bid.accepted` |
+
+Even with publisher confirms, the system is at-least-once. A crash can happen after RabbitMQ accepts a message but before PostgreSQL is marked published, so future consumers must use `eventId` for idempotency. This is intentional and honest: the outbox prevents lost committed events, not duplicate delivery.
 
 ## Current Project Status
 
-Phase 3 is implemented for the Bidding Service. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, bounded retry, durable `BidAccepted` outbox persistence, and PostgreSQL-backed API/concurrency/outbox tests.
+Phase 4 is implemented for RabbitMQ event transport. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, durable `BidAccepted` outbox persistence, and a .NET outbox publisher with RabbitMQ publisher confirms.
 
-RabbitMQ publishing, Redis/Socket.IO bid broadcasting, billing, notifications, and auction scheduling are intentionally not implemented yet.
+Redis/Socket.IO bid broadcasting, billing, notifications, and auction scheduling are intentionally not implemented yet.
 
 ## Planned Implementation Phases
 
@@ -161,3 +171,4 @@ RabbitMQ publishing, Redis/Socket.IO bid broadcasting, billing, notifications, a
 8. Phase 7: Auction scheduler
 9. Phase 8: Billing and notification workers
 10. Phase 9: Integration/demo scenarios, tests, documentation, cleanup, and GitHub presentation
+

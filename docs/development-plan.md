@@ -18,7 +18,7 @@ Implemented: `OutboxMessage` entity/table, `BidAccepted` event payload contract,
 
 ## Phase 4: Outbox publisher + RabbitMQ delivery
 
-Publish pending outbox records to RabbitMQ, mark successful deliveries, record publish failures, and keep consumers idempotent.
+Implemented: separate .NET outbox publisher worker, PostgreSQL `FOR UPDATE SKIP LOCKED` batch claiming, RabbitMQ durable topic exchange, `BidAccepted` routing, publisher confirms, publish-attempt/error tracking, development debug queue, and RabbitMQ/PostgreSQL integration tests.
 
 ## Phase 5: Live Feed Service + Redis + Socket.IO
 
@@ -39,3 +39,4 @@ Add idempotent worker flows for payment and notification events.
 ## Phase 9: Integration/demo scenarios, tests, documentation, cleanup, GitHub presentation
 
 Create repeatable demos, polish documentation, prepare diagrams, and shape the repository for a strong GitHub portfolio presentation.
+

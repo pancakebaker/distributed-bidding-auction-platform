@@ -1,6 +1,6 @@
 # Event Catalog
 
-This catalog documents planned integration event contracts. Phase 3 persists `BidAccepted` outbox rows only; events are not published to RabbitMQ yet and no shared event package is introduced.
+This catalog documents planned integration event contracts. Phase 4 publishes `BidAccepted` outbox rows to RabbitMQ. No shared event package is introduced yet.
 
 ## Event Envelope
 
@@ -57,10 +57,24 @@ The outbox row stores envelope metadata in columns and the event-specific contra
 | --- | --- | --- | --- |
 | AuctionCreated | Bidding Service | Announces a new auction exists | Planned |
 | AuctionUpdated | Bidding Service | Announces changed auction metadata or state | Planned |
-| BidAccepted | Bidding Service | Announces a bid passed authoritative validation | Persisted, not published |
+| BidAccepted | Bidding Service / Outbox Publisher | Announces a bid passed authoritative validation | Persisted and published to RabbitMQ |
 | BidRejected | Bidding Service | Announces a rejected bid attempt when useful for workflows or audit | Planned |
 | AuctionClosed | Auction Scheduler/Bidding Service | Announces bidding has closed | Planned |
 | WinnerSelected | Auction Scheduler/Bidding Service | Announces the selected winning bid | Planned |
 | PaymentRequested | Billing Worker | Announces that payment collection has started | Planned |
 | PaymentSucceeded | Billing Worker | Announces successful payment | Planned |
 | PaymentFailed | Billing Worker | Announces failed payment | Planned |
+
+## RabbitMQ Transport
+
+Phase 4 publishes UTF-8 JSON envelopes to the durable topic exchange `auction.events`.
+
+| Event | Routing key | Delivery |
+| --- | --- | --- |
+| BidAccepted | `auction.bid.accepted` | Persistent message with publisher confirmation |
+
+AMQP properties include `messageId = eventId`, `correlationId`, `contentType = application/json`, `contentEncoding = utf-8`, persistent delivery, and message `type = eventType`.
+
+A local debug queue named `auction.events.debug` may be declared and bound with `auction.#` for verification. It is a development inspection queue, not a production consumer.
+
+Delivery semantics are at-least-once. Duplicate messages are possible if the publisher crashes after RabbitMQ confirms but before PostgreSQL records `PublishedAtUtc`; consumers must be idempotent using `eventId`.
