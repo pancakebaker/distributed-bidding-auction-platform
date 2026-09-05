@@ -19,6 +19,15 @@ builder.Services.AddDbContext<BiddingDbContext>(options =>
 builder.Services.AddScoped<DatabaseInitializer>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("LocalClient", policy =>
+    {
+        policy.WithOrigins("http://localhost:8000", "http://127.0.0.1:8000")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 
 var app = builder.Build();
 
@@ -29,6 +38,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("LocalClient");
 
 app.MapGet("/health", () => Results.Ok(new
 {

@@ -1,0 +1,352 @@
+import React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { App } from './app';
+import type { AuctionDetail, AuctionSummary, Bid, LiveBidAccepted } from './types';
+
+const socketHandlers = new Map<string, (...args: any[]) => void>();
+const socketIoHandlers = new Map<string, (...args: any[]) => void>();
+const emitMock = vi.fn();
+const disconnectMock = vi.fn();
+
+vi.mock('socket.io-client', () => ({
+    io: vi.fn(() => ({
+        on: (event: string, handler: (...args: any[]) => void) => {
+            socketHandlers.set(event, handler);
+        },
+        emit: emitMock,
+        disconnect: disconnectMock,
+        io: {
+            on: (event: string, handler: (...args: any[]) => void) => {
+                socketIoHandlers.set(event, handler);
+            },
+        },
+    })),
+}));
+
+const macBook: AuctionDetail = {
+    id: '11111111-1111-1111-1111-111111111111',
+    title: 'MacBook Pro',
+    description: 'Developer laptop demo auction.',
+    startingPrice: 1000,
+    minimumBidIncrement: 50,
+    currentBidAmount: 1500,
+    currentBidderId: 'erin',
+    minimumValidBid: 1550,
+    status: 'Open',
+    startTimeUtc: new Date(Date.now() - 60_000).toISOString(),
+    endTimeUtc: new Date(Date.now() + 3_600_000).toISOString(),
+    createdAtUtc: new Date(Date.now() - 120_000).toISOString(),
+    updatedAtUtc: new Date(Date.now() - 30_000).toISOString(),
+    version: 9,
+};
+
+const auctions: AuctionSummary[] = [
+    macBook,
+    {
+        id: '22222222-2222-2222-2222-222222222222',
+        title: 'Camera',
+        startingPrice: 500,
+        minimumBidIncrement: 25,
+        currentBidAmount: null,
+        currentBidderId: null,
+        minimumValidBid: 500,
+        status: 'Scheduled',
+        startTimeUtc: new Date(Date.now() + 3_600_000).toISOString(),
+        endTimeUtc: new Date(Date.now() + 7_200_000).toISOString(),
+        version: 1,
+    },
+    {
+        id: '33333333-3333-3333-3333-333333333333',
+        title: 'Gaming Console',
+        startingPrice: 300,
+        minimumBidIncrement: 20,
+        currentBidAmount: 380,
+        currentBidderId: 'diana',
+        minimumValidBid: 400,
+        status: 'Closed',
+        startTimeUtc: new Date(Date.now() - 7_200_000).toISOString(),
+        endTimeUtc: new Date(Date.now() - 3_600_000).toISOString(),
+        version: 2,
+    },
+];
+
+const bids: Bid[] = [
+    {
+        id: 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
+        auctionId: macBook.id,
+        bidderId: 'erin',
+        amount: 1500,
+        createdAtUtc: new Date(Date.now() - 30_000).toISOString(),
+    },
+];
+
+function json(data: unknown, status = 200) {
+    return Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }));
+}
+
+function mockFetch() {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+
+        if (url.endsWith('/api/auctions') && !init?.method) {
+            return json(auctions);
+        }
+
+        if (url.endsWith(`/api/auctions/${macBook.id}`) && !init?.method) {
+            return json(macBook);
+        }
+
+        if (url.endsWith(`/api/auctions/${macBook.id}/bids`) && !init?.method) {
+            return json(bids);
+        }
+
+        if (url.endsWith(`/api/auctions/${macBook.id}/bids`) && init?.method === 'POST') {
+            return json({
+                bidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+                auctionId: macBook.id,
+                bidderId: 'alice',
+                amount: 1600,
+                currentBidAmount: 1600,
+                currentBidderId: 'alice',
+                nextMinimumBid: 1650,
+                auctionVersion: 10,
+                createdAtUtc: new Date().toISOString(),
+                correlationId: 'test-correlation',
+            }, 201);
+        }
+
+        return json({ code: 'not_found', message: 'Not found.' }, 404);
+    });
+
+    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('crypto', { randomUUID: () => 'client-correlation-id' });
+    return fetchMock;
+}
+
+function renderAt(path: string) {
+    window.history.pushState({}, '', path);
+    return render(<App />);
+}
+
+function live(event: LiveBidAccepted) {
+    socketHandlers.get('bid:accepted')?.(event);
+}
+
+describe('auction UI', () => {
+    beforeEach(() => {
+        socketHandlers.clear();
+        socketIoHandlers.clear();
+        emitMock.mockClear();
+        disconnectMock.mockClear();
+        mockFetch();
+    });
+
+    afterEach(() => {
+        cleanup();
+        vi.restoreAllMocks();
+    });
+
+    it('auction list renders API data', async () => {
+        renderAt('/auctions');
+
+        expect(await screen.findByText('MacBook Pro')).toBeInTheDocument();
+        expect(screen.getByText('Camera')).toBeInTheDocument();
+        expect(screen.getByText('Gaming Console')).toBeInTheDocument();
+    });
+
+    it('auction detail renders current bid and bid history', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+
+        expect(await screen.findByRole('heading', { name: 'MacBook Pro' })).toBeInTheDocument();
+        expect(screen.getAllByText('$1,500').length).toBeGreaterThan(0);
+        expect(screen.getByText('erin')).toBeInTheDocument();
+    });
+
+    it('valid bid form submits expected payload and disables while pending', async () => {
+        const user = userEvent.setup();
+        const fetchMock = vi.mocked(fetch);
+        let resolvePost: ((value: Response) => void) | null = null;
+
+        fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`) && init?.method === 'POST') {
+                return new Promise<Response>((resolve) => {
+                    resolvePost = resolve;
+                });
+            }
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(macBook);
+            return json(auctions);
+        });
+
+        renderAt(`/auctions/${macBook.id}`);
+
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        const input = screen.getByLabelText('Bid amount');
+        await user.clear(input);
+        await user.type(input, '1600');
+        await user.click(screen.getByRole('button', { name: 'Place bid' }));
+
+        expect(screen.getByRole('button', { name: 'Placing bid...' })).toBeDisabled();
+        resolvePost?.(new Response(JSON.stringify({
+            bidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+            auctionId: macBook.id,
+            bidderId: 'alice',
+            amount: 1600,
+            currentBidAmount: 1600,
+            currentBidderId: 'alice',
+            nextMinimumBid: 1650,
+            auctionVersion: 10,
+            createdAtUtc: new Date().toISOString(),
+            correlationId: 'test-correlation',
+        }), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+        await screen.findByText('Bid accepted at $1,600.');
+
+        const postCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith(`/api/auctions/${macBook.id}/bids`) && call[1]?.method === 'POST');
+        expect(postCall?.[1]?.body).toBe(JSON.stringify({ bidderId: 'Alice', amount: 1600 }));
+        expect((postCall?.[1]?.headers as Record<string, string>)['X-Correlation-ID']).toBe('client-correlation-id');
+    });
+
+    it('bid_below_minimum error is displayed and refreshes state', async () => {
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (init?.method === 'POST') {
+                return json({ code: 'bid_below_minimum', message: 'Too low.', details: { currentBidAmount: 1500, minimumValidBid: 1550, auctionVersion: 9 } }, 400);
+            }
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(macBook);
+            return json(auctions);
+        });
+
+        const user = userEvent.setup();
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await user.click(screen.getByRole('button', { name: 'Place bid' }));
+
+        expect(await screen.findByText('Bid is below the current minimum of $1,550.')).toBeInTheDocument();
+    });
+
+    it('auction_not_open error is displayed', async () => {
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (init?.method === 'POST') {
+                return json({ code: 'auction_not_open', message: 'Closed.' }, 409);
+            }
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(macBook);
+            return json(auctions);
+        });
+
+        const user = userEvent.setup();
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await user.click(screen.getByRole('button', { name: 'Place bid' }));
+
+        expect(await screen.findByText('This auction is not accepting bids right now.')).toBeInTheDocument();
+    });
+
+    it('live BidAccepted event updates current bid and history', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        live({
+            auctionId: macBook.id,
+            bidId: 'cccccccc-3333-4333-8333-cccccccccccc',
+            bidderId: 'bob',
+            amount: 1700,
+            auctionVersion: 11,
+            occurredAtUtc: new Date().toISOString(),
+            correlationId: 'live-test',
+        });
+
+        await waitFor(() => expect(screen.getAllByText('$1,700').length).toBeGreaterThan(0));
+        expect(screen.getByText('Highest bidder: bob')).toBeInTheDocument();
+        expect(screen.getByText('bob bid $1,700')).toBeInTheDocument();
+    });
+
+    it('stale live event is ignored', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        live({
+            auctionId: macBook.id,
+            bidId: 'dddddddd-4444-4444-8444-dddddddddddd',
+            bidderId: 'charlie',
+            amount: 1400,
+            auctionVersion: 8,
+            occurredAtUtc: new Date().toISOString(),
+            correlationId: 'stale-test',
+        });
+
+        expect(screen.queryByText('$1,400')).not.toBeInTheDocument();
+        expect(screen.getAllByText('$1,500').length).toBeGreaterThan(0);
+    });
+
+    it('live event for another auction is ignored', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        live({
+            auctionId: '99999999-9999-9999-9999-999999999999',
+            bidId: 'eeeeeeee-5555-4555-8555-eeeeeeeeeeee',
+            bidderId: 'diana',
+            amount: 1800,
+            auctionVersion: 12,
+            occurredAtUtc: new Date().toISOString(),
+            correlationId: 'other-auction',
+        });
+
+        expect(screen.queryByText('$1,800')).not.toBeInTheDocument();
+    });
+
+    it('connection status changes appropriately', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        socketHandlers.get('connect')?.();
+        expect(await screen.findByText('Live connected')).toBeInTheDocument();
+        socketIoHandlers.get('reconnect_attempt')?.();
+        expect(await screen.findByText('Reconnecting')).toBeInTheDocument();
+        socketHandlers.get('disconnect')?.();
+        expect(await screen.findByText('Offline')).toBeInTheDocument();
+    });
+
+    it('subscribes to the current auction room when live feed connects', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        socketHandlers.get('connect')?.();
+
+        expect(emitMock).toHaveBeenCalledWith('auction:subscribe', macBook.id);
+    });
+
+    it('auction concurrency conflict displays refresh guidance', async () => {
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (init?.method === 'POST') {
+                return json({ code: 'auction_concurrency_conflict', message: 'Changed.' }, 409);
+            }
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(macBook);
+            return json(auctions);
+        });
+
+        const user = userEvent.setup();
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await user.click(screen.getByRole('button', { name: 'Place bid' }));
+
+        expect(await screen.findByText('Auction state changed while bidding. Refreshing latest state.')).toBeInTheDocument();
+    });
+    it('API unavailable state renders cleanly', async () => {
+        vi.mocked(fetch).mockRejectedValue(new Error('network down'));
+        renderAt('/auctions');
+
+        expect(await screen.findByText('Bidding API unavailable')).toBeInTheDocument();
+    });
+});
+
+
+

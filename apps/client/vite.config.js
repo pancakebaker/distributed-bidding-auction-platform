@@ -12,12 +12,17 @@ export default defineConfig({
             fonts: [
                 bunny('Instrument Sans', {
                     weights: [400, 500, 600],
+                    optimizedFallbacks: false,
                 }),
             ],
         }),
         react(),
         tailwindcss(),
     ],
+    test: {
+        environment: 'jsdom',
+        setupFiles: './resources/js/test/setup.ts',
+    },
     server: {
         watch: {
             ignored: ['**/storage/framework/views/**'],

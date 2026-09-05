@@ -2,6 +2,16 @@
 
 This project demonstrates a distributed bidding architecture with clear service boundaries. It is intentionally functional and educational before it is production hardened.
 
+
+## Client Application
+
+The Laravel client is the browser-facing web shell. React renders the demo auction list and auction detail routes, calls the Bidding Service REST API directly, and subscribes to the Live Feed Service for `bid:accepted` projections.
+
+The client never decides whether a bid is valid. It submits commands to the Bidding Service, handles structured REST responses, and updates local UI state from accepted command responses. Socket.IO events are used for multi-browser convergence and live awareness.
+
+Client-side version checks protect the view from stale live events: if an incoming `auctionVersion` is not greater than the current UI version, the event is ignored. This improves UI resilience but does not make browser state authoritative.
+
+Browser countdowns are visual only. Server-side UTC validation in the Bidding Service remains the source of truth for scheduled, open, and closed auction behavior.
 ## Bidding Service Authority
 
 The Bidding Service is authoritative for:
@@ -88,5 +98,5 @@ The bidding database is not shared directly with billing, catalog, notification,
 
 The Bidding Service owns Auction, Bid, and OutboxMessage state in PostgreSQL through EF Core and Npgsql. Money is represented with `decimal` and mapped with fixed precision. Auction validity is evaluated with server-side UTC through .NET `TimeProvider`; browser/client time is not trusted.
 
-RabbitMQ live-feed consumption, Redis idempotency/version tracking, and Socket.IO bid broadcasts are implemented through Phase 5. Billing workflows, notification workflows, auction scheduler behavior, production authentication, and UI auction screens remain future work.
+RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid broadcasts, and the Laravel/React auction UI are implemented through Phase 6. Billing workflows, notification workflows, auction scheduler behavior, production authentication, payment flows, and admin auction management remain future work.
 

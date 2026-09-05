@@ -16,13 +16,13 @@ This repository is a functional architecture demonstration and is not currently 
 
 ## Architecture Overview
 
-The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. The outbox publisher drains unpublished rows to RabbitMQ, and the Live Feed Service now consumes accepted bid events, applies Redis-backed idempotency/order protection, and broadcasts frontend-friendly `bid:accepted` messages through Socket.IO. Later phases will add billing, notifications, auction scheduling, and the Laravel/React auction screens.
+The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. The outbox publisher drains unpublished rows to RabbitMQ, and the Live Feed Service now consumes accepted bid events, applies Redis-backed idempotency/order protection, and broadcasts frontend-friendly `bid:accepted` messages through Socket.IO. The Laravel/React client now provides the demo auction UI. Later phases will add billing, notifications, and auction scheduling.
 
 ## Services
 
 | Service | Path | Technology | Responsibility |
 | --- | --- | --- | --- |
-| Client | `apps/client` | Laravel 13, React, TypeScript, Vite | Browser application and future auction UI |
+| Client | `apps/client` | Laravel 13, React 19, TypeScript, Vite | Auction list/detail UI, bid form, REST integration, and Socket.IO live updates |
 | Bidding Service | `apps/bidding-service` | ASP.NET Core Web API on .NET 10 | Authoritative bid validation, auction state, and durable outbox persistence |
 | Live Feed Service | `apps/live-feed-service` | Node.js, TypeScript, Express, Socket.IO, Redis, amqplib | Consumes accepted bid events and broadcasts them to subscribed clients |
 | Outbox Publisher | `workers/outbox-publisher` | .NET 10 Worker, Npgsql, RabbitMQ.Client | Publishes pending outbox records to RabbitMQ |
@@ -90,6 +90,43 @@ If another local PostgreSQL instance already uses port `5432`, set `POSTGRES_POR
 | RabbitMQ management | http://localhost:15672 |
 | Redis | localhost:6379 |
 
+
+## Client UI
+
+The Laravel app is the web shell and React owns the auction experience. Browser code calls the Bidding Service REST API directly through `VITE_BIDDING_API_URL` and connects to the Live Feed Service through `VITE_LIVE_FEED_URL`.
+
+Routes:
+
+| Route | Purpose |
+| --- | --- |
+| `/auctions` | Auction discovery list from `GET /api/auctions` |
+| `/auctions/{id}` | Auction detail, bid history, bid form, and live updates |
+
+The client does not duplicate bidding rules. REST command responses from the Bidding Service are authoritative for bid acceptance and validation. Socket.IO is a live projection used to keep multiple browser clients visually synchronized.
+
+The browser defensively ignores live `bid:accepted` events whose `auctionVersion` is less than or equal to the current UI version. This is client-side protection only; PostgreSQL and the Bidding Service remain authoritative. The countdown is also UX-only, and server UTC still decides whether an auction accepts bids.
+
+If the Live Feed Service is offline, the auction page still loads from REST and bids can still be submitted. Reconnecting restores future live updates; a REST refresh reconciles any missed state in this demo phase.
+
+Client environment defaults:
+
+```env
+VITE_BIDDING_API_URL=http://localhost:5000
+VITE_LIVE_FEED_URL=http://localhost:3001
+```
+
+## Quick Demo
+
+1. Start infrastructure: `docker compose up -d`
+2. Start the Bidding Service: `dotnet run --project apps/bidding-service/bidding-service.csproj --launch-profile http`
+3. Start the Outbox Publisher: `dotnet run --project workers/outbox-publisher/outbox-publisher.csproj`
+4. Start the Live Feed Service: `npm run start --prefix apps/live-feed-service`
+5. Build or run the client assets: `npm run build --prefix apps/client`
+6. Start Laravel: `php artisan serve --host=127.0.0.1 --port=8000` from `apps/client`
+7. Open `http://localhost:8000/auctions` in two browser windows.
+8. Open the MacBook Pro auction in both windows, choose different demo bidders, and place accepted or stale bids.
+
+Expected demo behavior: accepted REST bids update the submitting browser immediately, then both browser windows converge through the `bid:accepted` live event after the outbox publisher and RabbitMQ path complete.
 ## Bidding API Endpoints
 
 The Bidding Service currently exposes:
@@ -188,9 +225,9 @@ npm run watch:auction -- <auction-id>
 
 ## Current Project Status
 
-Phase 5 is implemented for live accepted-bid fan-out. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, durable `BidAccepted` outbox persistence, a .NET outbox publisher with RabbitMQ publisher confirms, and a Redis/Socket.IO Live Feed Service consumer.
+Phase 6 is implemented for the Laravel/React demo UI. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, durable `BidAccepted` outbox persistence, a .NET outbox publisher with RabbitMQ publisher confirms, a Redis/Socket.IO Live Feed Service consumer, and a polished auction list/detail client.
 
-Billing, notifications, auction scheduling, and Laravel/React auction screens are intentionally not implemented yet.
+Billing, notifications, auction scheduling, production authentication, account registration, admin auction CRUD, and payment workflows are intentionally not implemented yet.
 
 ## Planned Implementation Phases
 
@@ -200,7 +237,7 @@ Billing, notifications, auction scheduling, and Laravel/React auction screens ar
 4. Phase 3: Transactional outbox persistence
 5. Phase 4: Outbox publisher and RabbitMQ delivery
 6. Phase 5: Live Feed Service, Redis, and Socket.IO - implemented
-7. Phase 6: Laravel + React auction UI
+7. Phase 6: Laravel + React auction UI - implemented
 8. Phase 7: Auction scheduler
 9. Phase 8: Billing and notification workers
 10. Phase 9: Integration/demo scenarios, tests, documentation, cleanup, and GitHub presentation
