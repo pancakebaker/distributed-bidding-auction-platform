@@ -10,6 +10,8 @@ namespace bidding_service.Endpoints;
 
 public static class AuctionEndpoints
 {
+    private const string CorrelationIdHeader = "X-Correlation-ID";
+
     public static RouteGroupBuilder MapAuctionEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/auctions").WithTags("Auctions");
@@ -96,9 +98,13 @@ public static class AuctionEndpoints
         TimeProvider timeProvider,
         IOptions<BidPlacementOptions> options,
         ILoggerFactory loggerFactory,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("BidPlacement");
+        var correlationId = ResolveCorrelationId(httpContext);
+        httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
+
         var bidderId = request.BidderId?.Trim();
         if (string.IsNullOrWhiteSpace(bidderId))
         {
@@ -127,10 +133,11 @@ public static class AuctionEndpoints
             {
                 await transaction.RollbackAsync(cancellationToken);
                 logger.LogInformation(
-                    "Bid rejected after validation for auction {AuctionId}. Code: {Code}. Version: {AuctionVersion}",
+                    "Bid rejected after validation for auction {AuctionId}. Code: {Code}. Version: {AuctionVersion}. CorrelationId: {CorrelationId}",
                     auction.Id,
                     validationError.Error.Code,
-                    auction.Version);
+                    auction.Version,
+                    correlationId);
 
                 return validationError.StatusCode == StatusCodes.Status409Conflict
                     ? TypedResults.Conflict(validationError.Error)
@@ -157,15 +164,20 @@ public static class AuctionEndpoints
             auction.Version += 1;
             auction.UpdatedAtUtc = now;
 
+            var outboxMessage = OutboxMessageFactory.BidAccepted(bid, auction, correlationId, now);
+            db.OutboxMessages.Add(outboxMessage);
+
             try
             {
                 await db.SaveChangesAsync(cancellationToken);
                 await transaction.CommitAsync(cancellationToken);
 
                 logger.LogInformation(
-                    "Accepted bid for auction {AuctionId}. Version advanced to {AuctionVersion}",
+                    "Accepted bid for auction {AuctionId}. Version advanced to {AuctionVersion}. OutboxMessageId: {OutboxMessageId}. CorrelationId: {CorrelationId}",
                     auction.Id,
-                    auction.Version);
+                    auction.Version,
+                    outboxMessage.Id,
+                    correlationId);
 
                 var response = new PlaceBidResponse(
                     bid.Id,
@@ -176,7 +188,8 @@ public static class AuctionEndpoints
                     auction.CurrentBidderId!,
                     BidRules.GetMinimumValidBid(auction),
                     auction.Version,
-                    bid.CreatedAtUtc);
+                    bid.CreatedAtUtc,
+                    correlationId);
 
                 return TypedResults.Created($"/api/auctions/{auction.Id}/bids/{bid.Id}", response);
             }
@@ -186,10 +199,11 @@ public static class AuctionEndpoints
                 db.ChangeTracker.Clear();
 
                 logger.LogWarning(
-                    "Concurrency conflict detected for auction {AuctionId} on attempt {Attempt} of {MaxAttempts}",
+                    "Concurrency conflict detected for auction {AuctionId} on attempt {Attempt} of {MaxAttempts}. CorrelationId: {CorrelationId}",
                     id,
                     attempt + 1,
-                    maxRetries + 1);
+                    maxRetries + 1,
+                    correlationId);
 
                 if (attempt == maxRetries)
                 {
@@ -201,9 +215,10 @@ public static class AuctionEndpoints
                 }
 
                 logger.LogInformation(
-                    "Retrying bid placement for auction {AuctionId}. Next attempt: {Attempt}",
+                    "Retrying bid placement for auction {AuctionId}. Next attempt: {Attempt}. CorrelationId: {CorrelationId}",
                     id,
-                    attempt + 2);
+                    attempt + 2,
+                    correlationId);
             }
         }
 
@@ -268,6 +283,12 @@ public static class AuctionEndpoints
     private static BidRuleErrorDetails ToBidRuleDetails(Auction auction)
     {
         return new BidRuleErrorDetails(auction.CurrentBidAmount, BidRules.GetMinimumValidBid(auction), auction.Version);
+    }
+
+    private static string ResolveCorrelationId(HttpContext httpContext)
+    {
+        var incoming = httpContext.Request.Headers[CorrelationIdHeader].FirstOrDefault();
+        return string.IsNullOrWhiteSpace(incoming) ? Guid.NewGuid().ToString("N") : incoming.Trim();
     }
 
     private sealed record BidValidationError(int StatusCode, ApiErrorResponse Error);

@@ -7,6 +7,7 @@ public sealed class BiddingDbContext(DbContextOptions<BiddingDbContext> options)
 {
     public DbSet<Auction> Auctions => Set<Auction>();
     public DbSet<Bid> Bids => Set<Bid>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -42,6 +43,26 @@ public sealed class BiddingDbContext(DbContextOptions<BiddingDbContext> options)
             bid.Property(b => b.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             bid.HasIndex(b => b.AuctionId).HasDatabaseName("ix_bids_auction_id");
             bid.HasIndex(b => new { b.AuctionId, b.CreatedAtUtc }).HasDatabaseName("ix_bids_auction_id_created_at_utc");
+        });
+
+        modelBuilder.Entity<OutboxMessage>(outbox =>
+        {
+            outbox.ToTable("outbox_messages");
+            outbox.HasKey(m => m.Id);
+            outbox.Property(m => m.Id).HasColumnName("id");
+            outbox.Property(m => m.EventType).HasColumnName("event_type").HasMaxLength(120).IsRequired();
+            outbox.Property(m => m.AggregateType).HasColumnName("aggregate_type").HasMaxLength(120).IsRequired();
+            outbox.Property(m => m.AggregateId).HasColumnName("aggregate_id").IsRequired();
+            outbox.Property(m => m.AggregateVersion).HasColumnName("aggregate_version").IsRequired();
+            outbox.Property(m => m.OccurredAtUtc).HasColumnName("occurred_at_utc").IsRequired();
+            outbox.Property(m => m.CorrelationId).HasColumnName("correlation_id").HasMaxLength(120);
+            outbox.Property(m => m.Payload).HasColumnName("payload").HasColumnType("jsonb").IsRequired();
+            outbox.Property(m => m.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            outbox.Property(m => m.PublishedAtUtc).HasColumnName("published_at_utc");
+            outbox.Property(m => m.PublishAttempts).HasColumnName("publish_attempts").HasDefaultValue(0).IsRequired();
+            outbox.Property(m => m.LastError).HasColumnName("last_error").HasMaxLength(2000);
+            outbox.HasIndex(m => new { m.PublishedAtUtc, m.CreatedAtUtc }).HasDatabaseName("ix_outbox_messages_published_at_created_at");
+            outbox.HasIndex(m => new { m.AggregateId, m.AggregateVersion }).HasDatabaseName("ix_outbox_messages_aggregate_id_version");
         });
     }
 }

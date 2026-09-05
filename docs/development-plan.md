@@ -12,30 +12,30 @@ Implemented: Auction and Bid entities, EF Core DbContext, PostgreSQL migration, 
 
 Implemented: EF Core optimistic concurrency around `Auction.Version`, atomic bid insert plus auction update transactions, bounded retry on stale auction writes, full bid-rule revalidation after conflicts, structured concurrency/minimum-bid responses, and PostgreSQL-backed concurrent request tests.
 
-## Phase 3: Transactional outbox + RabbitMQ publisher
+## Phase 3: Transactional outbox persistence
 
-Persist integration events in the same transaction as bidding state changes and publish pending outbox records to RabbitMQ.
+Implemented: `OutboxMessage` entity/table, `BidAccepted` event payload contract, same-transaction outbox persistence for accepted bids, correlation ID capture, unpublished message state, and PostgreSQL-backed outbox/concurrency tests.
 
-## Phase 4: Live Feed Service + Redis + Socket.IO
+## Phase 4: Outbox publisher + RabbitMQ delivery
+
+Publish pending outbox records to RabbitMQ, mark successful deliveries, record publish failures, and keep consumers idempotent.
+
+## Phase 5: Live Feed Service + Redis + Socket.IO
 
 Consume accepted bidding events, fan out updates with Socket.IO, and use Redis to support multiple live feed instances.
 
-## Phase 5: Laravel + React auction UI
+## Phase 6: Laravel + React auction UI
 
 Build a minimal user-facing auction experience that can view auctions, place bids, and observe live updates.
 
-## Phase 6: Auction scheduler
+## Phase 7: Auction scheduler
 
 Close auctions using server-side time and publish `AuctionClosed` and `WinnerSelected` events.
 
-## Phase 7: Billing and notification workers
+## Phase 8: Billing and notification workers
 
 Add idempotent worker flows for payment and notification events.
 
-## Phase 8: Integration/demo scenarios
+## Phase 9: Integration/demo scenarios, tests, documentation, cleanup, GitHub presentation
 
-Create repeatable local demo scenarios that show accepted bids, rejected bids, retries, live updates, and eventual consistency.
-
-## Phase 9: Tests, documentation, cleanup, GitHub presentation
-
-Add focused tests, polish documentation, prepare diagrams, and shape the repository for a strong GitHub portfolio presentation.
+Create repeatable demos, polish documentation, prepare diagrams, and shape the repository for a strong GitHub portfolio presentation.

@@ -47,8 +47,11 @@ public sealed record PlaceBidResponse(
     string CurrentBidderId,
     decimal NextMinimumBid,
     long AuctionVersion,
-    DateTimeOffset CreatedAtUtc);
+    DateTimeOffset CreatedAtUtc,
+    string CorrelationId);
 
 public sealed record ApiErrorResponse(string Code, string Message, object? Details = null);
 
 public sealed record BidRuleErrorDetails(decimal? CurrentBidAmount, decimal MinimumValidBid, long AuctionVersion);
+
+

@@ -4,6 +4,7 @@ using System.Text.Json;
 using bidding_service.Contracts;
 using bidding_service.Data;
 using bidding_service.Domain;
+using bidding_service.Services;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
@@ -146,6 +147,148 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     [Fact]
+    public async Task PlaceBid_WhenAccepted_CreatesBidAcceptedOutboxMessage()
+    {
+        var response = await PlaceBidAsync("dana", 1250m);
+        var acceptedBid = await response.Content.ReadFromJsonAsync<PlaceBidResponse>(JsonOptions);
+        var messages = await GetOutboxMessagesAsync();
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(acceptedBid);
+        var message = Assert.Single(messages);
+        Assert.Equal(IntegrationEventTypes.BidAccepted, message.EventType);
+        Assert.Equal(nameof(Auction), message.AggregateType);
+        Assert.Equal(TestAuctionData.OpenAuctionId, message.AggregateId);
+        Assert.Equal(acceptedBid.AuctionVersion, message.AggregateVersion);
+        Assert.Null(message.PublishedAtUtc);
+        Assert.Equal(0, message.PublishAttempts);
+
+        var payload = JsonSerializer.Deserialize<BidAcceptedPayload>(message.Payload, JsonOptions);
+        Assert.NotNull(payload);
+        Assert.Equal(acceptedBid.BidId, payload.BidId);
+        Assert.Equal(TestAuctionData.OpenAuctionId, payload.AuctionId);
+        Assert.Equal("dana", payload.BidderId);
+        Assert.Equal(1250m, payload.Amount);
+        Assert.Equal(acceptedBid.AuctionVersion, payload.AuctionVersion);
+    }
+
+    [Fact]
+    public async Task PlaceBid_WithCorrelationHeader_PreservesCorrelationIdInResponseHeaderAndOutbox()
+    {
+        const string correlationId = "phase3-correlation-123";
+        var response = await PlaceBidAsync("dana", 1250m, correlationId);
+        var acceptedBid = await response.Content.ReadFromJsonAsync<PlaceBidResponse>(JsonOptions);
+        var message = Assert.Single(await GetOutboxMessagesAsync());
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(acceptedBid);
+        Assert.Equal(correlationId, acceptedBid.CorrelationId);
+        Assert.True(response.Headers.TryGetValues("X-Correlation-ID", out var values));
+        Assert.Equal(correlationId, Assert.Single(values));
+        Assert.Equal(correlationId, message.CorrelationId);
+    }
+
+    [Fact]
+    public async Task PlaceBid_WithoutCorrelationHeader_GeneratesCorrelationId()
+    {
+        var response = await PlaceBidAsync("dana", 1250m);
+        var acceptedBid = await response.Content.ReadFromJsonAsync<PlaceBidResponse>(JsonOptions);
+        var message = Assert.Single(await GetOutboxMessagesAsync());
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        Assert.NotNull(acceptedBid);
+        Assert.False(string.IsNullOrWhiteSpace(acceptedBid.CorrelationId));
+        Assert.Equal(acceptedBid.CorrelationId, message.CorrelationId);
+        Assert.True(Guid.TryParse(acceptedBid.CorrelationId, out _));
+    }
+
+    [Fact]
+    public async Task PlaceBid_WhenBelowMinimum_DoesNotCreateOutboxMessage()
+    {
+        var response = await PlaceBidAsync("dana", 1249.99m);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, await GetOutboxMessageCountAsync());
+    }
+
+    [Fact]
+    public async Task PlaceBid_WhenScheduledOrClosed_DoesNotCreateOutboxMessage()
+    {
+        var scheduled = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ScheduledAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
+        var closed = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ClosedAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
+
+        Assert.Equal(HttpStatusCode.Conflict, scheduled.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, closed.StatusCode);
+        Assert.Equal(0, await GetOutboxMessageCountAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentSameAmount_CreatesOneBidAcceptedOutboxMessage()
+    {
+        var responses = await Task.WhenAll(
+            PlaceBidAsync("alice-2", 1250m),
+            PlaceBidAsync("bob-2", 1250m));
+        var accepted = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
+        var messages = await GetOutboxMessagesAsync();
+
+        Assert.Equal(1, accepted);
+        var message = Assert.Single(messages);
+        Assert.Equal(IntegrationEventTypes.BidAccepted, message.EventType);
+        Assert.Equal(TestAuctionData.OpenAuctionId, message.AggregateId);
+        Assert.Equal(4, message.AggregateVersion);
+        Assert.Null(message.PublishedAtUtc);
+    }
+
+    [Fact]
+    public async Task ConcurrentFailedAttempt_DoesNotLeaveOrphanOutboxMessage()
+    {
+        var responses = await Task.WhenAll(
+            PlaceBidAsync("alice-2", 1250m),
+            PlaceBidAsync("bob-2", 1250m));
+        var accepted = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
+        var bids = await GetOpenAuctionBidsAsync();
+        var messages = await GetOutboxMessagesAsync();
+
+        Assert.Equal(1, accepted);
+        Assert.Equal(3, bids.Count);
+        Assert.Single(messages);
+        Assert.Equal(bids.Count - 2, messages.Count);
+    }
+
+    [Fact]
+    public async Task ManyConcurrentBidders_CreatesOneOutboxMessagePerAcceptedBid()
+    {
+        var requests = new[]
+        {
+            ("bidder-01", 1250m),
+            ("bidder-02", 1250m),
+            ("bidder-03", 1300m),
+            ("bidder-04", 1350m),
+            ("bidder-05", 1300m),
+            ("bidder-06", 1400m),
+            ("bidder-07", 1450m),
+            ("bidder-08", 1500m),
+            ("bidder-09", 1400m),
+            ("bidder-10", 1500m)
+        };
+
+        var responses = await Task.WhenAll(requests.Select(r => PlaceBidAsync(r.Item1, r.Item2)));
+        var accepted = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
+        var auction = await GetOpenAuctionAsync();
+        var bids = await GetOpenAuctionBidsAsync();
+        var messages = await GetOutboxMessagesAsync();
+
+        Assert.Equal(accepted, messages.Count);
+        Assert.Equal(2 + accepted, bids.Count);
+        Assert.All(messages, message =>
+        {
+            Assert.Equal(IntegrationEventTypes.BidAccepted, message.EventType);
+            Assert.Equal(TestAuctionData.OpenAuctionId, message.AggregateId);
+            Assert.Null(message.PublishedAtUtc);
+        });
+        Assert.Equal(auction.Version, messages.Max(m => m.AggregateVersion));
+    }
+    [Fact]
     public async Task ConcurrentValidBids_SerializeSafely_AndFinalStateUsesHighestAcceptedBid()
     {
         var aliceTask = PlaceBidAsync("alice-2", 1250m);
@@ -255,9 +398,38 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         Assert.Equal(1, bids.Count(b => (b.BidderId == "alice-2" || b.BidderId == "bob-2") && b.Amount == 1250m));
     }
 
+    private async Task<List<OutboxMessage>> GetOutboxMessagesAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        return await db.OutboxMessages.AsNoTracking().OrderBy(m => m.CreatedAtUtc).ToListAsync();
+    }
+
+    private async Task<int> GetOutboxMessageCountAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        return await db.OutboxMessages.CountAsync();
+    }
+
     private Task<HttpResponseMessage> PlaceBidAsync(string bidderId, decimal amount)
     {
-        return _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", new PlaceBidRequest(bidderId, amount), JsonOptions);
+        return PlaceBidAsync(bidderId, amount, correlationId: null);
+    }
+
+    private Task<HttpResponseMessage> PlaceBidAsync(string bidderId, decimal amount, string? correlationId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{TestAuctionData.OpenAuctionId}/bids")
+        {
+            Content = JsonContent.Create(new PlaceBidRequest(bidderId, amount), options: JsonOptions)
+        };
+
+        if (!string.IsNullOrWhiteSpace(correlationId))
+        {
+            request.Headers.TryAddWithoutValidation("X-Correlation-ID", correlationId);
+        }
+
+        return _client.SendAsync(request);
     }
 
     private async Task<AuctionDetailResponse> GetOpenAuctionAsync()
@@ -411,6 +583,8 @@ public static class TestAuctionData
         await db.SaveChangesAsync();
     }
 }
+
+
 
 
 
