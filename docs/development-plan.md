@@ -30,11 +30,11 @@ Implemented: Laravel routes for the React app shell, auction list/detail screens
 
 ## Phase 7: Auction scheduler
 
-Close auctions using server-side time and publish `AuctionClosed` and `WinnerSelected` events.
+Implemented: separate .NET scheduler worker, server-UTC closure checks, PostgreSQL `FOR UPDATE SKIP LOCKED` row claiming, atomic auction close plus lifecycle outbox transaction, no-bid closure handling, `AuctionClosed` and `WinnerSelected` event payloads, duplicate-pass protection, and PostgreSQL-backed scheduler tests.
 
 ## Phase 8: Billing and notification workers
 
-Add idempotent worker flows for payment and notification events.
+Add idempotent worker flows for payment and notification events, and optionally project lifecycle events into the live UI.
 
 ## Phase 9: Integration/demo scenarios, tests, documentation, cleanup, GitHub presentation
 

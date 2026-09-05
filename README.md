@@ -16,7 +16,7 @@ This repository is a functional architecture demonstration and is not currently 
 
 ## Architecture Overview
 
-The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. The outbox publisher drains unpublished rows to RabbitMQ, and the Live Feed Service now consumes accepted bid events, applies Redis-backed idempotency/order protection, and broadcasts frontend-friendly `bid:accepted` messages through Socket.IO. The Laravel/React client now provides the demo auction UI. Later phases will add billing, notifications, and auction scheduling.
+The demo is organized as a monorepo with independently understandable services. The Laravel + React client calls the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. The outbox publisher drains unpublished rows to RabbitMQ, and the Live Feed Service consumes accepted bid events, applies Redis-backed idempotency/order protection, and broadcasts frontend-friendly `bid:accepted` messages through Socket.IO. The Laravel/React client provides the demo auction UI. The Auction Scheduler closes expired open auctions through PostgreSQL transactions and lifecycle outbox events. Later phases will add billing and notifications.
 
 ## Services
 
@@ -28,7 +28,7 @@ The demo is organized as a monorepo with independently understandable services. 
 | Outbox Publisher | `workers/outbox-publisher` | .NET 10 Worker, Npgsql, RabbitMQ.Client | Publishes pending outbox records to RabbitMQ |
 | Billing Worker | `workers/billing-worker` | Planned | Handles payment-oriented integration events |
 | Notification Worker | `workers/notification-worker` | Planned | Sends user-facing notifications |
-| Auction Scheduler | `workers/auction-scheduler` | Planned | Emits closure and winner-selection events |
+| Auction Scheduler | `workers/auction-scheduler` | .NET 10 Worker, Npgsql | Closes expired open auctions and persists lifecycle outbox events |
 
 ## Prerequisites
 
@@ -187,8 +187,33 @@ RabbitMQ routing for Phase 4:
 | Event | Exchange | Routing key |
 | --- | --- | --- |
 | BidAccepted | `auction.events` | `auction.bid.accepted` |
+| AuctionClosed | `auction.events` | `auction.closed` |
+| WinnerSelected | `auction.events` | `auction.winner.selected` |
 
 Even with publisher confirms, the system is at-least-once. A crash can happen after RabbitMQ accepts a message but before PostgreSQL is marked published, so future consumers must use `eventId` for idempotency. This is intentional and honest: the outbox prevents lost committed events, not duplicate delivery.
+## Auction Scheduler
+
+The Auction Scheduler is a separate .NET worker in `workers/auction-scheduler`. It uses server-side UTC and PostgreSQL state to close only auctions that are already `Open` and whose `EndTimeUtc` has passed. It does not publish directly to RabbitMQ.
+
+Closure flow:
+
+```text
+Auction Scheduler
+|
+v
+PostgreSQL transaction
+|
++-- Auction.Status = Closed
++-- Auction.Version++
++-- AuctionClosed outbox
++-- WinnerSelected outbox, when a winning bid exists
+|
+COMMIT
+```
+
+The scheduler claims eligible auctions with `FOR UPDATE SKIP LOCKED`, so multiple scheduler instances do not trivially close the same row. The auction version increments once per closure workflow. `AuctionClosed` and `WinnerSelected`, when both are produced, share the same resulting `Auction.Version` and the same scheduler-generated correlation ID.
+
+If an auction has no accepted bids, it closes and emits `AuctionClosed` only. RabbitMQ outages do not prevent closure because lifecycle events are durable outbox rows first; the outbox publisher sends them later when RabbitMQ is available.
 ## Live Feed Service
 
 The Live Feed Service consumes `BidAccepted` from RabbitMQ using one durable shared queue named `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`. Multiple live-feed instances should share this queue so RabbitMQ load-balances work instead of duplicating every event per instance.
@@ -225,9 +250,9 @@ npm run watch:auction -- <auction-id>
 
 ## Current Project Status
 
-Phase 6 is implemented for the Laravel/React demo UI. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, durable `BidAccepted` outbox persistence, a .NET outbox publisher with RabbitMQ publisher confirms, a Redis/Socket.IO Live Feed Service consumer, and a polished auction list/detail client.
+Phase 7 is implemented for automatic auction closing. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, durable `BidAccepted`, `AuctionClosed`, and `WinnerSelected` outbox persistence, a .NET outbox publisher with RabbitMQ publisher confirms, a Redis/Socket.IO Live Feed Service consumer, a polished auction list/detail client, and a separate scheduler worker.
 
-Billing, notifications, auction scheduling, production authentication, account registration, admin auction CRUD, and payment workflows are intentionally not implemented yet.
+Billing, notifications, production authentication, account registration, admin auction CRUD, and payment workflows are intentionally not implemented yet.
 
 ## Planned Implementation Phases
 
@@ -238,7 +263,7 @@ Billing, notifications, auction scheduling, production authentication, account r
 5. Phase 4: Outbox publisher and RabbitMQ delivery
 6. Phase 5: Live Feed Service, Redis, and Socket.IO - implemented
 7. Phase 6: Laravel + React auction UI - implemented
-8. Phase 7: Auction scheduler
+8. Phase 7: Auction scheduler - implemented
 9. Phase 8: Billing and notification workers
 10. Phase 9: Integration/demo scenarios, tests, documentation, cleanup, and GitHub presentation
 

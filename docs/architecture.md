@@ -67,6 +67,34 @@ The publisher uses the durable topic exchange `auction.events`. `BidAccepted` is
 If RabbitMQ is unavailable, bid requests still commit because they only write PostgreSQL state and outbox rows. The publisher records concise publish errors, increments `PublishAttempts`, leaves `PublishedAtUtc` null, and retries on later polls.
 
 Publisher confirms reduce the chance of marking undelivered messages as published, but they do not provide exactly-once delivery. A process can crash after RabbitMQ accepts a message and before PostgreSQL is updated. Consumers must therefore assume at-least-once delivery and use `eventId` for idempotency.
+## Auction Scheduler
+
+The Auction Scheduler is a separate .NET worker, independent of the HTTP API. It uses server-side UTC only and closes auctions where `Status = Open` and `EndTimeUtc <= current UTC`. Scheduled auctions that have not opened, cancelled auctions, and already closed auctions are ignored in this phase.
+
+Each closure is committed in one PostgreSQL transaction. The scheduler re-reads and locks an eligible auction with `FOR UPDATE SKIP LOCKED`, verifies it is still open and expired, determines the winner from authoritative accepted bid state, sets `Auction.Status = Closed`, increments `Auction.Version` exactly once, and inserts lifecycle outbox rows. It never publishes directly to RabbitMQ.
+
+```text
+Auction Scheduler
+|
+v
+PostgreSQL
+|
++-- Auction close
++-- AuctionClosed outbox
++-- WinnerSelected outbox, when a winning bid exists
+|
+v
+Outbox Publisher
+|
+v
+RabbitMQ
+```
+
+Multiple scheduler instances are safe at the row-claiming level because locked rows are skipped by competitors. The version check remains in the update condition so the database still arbitrates stale state.
+
+For a bid-versus-close race, PostgreSQL transaction ordering decides the serialized outcome. If a bid commits before the scheduler locks and closes the auction, the scheduler observes that accepted bid and can select it as winner. If the scheduler closes first, later bid placement re-reads the authoritative closed state or hits a concurrency conflict and is rejected by normal bid rules. No browser time participates.
+
+`AuctionClosed` and `WinnerSelected` from the same close workflow use the same resulting `Auction.Version` and correlation ID. If an auction has no accepted bids, the scheduler emits `AuctionClosed` only.
 
 ## Live Feed Service
 
@@ -84,7 +112,7 @@ Socket.IO rooms are constructed server-side as `auction:{auctionId}` after valid
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
 
-RabbitMQ publishing is implemented for outbox `BidAccepted` messages only. Consumers are still future work.
+RabbitMQ publishing is implemented for outbox `BidAccepted`, `AuctionClosed`, and `WinnerSelected` messages. The Live Feed Service currently consumes `BidAccepted`; lifecycle-event consumers are future work.
 
 ## Server Time
 
@@ -98,5 +126,5 @@ The bidding database is not shared directly with billing, catalog, notification,
 
 The Bidding Service owns Auction, Bid, and OutboxMessage state in PostgreSQL through EF Core and Npgsql. Money is represented with `decimal` and mapped with fixed precision. Auction validity is evaluated with server-side UTC through .NET `TimeProvider`; browser/client time is not trusted.
 
-RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid broadcasts, and the Laravel/React auction UI are implemented through Phase 6. Billing workflows, notification workflows, auction scheduler behavior, production authentication, payment flows, and admin auction management remain future work.
+RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid broadcasts, the Laravel/React auction UI, and automatic auction closing are implemented through Phase 7. Billing workflows, notification workflows, production authentication, payment flows, lifecycle live-feed projections, and admin auction management remain future work.
 

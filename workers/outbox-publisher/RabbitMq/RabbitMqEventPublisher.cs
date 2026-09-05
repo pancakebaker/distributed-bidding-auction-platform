@@ -9,9 +9,17 @@ namespace outbox_publisher.RabbitMq;
 public sealed class RabbitMqEventPublisher(IOptions<RabbitMqOptions> options, ILogger<RabbitMqEventPublisher> logger)
 {
     private const string BidAcceptedRoutingKey = "auction.bid.accepted";
+    private const string AuctionClosedRoutingKey = "auction.closed";
+    private const string WinnerSelectedRoutingKey = "auction.winner.selected";
 
     public string Exchange => options.Value.Exchange;
-    public string RoutingKeyFor(OutboxMessage message) => message.EventType == "BidAccepted" ? BidAcceptedRoutingKey : $"auction.{message.EventType.ToLowerInvariant()}";
+    public string RoutingKeyFor(OutboxMessage message) => message.EventType switch
+    {
+        "BidAccepted" => BidAcceptedRoutingKey,
+        "AuctionClosed" => AuctionClosedRoutingKey,
+        "WinnerSelected" => WinnerSelectedRoutingKey,
+        _ => $"auction.{message.EventType.ToLowerInvariant()}"
+    };
 
     public async Task PublishAsync(OutboxMessage message, string envelopeJson, CancellationToken cancellationToken)
     {

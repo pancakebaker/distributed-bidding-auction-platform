@@ -1,6 +1,6 @@
 # Event Catalog
 
-This catalog documents planned integration event contracts. Phase 4 publishes `BidAccepted` outbox rows to RabbitMQ, and Phase 5 consumes those messages in the Live Feed Service. No shared event package is introduced yet.
+This catalog documents planned integration event contracts. Phase 4 publishes outbox rows to RabbitMQ, Phase 5 consumes `BidAccepted` messages in the Live Feed Service, and Phase 7 adds persisted lifecycle events for auction closure. No shared event package is introduced yet.
 
 ## Event Envelope
 
@@ -22,7 +22,7 @@ This catalog documents planned integration event contracts. Phase 4 publishes `B
 
 `correlationId` supports tracing flows across HTTP requests, outbox persistence, future RabbitMQ delivery, workers, and live fan-out. The Bidding API accepts `X-Correlation-ID`; if it is absent, the API generates a GUID.
 
-## Persisted In Phase 3
+## Persisted and Published
 
 ### BidAccepted
 
@@ -50,6 +50,60 @@ Stored when and only when a bid is accepted and committed.
 ```
 
 The outbox row stores envelope metadata in columns and the event-specific contract in a PostgreSQL `jsonb` payload column. Rejected bids do not create `BidAccepted` messages.
+### AuctionClosed
+
+Producer: Auction Scheduler
+
+Stored when and only when an open auction is closed by authoritative server UTC.
+
+```json
+{
+  "eventId": "outbox-message-id",
+  "eventType": "AuctionClosed",
+  "occurredAtUtc": "2026-09-05T00:00:00Z",
+  "aggregateType": "Auction",
+  "aggregateId": "auction-id",
+  "aggregateVersion": 16,
+  "correlationId": "scheduler-workflow-id",
+  "payload": {
+    "auctionId": "auction-id",
+    "closedAtUtc": "2026-09-05T00:00:00Z",
+    "finalBidAmount": 12500,
+    "finalBidderId": "alice",
+    "auctionVersion": 16
+  }
+}
+```
+
+If the auction has no accepted bids, `finalBidAmount` and `finalBidderId` are null.
+
+### WinnerSelected
+
+Producer: Auction Scheduler
+
+Stored in the same close transaction only when the auction has a winning accepted bid.
+
+```json
+{
+  "eventId": "outbox-message-id",
+  "eventType": "WinnerSelected",
+  "occurredAtUtc": "2026-09-05T00:00:00Z",
+  "aggregateType": "Auction",
+  "aggregateId": "auction-id",
+  "aggregateVersion": 16,
+  "correlationId": "scheduler-workflow-id",
+  "payload": {
+    "auctionId": "auction-id",
+    "winningBidId": "bid-id",
+    "winnerId": "alice",
+    "amount": 12500,
+    "selectedAtUtc": "2026-09-05T00:00:00Z",
+    "auctionVersion": 16
+  }
+}
+```
+
+`AuctionClosed` and `WinnerSelected` from one closure workflow share the same resulting `Auction.Version` and correlation ID. The version is incremented once for the closure, not once per event.
 
 ## Planned Events
 
@@ -59,8 +113,8 @@ The outbox row stores envelope metadata in columns and the event-specific contra
 | AuctionUpdated | Bidding Service | Announces changed auction metadata or state | Planned |
 | BidAccepted | Bidding Service / Outbox Publisher | Announces a bid passed authoritative validation | Persisted and published to RabbitMQ |
 | BidRejected | Bidding Service | Announces a rejected bid attempt when useful for workflows or audit | Planned |
-| AuctionClosed | Auction Scheduler/Bidding Service | Announces bidding has closed | Planned |
-| WinnerSelected | Auction Scheduler/Bidding Service | Announces the selected winning bid | Planned |
+| AuctionClosed | Auction Scheduler | Announces bidding has closed | Persisted and published to RabbitMQ |
+| WinnerSelected | Auction Scheduler | Announces the selected winning bid | Persisted and published to RabbitMQ |
 | PaymentRequested | Billing Worker | Announces that payment collection has started | Planned |
 | PaymentSucceeded | Billing Worker | Announces successful payment | Planned |
 | PaymentFailed | Billing Worker | Announces failed payment | Planned |
@@ -72,6 +126,8 @@ Phase 4 publishes UTF-8 JSON envelopes to the durable topic exchange `auction.ev
 | Event | Routing key | Delivery |
 | --- | --- | --- |
 | BidAccepted | `auction.bid.accepted` | Persistent message with publisher confirmation |
+| AuctionClosed | `auction.closed` | Persistent message with publisher confirmation |
+| WinnerSelected | `auction.winner.selected` | Persistent message with publisher confirmation |
 
 AMQP properties include `messageId = eventId`, `correlationId`, `contentType = application/json`, `contentEncoding = utf-8`, persistent delivery, and message `type = eventType`.
 
