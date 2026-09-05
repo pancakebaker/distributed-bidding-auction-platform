@@ -22,7 +22,7 @@ Implemented: separate .NET outbox publisher worker, PostgreSQL `FOR UPDATE SKIP 
 
 ## Phase 5: Live Feed Service + Redis + Socket.IO
 
-Consume accepted bidding events, fan out updates with Socket.IO, and use Redis to support multiple live feed instances.
+Implemented: RabbitMQ `BidAccepted` consumer, durable shared live-feed queue, manual ACK/NACK handling with a simple DLQ, Redis `eventId` idempotency, Redis `aggregateVersion` stale-event protection, Socket.IO auction rooms, Redis adapter fan-out support, and integration tests against local RabbitMQ/Redis.
 
 ## Phase 6: Laravel + React auction UI
 

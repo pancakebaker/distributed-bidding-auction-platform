@@ -1,6 +1,6 @@
 # Event Catalog
 
-This catalog documents planned integration event contracts. Phase 4 publishes `BidAccepted` outbox rows to RabbitMQ. No shared event package is introduced yet.
+This catalog documents planned integration event contracts. Phase 4 publishes `BidAccepted` outbox rows to RabbitMQ, and Phase 5 consumes those messages in the Live Feed Service. No shared event package is introduced yet.
 
 ## Event Envelope
 
@@ -78,3 +78,12 @@ AMQP properties include `messageId = eventId`, `correlationId`, `contentType = a
 A local debug queue named `auction.events.debug` may be declared and bound with `auction.#` for verification. It is a development inspection queue, not a production consumer.
 
 Delivery semantics are at-least-once. Duplicate messages are possible if the publisher crashes after RabbitMQ confirms but before PostgreSQL records `PublishedAtUtc`; consumers must be idempotent using `eventId`.
+## Live Feed Consumer
+
+Phase 5 consumes `BidAccepted` from the durable queue `live-feed.bid-events`, bound to `auction.events` with routing key `auction.bid.accepted`.
+
+The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale observations cannot move clients backward.
+
+If an event version jumps forward, the service broadcasts the newer authoritative event and logs the gap. This keeps the demo simple while making it clear that RabbitMQ delivery should be treated as at-least-once, not globally perfectly ordered.
+
+The Socket.IO event emitted to subscribed clients is `bid:accepted`. Internal broker metadata and outbox publish state are not exposed to browser clients.

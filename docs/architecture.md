@@ -60,9 +60,15 @@ Publisher confirms reduce the chance of marking undelivered messages as publishe
 
 ## Live Feed Service
 
-The Live Feed Service never decides whether a bid is valid. It only broadcasts accepted state and accepted events that originated from the authoritative Bidding Service. It uses Socket.IO for client connections, and Redis supports fan-out when multiple live feed instances are running.
+The Live Feed Service never decides whether a bid is valid. It only broadcasts accepted events that originated from the authoritative Bidding Service and arrived through RabbitMQ.
 
-Later events will carry the Bidding Service auction version as `aggregateVersion` so real-time consumers can detect stale or out-of-order observations.
+It consumes from one durable shared queue, `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`. Manual acknowledgement is used: valid messages are ACKed after validation, Redis idempotency/order checks, and Socket.IO fan-out. Malformed messages are NACKed without requeue and dead-lettered to `live-feed.bid-events.dlq`; transient processing failures are NACKed with requeue.
+
+Redis supports live-feed behavior, not auction authority. It powers the Socket.IO Redis adapter for multi-instance fan-out, stores short-lived event idempotency keys by `eventId`, and stores the highest observed `aggregateVersion` per auction. The version update is atomic in Redis so competing live-feed instances do not race through a naive read-then-write path.
+
+The service ignores duplicate and stale observations. If an event advances from version 42 to 44, the service accepts and broadcasts the newer authoritative state while logging the gap; it does not fabricate missing events or run a replay engine in this demo phase.
+
+Socket.IO rooms are constructed server-side as `auction:{auctionId}` after validating that the client supplied a syntactically valid UUID. The frontend-facing event is `bid:accepted` with auction ID, bid ID, bidder ID, amount, auction version, occurrence time, and correlation ID.
 
 ## RabbitMQ
 
@@ -82,5 +88,5 @@ The bidding database is not shared directly with billing, catalog, notification,
 
 The Bidding Service owns Auction, Bid, and OutboxMessage state in PostgreSQL through EF Core and Npgsql. Money is represented with `decimal` and mapped with fixed precision. Auction validity is evaluated with server-side UTC through .NET `TimeProvider`; browser/client time is not trusted.
 
-No RabbitMQ consumers, Redis fan-out, Socket.IO bid broadcasts, billing workflows, notification workflows, or auction scheduler behavior are implemented through Phase 4.
+RabbitMQ live-feed consumption, Redis idempotency/version tracking, and Socket.IO bid broadcasts are implemented through Phase 5. Billing workflows, notification workflows, auction scheduler behavior, production authentication, and UI auction screens remain future work.
 

@@ -16,7 +16,7 @@ This repository is a functional architecture demonstration and is not currently 
 
 ## Architecture Overview
 
-The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions now persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. The outbox publisher now drains unpublished rows to RabbitMQ. Later phases will add Redis-backed Socket.IO fan-out, billing, notifications, and auction scheduling.
+The demo is organized as a monorepo with independently understandable services. The Laravel + React client will call the .NET Bidding Service over HTTP. The Bidding Service owns auction and bid state in PostgreSQL and is the only service that can accept or reject bids. Accepted bid transactions persist a `BidAccepted` outbox message in the same PostgreSQL transaction as the bid and auction update. The outbox publisher drains unpublished rows to RabbitMQ, and the Live Feed Service now consumes accepted bid events, applies Redis-backed idempotency/order protection, and broadcasts frontend-friendly `bid:accepted` messages through Socket.IO. Later phases will add billing, notifications, auction scheduling, and the Laravel/React auction screens.
 
 ## Services
 
@@ -24,7 +24,7 @@ The demo is organized as a monorepo with independently understandable services. 
 | --- | --- | --- | --- |
 | Client | `apps/client` | Laravel 13, React, TypeScript, Vite | Browser application and future auction UI |
 | Bidding Service | `apps/bidding-service` | ASP.NET Core Web API on .NET 10 | Authoritative bid validation, auction state, and durable outbox persistence |
-| Live Feed Service | `apps/live-feed-service` | Node.js, TypeScript, Socket.IO | Future real-time fan-out of accepted events |
+| Live Feed Service | `apps/live-feed-service` | Node.js, TypeScript, Express, Socket.IO, Redis, amqplib | Consumes accepted bid events and broadcasts them to subscribed clients |
 | Outbox Publisher | `workers/outbox-publisher` | .NET 10 Worker, Npgsql, RabbitMQ.Client | Publishes pending outbox records to RabbitMQ |
 | Billing Worker | `workers/billing-worker` | Planned | Handles payment-oriented integration events |
 | Notification Worker | `workers/notification-worker` | Planned | Sends user-facing notifications |
@@ -152,12 +152,45 @@ RabbitMQ routing for Phase 4:
 | BidAccepted | `auction.events` | `auction.bid.accepted` |
 
 Even with publisher confirms, the system is at-least-once. A crash can happen after RabbitMQ accepts a message but before PostgreSQL is marked published, so future consumers must use `eventId` for idempotency. This is intentional and honest: the outbox prevents lost committed events, not duplicate delivery.
+## Live Feed Service
+
+The Live Feed Service consumes `BidAccepted` from RabbitMQ using one durable shared queue named `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`. Multiple live-feed instances should share this queue so RabbitMQ load-balances work instead of duplicating every event per instance.
+
+Processing uses manual acknowledgements. Valid messages are ACKed only after validation, Redis idempotency/order checks, and Socket.IO fan-out complete. Malformed messages are NACKed without requeue and routed to the simple development dead-letter queue `live-feed.bid-events.dlq` through `live-feed.dead-letter`. Transient failures are NACKed with requeue.
+
+Redis is used for three live-feed concerns only:
+
+- Socket.IO Redis adapter fan-out across multiple live-feed instances
+- demo-level event idempotency with `live-feed:processed-event:{eventId}` and a configurable TTL
+- highest observed auction version with `live-feed:auction-version:{auctionId}`
+
+PostgreSQL and the Bidding Service remain authoritative. The live feed never accepts, rejects, reprices, or closes bids. It rejects stale observations by comparing `aggregateVersion`; if a newer version arrives with a gap, it broadcasts the newer authoritative event and logs the gap instead of building a replay engine.
+
+Clients subscribe with `auction:subscribe` and a UUID auction ID. The server constructs rooms as `auction:{auctionId}` and emits:
+
+```json
+{
+  "auctionId": "auction-id",
+  "bidId": "bid-id",
+  "bidderId": "alice",
+  "amount": 10500,
+  "auctionVersion": 42,
+  "occurredAtUtc": "2026-09-05T00:00:00Z",
+  "correlationId": "request-or-flow-id"
+}
+```
+
+A developer harness is available from `apps/live-feed-service`:
+
+```powershell
+npm run watch:auction -- <auction-id>
+```
 
 ## Current Project Status
 
-Phase 4 is implemented for RabbitMQ event transport. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, durable `BidAccepted` outbox persistence, and a .NET outbox publisher with RabbitMQ publisher confirms.
+Phase 5 is implemented for live accepted-bid fan-out. The repository contains the foundation plus PostgreSQL-backed Auction and Bid entities, EF Core migrations, deterministic demo seed data, REST endpoints, optimistic concurrency hardening, durable `BidAccepted` outbox persistence, a .NET outbox publisher with RabbitMQ publisher confirms, and a Redis/Socket.IO Live Feed Service consumer.
 
-Redis/Socket.IO bid broadcasting, billing, notifications, and auction scheduling are intentionally not implemented yet.
+Billing, notifications, auction scheduling, and Laravel/React auction screens are intentionally not implemented yet.
 
 ## Planned Implementation Phases
 
@@ -166,7 +199,7 @@ Redis/Socket.IO bid broadcasting, billing, notifications, and auction scheduling
 3. Phase 2: Concurrency-safe bid placement
 4. Phase 3: Transactional outbox persistence
 5. Phase 4: Outbox publisher and RabbitMQ delivery
-6. Phase 5: Live Feed Service, Redis, and Socket.IO
+6. Phase 5: Live Feed Service, Redis, and Socket.IO - implemented
 7. Phase 6: Laravel + React auction UI
 8. Phase 7: Auction scheduler
 9. Phase 8: Billing and notification workers
