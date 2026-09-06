@@ -4,6 +4,24 @@ A functional distributed-system demo for concurrency-safe auction bidding, trans
 
 This repository is a functional architecture demonstration and is not currently intended to be a production-ready auction platform.
 
+## Demo
+
+### Live auction
+
+![Live auction](docs/assets/auction-live.png)
+
+### Real-time multi-client bidding
+
+Two independent clients stay synchronized through RabbitMQ, Redis, and Socket.IO while the .NET Bidding Service remains authoritative.
+
+![Two synchronized clients](docs/assets/auction-two-clients.png)
+
+### Automatic auction close and winner selection
+
+Auctions close using server-side UTC, with `AuctionClosed` and `WinnerSelected` propagated through the same transactional outbox and messaging pipeline.
+
+![Closed auction with winner](docs/assets/auction-closed.png)
+
 ## What This Demonstrates
 
 - concurrency-safe bid placement with PostgreSQL-backed optimistic concurrency
@@ -114,10 +132,16 @@ This deletes and recreates local demo auctions, bids, and outbox rows in the con
 
 The reset includes:
 
-- Open MacBook Pro auction
+- Open MacBook Pro auction with current bid 1900, Bob winning, and Alice/Bob bid history for screenshots
 - Scheduled Camera auction
 - Closed Gaming Console auction with historical bids
 - Short Demo Auction for automatic close demonstrations
+
+For a deterministic closed screenshot state with final bid 2100 and Bob as winner:
+
+```powershell
+scripts\reset-demo.ps1 -ClosedScreenshot
+```
 
 ## Quick Demo
 

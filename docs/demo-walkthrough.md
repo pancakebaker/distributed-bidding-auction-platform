@@ -16,17 +16,17 @@ Open two browser windows at `http://localhost:8000/auctions`.
 
 ## Walkthrough
 
-1. **Show the architecture briefly.**
-   Point out the Laravel/React client, .NET Bidding Service, PostgreSQL, transactional outbox, Outbox Publisher, RabbitMQ, Live Feed Service, Redis, Socket.IO, and Auction Scheduler.
+1. **Start with the visual story.**
+   Open the MacBook Pro auction in two browser windows and say: "Two users are connected to the same auction." Keep both current bid panels and live indicators visible.
 
-2. **Open the same auction in two clients.**
-   Use the MacBook Pro auction. Set one browser to Alice and the other to Bob.
+2. **Place Alice's bid.**
+   Alice receives an immediate REST success response from the .NET Bidding Service. The audience should see the command succeed before you explain the internals.
 
-3. **Place Alice's bid.**
-   Alice receives an immediate REST success response from the Bidding Service. Explain that REST is the command result and remains authoritative.
+3. **Show Bob's browser update.**
+   Point to the second browser updating through `bid:accepted`: "The bid was committed atomically with an outbox event, published through RabbitMQ, consumed by the Live Feed Service, then fanned out through Redis and Socket.IO."
 
-4. **Watch both clients update.**
-   The accepted bid persists with a `BidAccepted` outbox row, the publisher sends it to RabbitMQ, Live Feed consumes it, Redis records idempotency/version state, and Socket.IO broadcasts `bid:accepted`.
+4. **Briefly show the architecture.**
+   Connect the visible UI behavior to the Laravel/React client, .NET Bidding Service, PostgreSQL, transactional outbox, Outbox Publisher, RabbitMQ, Live Feed Service, Redis, Socket.IO, and Auction Scheduler.
 
 5. **Place Bob's higher bid.**
    Show the current bid, highest bidder, auction version, and bid history updating. Mention that simultaneous bid races are handled by PostgreSQL optimistic concurrency on `Auction.Version`.

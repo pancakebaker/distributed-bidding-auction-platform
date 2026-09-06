@@ -209,7 +209,9 @@ describe('auction UI', () => {
             createdAtUtc: new Date().toISOString(),
             correlationId: 'test-correlation',
         }), { status: 201, headers: { 'Content-Type': 'application/json' } }));
-        await screen.findByText('Bid accepted at $1,600.');
+        await screen.findByText('Your bid was accepted.');
+        expect(screen.getByLabelText('Bid amount')).toHaveValue('1650');
+        expect(screen.queryByText('alice placed $1,600')).not.toBeInTheDocument();
 
         const postCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith(`/api/auctions/${macBook.id}/bids`) && call[1]?.method === 'POST');
         expect(postCall?.[1]?.body).toBe(JSON.stringify({ bidderId: 'Alice', amount: 1600 }));
@@ -270,6 +272,7 @@ describe('auction UI', () => {
 
         await waitFor(() => expect(screen.getAllByText('$1,700').length).toBeGreaterThan(0));
         expect(screen.getByText('Highest bidder: bob')).toBeInTheDocument();
+        expect(screen.getByLabelText('Bid amount')).toHaveValue('1750');
         expect(screen.getByText('bob bid $1,700')).toBeInTheDocument();
     });
 
@@ -315,9 +318,9 @@ describe('auction UI', () => {
         socketHandlers.get('connect')?.();
         expect(await screen.findByText('Live connected')).toBeInTheDocument();
         socketIoHandlers.get('reconnect_attempt')?.();
-        expect(await screen.findByText('Reconnecting')).toBeInTheDocument();
+        expect((await screen.findAllByText('Reconnecting')).length).toBeGreaterThan(0);
         socketHandlers.get('disconnect')?.();
-        expect(await screen.findByText('Offline')).toBeInTheDocument();
+        expect((await screen.findAllByText('Offline')).length).toBeGreaterThan(0);
     });
 
     it('subscribes to the current auction room when live feed connects', async () => {
@@ -364,7 +367,7 @@ describe('auction UI', () => {
         expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
         expect(screen.getByLabelText('Bid amount')).toBeDisabled();
         expect(screen.getByText('Final bid $1,500')).toBeInTheDocument();
-        expect(screen.getByText('Winner: erin')).toBeInTheDocument();
+        expect(screen.getAllByText('Winner: erin').length).toBeGreaterThan(0);
     });
 
     it('winner:selected displays winner state for the acting bidder', async () => {
@@ -465,9 +468,10 @@ describe('auction UI', () => {
         renderAt(`/auctions/${macBook.id}`);
 
         expect(await screen.findByText('Final bid $1,500')).toBeInTheDocument();
-        expect(screen.getByText('Winner: erin')).toBeInTheDocument();
+        expect(screen.getAllByText('Winner: erin').length).toBeGreaterThan(0);
         expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
         expect(screen.getAllByText('Closed').length).toBeGreaterThan(0);
+        expect(screen.queryByText('Next minimum')).not.toBeInTheDocument();
     });
 
     it('Live Feed outage does not prevent REST Closed state from rendering', async () => {
@@ -488,7 +492,7 @@ describe('auction UI', () => {
         renderAt(`/auctions/${macBook.id}`);
         socketHandlers.get('connect_error')?.();
 
-        expect(await screen.findByText('Offline')).toBeInTheDocument();
+        expect((await screen.findAllByText('Offline')).length).toBeGreaterThan(0);
         expect(screen.getByText('No bids were placed.')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
     });

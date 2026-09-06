@@ -81,7 +81,11 @@ button:disabled {
 }
 
 .page-heading {
-    margin-bottom: 24px;
+    margin-bottom: 28px;
+}
+
+.page-heading p {
+    margin-top: 14px;
 }
 
 .eyebrow {
@@ -263,6 +267,7 @@ button:disabled {
 
 .price-panel {
     background: #15231f;
+    border: 1px solid #284139;
     border-radius: 8px;
     color: #f4f8f3;
     display: grid;
@@ -277,7 +282,8 @@ button:disabled {
 }
 
 .price-panel strong {
-    font-size: clamp(38px, 8vw, 64px);
+    font-size: clamp(42px, 8vw, 68px);
+    letter-spacing: 0;
     line-height: 1;
 }
 
@@ -338,6 +344,11 @@ button:disabled {
     gap: 10px;
     grid-template-columns: 1fr auto auto;
     padding: 12px;
+}
+
+.bid-history li:first-child {
+    background: #ecf7ed;
+    border-color: #b9ddc3;
 }
 
 .bid-history time {
@@ -419,8 +430,11 @@ button:disabled {
 
 .system-row {
     align-items: center;
+    border-bottom: 1px solid #e1e8e2;
     display: flex;
+    gap: 12px;
     justify-content: space-between;
+    padding-bottom: 8px;
 }
 
 .system-panel h3 {

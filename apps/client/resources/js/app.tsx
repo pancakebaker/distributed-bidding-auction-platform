@@ -241,11 +241,14 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         return current;
                     }
 
+                    const nextMinimumBid = event.amount + current.minimumBidIncrement;
+                    setAmount(String(nextMinimumBid));
+
                     return {
                         ...current,
                         currentBidAmount: event.amount,
                         currentBidderId: event.bidderId,
-                        minimumValidBid: event.amount + current.minimumBidIncrement,
+                        minimumValidBid: nextMinimumBid,
                         version: event.auctionVersion,
                         updatedAtUtc: event.occurredAtUtc,
                     };
@@ -366,8 +369,7 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                 ...current.filter((bid) => bid.id !== response.bidId),
             ]);
             setAmount(String(response.nextMinimumBid));
-            setFormMessage({ tone: 'success', text: `Bid accepted at ${formatMoney(response.amount)}.` });
-            setActivity((current) => [`${response.bidderId} placed ${formatMoney(response.amount)}`, ...current].slice(0, 4));
+            setFormMessage({ tone: 'success', text: 'Your bid was accepted.' });
         } catch (caught) {
             const apiError = caught instanceof ApiClientError ? caught.error : null;
             setFormMessage({ tone: 'error', text: describeBidError(apiError, caught) });
@@ -402,7 +404,11 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         <div className="price-panel">
                             <span>{auction.status === 'Closed' ? 'Final bid' : 'Current bid'}</span>
                             <strong>{formatMoney(auction.currentBidAmount ?? auction.startingPrice)}</strong>
-                            <small>{auction.currentBidderId ? `Highest bidder: ${auction.currentBidderId}` : 'No accepted bidder yet'}</small>
+                            <small>
+                                {auction.currentBidderId
+                                    ? `${auction.status === 'Closed' ? 'Winner' : 'Highest bidder'}: ${auction.currentBidderId}`
+                                    : 'No accepted bidder yet'}
+                            </small>
                         </div>
 
                         {auction.status === 'Closed' && (
@@ -422,10 +428,12 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         )}
 
                         <dl className="detail-metrics">
-                            <div>
-                                <dt>Next minimum</dt>
-                                <dd>{formatMoney(minimumBid)}</dd>
-                            </div>
+                            {auction.status !== 'Closed' && (
+                                <div>
+                                    <dt>Next minimum</dt>
+                                    <dd>{formatMoney(minimumBid)}</dd>
+                                </div>
+                            )}
                             <div>
                                 <dt>Version</dt>
                                 <dd>{auction.version}</dd>
@@ -464,7 +472,7 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
                     <aside className="bid-sidepanel">
                         <form onSubmit={onSubmit}>
-                            <h2>Place bid</h2>
+                            <h2>{biddingUnavailable ? 'Auction closed' : 'Place bid'}</h2>
                             <label>
                                 Acting as
                                 <select disabled={biddingUnavailable} value={bidderId} onChange={(event) => setBidderId(event.target.value)}>
@@ -481,7 +489,8 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                     min="1"
                                     step="1"
                                     inputMode="decimal"
-                                    value={amount}
+                                    value={biddingUnavailable ? '' : amount}
+                                    placeholder={biddingUnavailable ? 'Bidding closed' : undefined}
                                     disabled={biddingUnavailable}
                                     onChange={(event) => setAmount(event.target.value)}
                                 />
@@ -495,7 +504,7 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         <section className="system-panel">
                             <h2>Demo status</h2>
                             <div className="system-row"><span>Bidding API</span><strong>{loadError ? 'Unavailable' : 'Connected'}</strong></div>
-                            <div className="system-row"><span>Live Feed</span><strong>{liveStatus}</strong></div>
+                            <div className="system-row"><span>Live Feed</span><strong>{formatLiveStatus(liveStatus)}</strong></div>
                             <div className="system-row"><span>Auction Version</span><strong>{auction.version}</strong></div>
                             <h3>Recent live activity</h3>
                             {activity.length === 0 ? <p className="muted">No live events in this tab yet.</p> : (
@@ -546,12 +555,17 @@ function describeBidError(apiError: ApiErrorResponse | null, caught: unknown) {
     return apiError.message;
 }
 
+function formatLiveStatus(status: LiveStatus) {
+    if (status === 'connected') return 'Connected';
+    if (status === 'reconnecting') return 'Reconnecting';
+    if (status === 'connecting') return 'Connecting';
+    return 'Offline';
+}
+
 function LiveIndicator({ status }: { status: LiveStatus }) {
     const label = useMemo(() => {
-        if (status === 'connected') return 'Live connected';
-        if (status === 'reconnecting') return 'Reconnecting';
-        if (status === 'connecting') return 'Connecting';
-        return 'Offline';
+        const formatted = formatLiveStatus(status);
+        return status === 'connected' ? `Live ${formatted.toLowerCase()}` : formatted;
     }, [status]);
 
     return <span className={`live-indicator live-${status}`}>{label}</span>;
