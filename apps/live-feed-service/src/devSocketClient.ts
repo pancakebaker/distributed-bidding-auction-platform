@@ -1,3 +1,6 @@
+/**
+ * Developer-only Socket.IO client for observing live auction events during local demos.
+ */
 import { io } from 'socket.io-client';
 
 const liveFeedUrl = process.env.LIVE_FEED_URL ?? 'http://localhost:3001';

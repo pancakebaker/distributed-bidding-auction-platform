@@ -1,3 +1,9 @@
+/**
+ * Environment-backed configuration for the live-feed service runtime and integration dependencies.
+ */
+/**
+ * Runtime settings for HTTP, Redis, RabbitMQ, and live-feed idempotency behavior.
+ */
 export type LiveFeedConfig = {
   port: number;
   clientOrigin: string;
@@ -55,6 +61,9 @@ function rabbitMqUrlFromEnv(): string {
   return `amqp://${username}:${password}@${host}:${port}${virtualHost}`;
 }
 
+/**
+ * Loads live-feed configuration from environment variables with optional test overrides.
+ */
 export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedConfig {
   return {
     port: numberFromEnv('PORT', 3001),

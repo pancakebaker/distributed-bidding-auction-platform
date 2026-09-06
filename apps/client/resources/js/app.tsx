@@ -1,3 +1,6 @@
+/**
+ * React application shell for auction discovery, bidding, and real-time lifecycle updates.
+ */
 import '../css/app.css';
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -96,6 +99,9 @@ function usePath() {
     return path;
 }
 
+/**
+ * Routes the demo between auction discovery and the live auction detail experience.
+ */
 export function App() {
     const path = usePath();
     const auctionMatch = path.match(/^\/auctions\/([^/]+)$/);

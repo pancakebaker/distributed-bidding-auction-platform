@@ -1,3 +1,6 @@
+/**
+ * Express, Socket.IO, Redis, and RabbitMQ composition root for the live-feed service.
+ */
 import express from 'express';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -12,6 +15,9 @@ import { LiveFeedRabbitMqConsumer } from './rabbitMqConsumer.js';
 import { auctionRoom, parseAuctionSubscription } from './rooms.js';
 import { LiveFeedStateStore } from './redisState.js';
 
+/**
+ * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
+ */
 export type LiveFeedService = {
   start: () => Promise<void>;
   stop: () => Promise<void>;
@@ -22,6 +28,9 @@ export type LiveFeedService = {
   consumer: LiveFeedRabbitMqConsumer;
 };
 
+/**
+ * Creates the live-feed HTTP server, Socket.IO server, Redis adapter, state store, and RabbitMQ consumer.
+ */
 export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): LiveFeedService {
   const config = loadConfig(overrides);
   const app = express();

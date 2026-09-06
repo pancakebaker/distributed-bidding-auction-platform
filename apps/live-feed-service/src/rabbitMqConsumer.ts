@@ -1,14 +1,23 @@
+/**
+ * RabbitMQ consumer topology and manual acknowledgement handling for live-feed events.
+ */
 import amqp from 'amqplib';
 import type { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
 import type { LiveFeedConfig } from './config.js';
 import type { LiveFeedEventProcessor } from './processor.js';
 
+/**
+ * Owns the live-feed RabbitMQ queue, bindings, reconnect loop, and ACK/NACK behavior.
+ */
 export class LiveFeedRabbitMqConsumer {
   private connection: ChannelModel | null = null;
   private channel: Channel | null = null;
   private stopped = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
 
+  /**
+   * Indicates whether the consumer currently has an open RabbitMQ channel.
+   */
   public connected = false;
 
   public constructor(
@@ -16,11 +25,17 @@ export class LiveFeedRabbitMqConsumer {
     private readonly processor: LiveFeedEventProcessor,
   ) {}
 
+  /**
+   * Starts the consumer and declares the live-feed queue topology.
+   */
   public async start(): Promise<void> {
     this.stopped = false;
     await this.connect();
   }
 
+  /**
+   * Stops reconnect attempts and closes the RabbitMQ channel and connection.
+   */
   public async stop(): Promise<void> {
     this.stopped = true;
 

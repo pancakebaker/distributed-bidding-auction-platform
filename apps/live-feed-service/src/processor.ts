@@ -1,19 +1,31 @@
+/**
+ * Live-feed event processor that validates broker messages and broadcasts accepted events to auction rooms.
+ */
 import type { Server } from 'socket.io';
 import { parseLiveFeedEnvelope, toSocketPayload } from './events.js';
 import { auctionRoom } from './rooms.js';
 import type { LiveFeedStateStore } from './redisState.js';
 
+/**
+ * Result of handling a broker message, used by the RabbitMQ consumer to ACK, ignore, or dead-letter.
+ */
 export type ProcessResult =
   | { action: 'broadcast'; socketEvent: string; eventId: string; aggregateId: string; aggregateVersion: number }
   | { action: 'ignored'; reason: 'duplicate' | 'stale'; eventId: string; aggregateId: string; aggregateVersion: number }
   | { action: 'invalid'; reason: string };
 
+/**
+ * Validates live-feed events, applies Redis idempotency/order checks, and broadcasts accepted events.
+ */
 export class LiveFeedEventProcessor {
   public constructor(
     private readonly io: Server,
     private readonly stateStore: LiveFeedStateStore,
   ) {}
 
+  /**
+   * Processes one RabbitMQ message body through validation, Redis state checks, and Socket.IO fan-out.
+   */
   public async process(body: Buffer): Promise<ProcessResult> {
     let envelope;
 

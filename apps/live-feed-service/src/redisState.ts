@@ -1,10 +1,19 @@
+/**
+ * Redis-backed idempotency and aggregate-version state for live-feed event processing.
+ */
 import type { RedisClientType } from 'redis';
 import type { LiveFeedEnvelope } from './events.js';
 
 const EVENT_ACCEPTANCE_STATUSES = ['accepted', 'duplicate', 'stale', 'same-version', 'gap'] as const;
 
+/**
+ * Decision returned by Redis when a live-feed event is checked for duplication and ordering.
+ */
 export type EventAcceptanceStatus = (typeof EVENT_ACCEPTANCE_STATUSES)[number];
 
+/**
+ * Redis acceptance result with the previously observed auction version when available.
+ */
 export type EventAcceptanceResult = {
   status: EventAcceptanceStatus;
   previousVersion: number | null;
@@ -49,12 +58,18 @@ redis.call('SET', versionKey, tostring(incomingVersion))
 return {status, currentVersion or ''}
 `;
 
+/**
+ * Stores processed event IDs and highest auction versions in Redis using one atomic script.
+ */
 export class LiveFeedStateStore {
   public constructor(
     private readonly redis: RedisClientType,
     private readonly idempotencyTtlSeconds: number,
   ) {}
 
+  /**
+   * Accepts an event only when it is new and does not regress the auction aggregate version.
+   */
   public async acceptEvent(envelope: LiveFeedEnvelope): Promise<EventAcceptanceResult> {
     const result = await this.redis.eval(acceptEventScript, {
       keys: [this.processedEventKey(envelope.eventId), this.auctionVersionKey(envelope.aggregateId)],
@@ -64,10 +79,16 @@ export class LiveFeedStateStore {
     return this.parseAcceptanceResult(result);
   }
 
+  /**
+   * Returns the Redis key used to deduplicate one integration event ID.
+   */
   public processedEventKey(eventId: string): string {
     return `live-feed:processed-event:${eventId}`;
   }
 
+  /**
+   * Returns the Redis key that stores the highest accepted aggregate version for an auction.
+   */
   public auctionVersionKey(auctionId: string): string {
     return `live-feed:auction-version:${auctionId}`;
   }

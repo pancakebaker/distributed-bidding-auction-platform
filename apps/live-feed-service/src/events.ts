@@ -1,3 +1,9 @@
+/**
+ * Live-feed event contracts and validation helpers for RabbitMQ messages and Socket.IO payloads.
+ */
+/**
+ * Integration envelope published when the Bidding Service accepts a bid.
+ */
 export type BidAcceptedEnvelope = {
   eventId: string;
   eventType: 'BidAccepted';
@@ -15,6 +21,9 @@ export type BidAcceptedEnvelope = {
   };
 };
 
+/**
+ * Integration envelope published when the scheduler closes an auction.
+ */
 export type AuctionClosedEnvelope = {
   eventId: string;
   eventType: 'AuctionClosed';
@@ -32,6 +41,9 @@ export type AuctionClosedEnvelope = {
   };
 };
 
+/**
+ * Integration envelope published when a closed auction has an accepted winning bid.
+ */
 export type WinnerSelectedEnvelope = {
   eventId: string;
   eventType: 'WinnerSelected';
@@ -50,8 +62,14 @@ export type WinnerSelectedEnvelope = {
   };
 };
 
+/**
+ * Union of auction events that the live-feed projection is allowed to consume.
+ */
 export type LiveFeedEnvelope = BidAcceptedEnvelope | AuctionClosedEnvelope | WinnerSelectedEnvelope;
 
+/**
+ * Frontend-facing payload emitted when a bid is accepted for an auction room.
+ */
 export type BidAcceptedSocketPayload = {
   auctionId: string;
   bidId: string;
@@ -62,6 +80,9 @@ export type BidAcceptedSocketPayload = {
   correlationId: string | null;
 };
 
+/**
+ * Frontend-facing payload emitted when an auction transitions to closed.
+ */
 export type AuctionClosedSocketPayload = {
   auctionId: string;
   closedAtUtc: string;
@@ -71,6 +92,9 @@ export type AuctionClosedSocketPayload = {
   correlationId: string | null;
 };
 
+/**
+ * Frontend-facing payload emitted when a winner is selected for a closed auction.
+ */
 export type WinnerSelectedSocketPayload = {
   auctionId: string;
   winningBidId: string;
@@ -83,6 +107,9 @@ export type WinnerSelectedSocketPayload = {
 
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/**
+ * Checks whether an integration value uses the UUID shape expected by event contracts.
+ */
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && uuidRegex.test(value);
 }
@@ -103,6 +130,9 @@ function isValidAmount(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+/**
+ * Parses and validates a RabbitMQ message body as a supported live-feed event envelope.
+ */
 export function parseLiveFeedEnvelope(body: Buffer): LiveFeedEnvelope {
   let parsed: unknown;
 
@@ -115,6 +145,9 @@ export function parseLiveFeedEnvelope(body: Buffer): LiveFeedEnvelope {
   return validateLiveFeedEnvelope(parsed);
 }
 
+/**
+ * Parses a RabbitMQ message body and rejects it unless it is a BidAccepted envelope.
+ */
 export function parseBidAcceptedEnvelope(body: Buffer): BidAcceptedEnvelope {
   const envelope = parseLiveFeedEnvelope(body);
   if (envelope.eventType !== 'BidAccepted') {
@@ -124,6 +157,9 @@ export function parseBidAcceptedEnvelope(body: Buffer): BidAcceptedEnvelope {
   return envelope;
 }
 
+/**
+ * Validates unknown broker data before it can influence Redis state or Socket.IO clients.
+ */
 export function validateLiveFeedEnvelope(value: unknown): LiveFeedEnvelope {
   const base = validateBaseEnvelope(value);
 
@@ -146,6 +182,9 @@ export function validateLiveFeedEnvelope(value: unknown): LiveFeedEnvelope {
   throw new Error('Unsupported eventType.');
 }
 
+/**
+ * Validates unknown data as a BidAccepted envelope for publisher compatibility checks.
+ */
 export function validateBidAcceptedEnvelope(value: unknown): BidAcceptedEnvelope {
   const envelope = validateLiveFeedEnvelope(value);
   if (envelope.eventType !== 'BidAccepted') {
@@ -354,6 +393,9 @@ function validateWinnerSelectedEnvelopeFromBase(
   };
 }
 
+/**
+ * Converts a validated integration envelope into the smaller payload exposed over Socket.IO.
+ */
 export function toSocketPayload(
   envelope: LiveFeedEnvelope,
 ): BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload {
