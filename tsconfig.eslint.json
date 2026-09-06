@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "strict": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client", "vitest/globals"]
+  },
+  "include": [
+    "apps/live-feed-service/src/**/*.ts",
+    "apps/client/resources/js/**/*.ts",
+    "apps/client/resources/js/**/*.tsx"
+  ],
+  "exclude": ["**/node_modules/**", "**/dist/**", "apps/client/public/build/**"]
+}

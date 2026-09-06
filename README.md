@@ -193,6 +193,8 @@ npm test --prefix apps/client
 
 .NET analyzer configuration is centralized in `Directory.Build.props`, `.editorconfig`, and `stylecop.json`. The repository enables built-in .NET/Roslyn analyzers and `StyleCop.Analyzers` for the C# solution.
 
+JavaScript and TypeScript quality gates are centralized through `eslint.config.mjs`, `.prettierrc`, and `.prettierignore`. ESLint uses type-aware TypeScript rules, React and React Hooks rules, JSX accessibility checks, Node.js checks for the live-feed service, and import hygiene. Prettier owns formatting, while `tsc` remains the dedicated type checker.
+
 Production C# files are expected to have the project MIT source header and useful XML summaries for public API surface, domain types, endpoint groups, message contracts, and background services. Test projects keep correctness analyzers enabled, but XML/header documentation noise is relaxed so descriptive test names remain the primary behavior documentation.
 
 Run validation locally with:
@@ -200,6 +202,12 @@ Run validation locally with:
 ```powershell
 dotnet build
 dotnet test
+npm ci
+npm run format:check
+npm run lint
+npm run typecheck
+npm run build
+npm test
 ```
 
 ## Repository Structure

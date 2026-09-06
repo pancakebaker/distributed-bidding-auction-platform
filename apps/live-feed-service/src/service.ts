@@ -1,16 +1,16 @@
-import express from "express";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-import { Server } from "socket.io";
-import { createAdapter } from "@socket.io/redis-adapter";
-import { createClient } from "redis";
-import type { RedisClientType } from "redis";
-import type { LiveFeedConfig } from "./config.js";
-import { loadConfig } from "./config.js";
-import { LiveFeedEventProcessor } from "./processor.js";
-import { LiveFeedRabbitMqConsumer } from "./rabbitMqConsumer.js";
-import { auctionRoom, parseAuctionSubscription } from "./rooms.js";
-import { LiveFeedStateStore } from "./redisState.js";
+import express from 'express';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { Server } from 'socket.io';
+import { createAdapter } from '@socket.io/redis-adapter';
+import { createClient } from 'redis';
+import type { RedisClientType } from 'redis';
+import type { LiveFeedConfig } from './config.js';
+import { loadConfig } from './config.js';
+import { LiveFeedEventProcessor } from './processor.js';
+import { LiveFeedRabbitMqConsumer } from './rabbitMqConsumer.js';
+import { auctionRoom, parseAuctionSubscription } from './rooms.js';
+import { LiveFeedStateStore } from './redisState.js';
 
 export type LiveFeedService = {
   start: () => Promise<void>;
@@ -28,15 +28,15 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
     cors: {
-      origin: config.clientOrigin
-    }
+      origin: config.clientOrigin,
+    },
   });
 
   const redis = createClient({
     url: config.redisUrl,
     socket: {
-      reconnectStrategy: (retries) => Math.min(retries * 100, 2000)
-    }
+      reconnectStrategy: (retries) => Math.min(retries * 100, 2000),
+    },
   }) as RedisClientType;
 
   const redisPub = redis.duplicate() as RedisClientType;
@@ -45,48 +45,54 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const processor = new LiveFeedEventProcessor(io, stateStore);
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
 
-  app.get("/health", (_request, response) => {
+  app.get('/health', (_request, response) => {
     response.json({
-      status: redis.isOpen && redisPub.isOpen && redisSub.isOpen ? "ok" : "degraded",
-      service: "live-feed-service",
+      status: redis.isOpen && redisPub.isOpen && redisSub.isOpen ? 'ok' : 'degraded',
+      service: 'live-feed-service',
       rabbitMqConnected: consumer.connected,
       redisConnected: redis.isOpen && redisPub.isOpen && redisSub.isOpen,
-      checkedAtUtc: new Date().toISOString()
+      checkedAtUtc: new Date().toISOString(),
     });
   });
 
-  io.on("connection", (socket) => {
-    socket.emit("status", {
-      service: "live-feed-service",
-      message: "connected"
+  io.on('connection', (socket) => {
+    socket.emit('status', {
+      service: 'live-feed-service',
+      message: 'connected',
     });
 
-    socket.on("auction:subscribe", (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
-      const auctionId = parseAuctionSubscription(value);
+    socket.on(
+      'auction:subscribe',
+      (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
+        const auctionId = parseAuctionSubscription(value);
 
-      if (!auctionId) {
-        acknowledge?.({ ok: false, error: "invalid_auction_id" });
-        socket.emit("subscription:error", { code: "invalid_auction_id" });
-        return;
-      }
+        if (!auctionId) {
+          acknowledge?.({ ok: false, error: 'invalid_auction_id' });
+          socket.emit('subscription:error', { code: 'invalid_auction_id' });
+          return;
+        }
 
-      const room = auctionRoom(auctionId);
-      void socket.join(room);
-      acknowledge?.({ ok: true, room });
-    });
+        const room = auctionRoom(auctionId);
+        void socket.join(room);
+        acknowledge?.({ ok: true, room });
+      },
+    );
 
-    socket.on("auction:unsubscribe", (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
-      const auctionId = parseAuctionSubscription(value);
+    socket.on(
+      'auction:unsubscribe',
+      (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
+        const auctionId = parseAuctionSubscription(value);
 
-      if (!auctionId) {
-        acknowledge?.({ ok: false, error: "invalid_auction_id" });
-        return;
-      }
+        if (!auctionId) {
+          acknowledge?.({ ok: false, error: 'invalid_auction_id' });
+          return;
+        }
 
-      const room = auctionRoom(auctionId);
-      void socket.leave(room);
-      acknowledge?.({ ok: true, room });
-    });
+        const room = auctionRoom(auctionId);
+        void socket.leave(room);
+        acknowledge?.({ ok: true, room });
+      },
+    );
   });
 
   return {
@@ -102,12 +108,12 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     async stop() {
       await consumer.stop();
       await new Promise<void>((resolve) => {
-        io.close(() => resolve());
+        void io.close(() => resolve());
       });
       await Promise.all([
         redis.quit().catch(() => undefined),
         redisPub.quit().catch(() => undefined),
-        redisSub.quit().catch(() => undefined)
+        redisSub.quit().catch(() => undefined),
       ]);
     },
     port() {
@@ -119,6 +125,6 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     },
     io,
     redis,
-    consumer
+    consumer,
   };
 }

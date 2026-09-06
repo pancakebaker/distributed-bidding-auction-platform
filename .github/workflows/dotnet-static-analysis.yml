@@ -1,4 +1,4 @@
-name: dotnet-static-analysis
+name: static-analysis
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
       - main
 
 jobs:
-  build:
+  dotnet:
     name: Build .NET solution
     runs-on: ubuntu-latest
 
@@ -25,3 +25,45 @@ jobs:
 
       - name: Build with analyzers
         run: dotnet build --no-restore
+
+  javascript-typescript:
+    name: JavaScript/TypeScript quality gates
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/client/package-lock.json
+            apps/live-feed-service/package-lock.json
+
+      - name: Install root tooling
+        run: npm ci
+
+      - name: Install live-feed dependencies
+        run: npm ci --prefix apps/live-feed-service
+
+      - name: Install client dependencies
+        run: npm ci --prefix apps/client
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build JS/TS projects
+        run: npm run build
+
+      - name: Test JS/TS projects
+        run: npm test

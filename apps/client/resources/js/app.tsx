@@ -1,19 +1,11 @@
 import '../css/app.css';
 
-import React, { FormEvent, useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import type { FormEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ApiClientError, getAuction, getAuctionBids, getAuctions, placeBid } from './api';
 import { connectAuctionFeed } from './liveFeed';
-import type {
-    ApiErrorResponse,
-    AuctionDetail,
-    AuctionSummary,
-    Bid,
-    LiveAuctionClosed,
-    LiveBidAccepted,
-    LiveStatus,
-    LiveWinnerSelected,
-} from './types';
+import type { ApiErrorResponse, AuctionDetail, AuctionSummary, Bid, LiveAuctionClosed, LiveStatus } from './types';
 
 const bidders = ['Alice', 'Bob', 'Charlie', 'Diana'];
 
@@ -150,10 +142,15 @@ function AuctionListPage() {
             <section className="page-heading">
                 <p className="eyebrow">Auction discovery</p>
                 <h1>Live bidding demo</h1>
-                <p>Browse seeded auctions, place bids through the authoritative .NET API, and watch accepted bids fan out in real time.</p>
+                <p>
+                    Browse seeded auctions, place bids through the authoritative .NET API, and watch accepted bids fan
+                    out in real time.
+                </p>
             </section>
 
-            {loading && <StateMessage title="Loading auctions" message="Fetching current auction state from the Bidding API." />}
+            {loading && (
+                <StateMessage title="Loading auctions" message="Fetching current auction state from the Bidding API." />
+            )}
             {error && <StateMessage title="Bidding API unavailable" message={error} tone="error" />}
 
             <section className="auction-grid" aria-label="Auction list">
@@ -180,7 +177,11 @@ function AuctionListPage() {
                                 </dd>
                             </div>
                         </dl>
-                        <button className="primary-button" onClick={() => navigateTo(`/auctions/${auction.id}`)} type="button">
+                        <button
+                            className="primary-button"
+                            onClick={() => navigateTo(`/auctions/${auction.id}`)}
+                            type="button"
+                        >
                             View auction
                         </button>
                     </article>
@@ -213,7 +214,9 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                 setLoadError(null);
                 setAmount(String(auctionResponse.minimumValidBid));
                 setWinner(
-                    auctionResponse.status === 'Closed' && auctionResponse.currentBidderId && auctionResponse.currentBidAmount !== null
+                    auctionResponse.status === 'Closed' &&
+                        auctionResponse.currentBidderId &&
+                        auctionResponse.currentBidAmount !== null
                         ? {
                               winnerId: auctionResponse.currentBidderId,
                               amount: auctionResponse.currentBidAmount,
@@ -271,7 +274,9 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                     ];
                 });
 
-                setActivity((current) => [`${event.bidderId} bid ${formatMoney(event.amount)}`, ...current].slice(0, 4));
+                setActivity((current) =>
+                    [`${event.bidderId} bid ${formatMoney(event.amount)}`, ...current].slice(0, 4),
+                );
             },
             onAuctionClosed: (event) => {
                 if (event.auctionId !== auctionId) {
@@ -319,7 +324,9 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
             },
         });
 
-        return () => socket.disconnect();
+        return () => {
+            socket.disconnect();
+        };
     }, [auctionId]);
 
     const minimumBid = auction?.minimumValidBid ?? 0;
@@ -388,7 +395,9 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                 Back to auctions
             </button>
 
-            {loading && <StateMessage title="Loading auction" message="Fetching auction detail and accepted bid history." />}
+            {loading && (
+                <StateMessage title="Loading auction" message="Fetching auction detail and accepted bid history." />
+            )}
             {loadError && <StateMessage title="Auction unavailable" message={loadError} tone="error" />}
 
             {auction && (
@@ -414,7 +423,11 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         {auction.status === 'Closed' && (
                             <section className="closed-panel" aria-label="Auction closed summary">
                                 <span>Auction closed</span>
-                                <strong>{auction.currentBidAmount === null ? 'No bids were placed.' : `Final bid ${formatMoney(auction.currentBidAmount)}`}</strong>
+                                <strong>
+                                    {auction.currentBidAmount === null
+                                        ? 'No bids were placed.'
+                                        : `Final bid ${formatMoney(auction.currentBidAmount)}`}
+                                </strong>
                                 {displayedWinner ? (
                                     <p>
                                         {displayedWinner.winnerId.toLowerCase() === bidderId.toLowerCase()
@@ -475,7 +488,11 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                             <h2>{biddingUnavailable ? 'Auction closed' : 'Place bid'}</h2>
                             <label>
                                 Acting as
-                                <select disabled={biddingUnavailable} value={bidderId} onChange={(event) => setBidderId(event.target.value)}>
+                                <select
+                                    disabled={biddingUnavailable}
+                                    value={bidderId}
+                                    onChange={(event) => setBidderId(event.target.value)}
+                                >
                                     {bidders.map((bidder) => (
                                         <option key={bidder} value={bidder.toLowerCase()}>
                                             {bidder}
@@ -495,7 +512,11 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                     onChange={(event) => setAmount(event.target.value)}
                                 />
                             </label>
-                            <button className="primary-button" disabled={submitting || biddingUnavailable} type="submit">
+                            <button
+                                className="primary-button"
+                                disabled={submitting || biddingUnavailable}
+                                type="submit"
+                            >
                                 {biddingUnavailable ? 'Auction closed' : submitting ? 'Placing bid...' : 'Place bid'}
                             </button>
                             {formMessage && <p className={`form-message ${formMessage.tone}`}>{formMessage.text}</p>}
@@ -503,13 +524,26 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
                         <section className="system-panel">
                             <h2>Demo status</h2>
-                            <div className="system-row"><span>Bidding API</span><strong>{loadError ? 'Unavailable' : 'Connected'}</strong></div>
-                            <div className="system-row"><span>Live Feed</span><strong>{formatLiveStatus(liveStatus)}</strong></div>
-                            <div className="system-row"><span>Auction Version</span><strong>{auction.version}</strong></div>
+                            <div className="system-row">
+                                <span>Bidding API</span>
+                                <strong>{loadError ? 'Unavailable' : 'Connected'}</strong>
+                            </div>
+                            <div className="system-row">
+                                <span>Live Feed</span>
+                                <strong>{formatLiveStatus(liveStatus)}</strong>
+                            </div>
+                            <div className="system-row">
+                                <span>Auction Version</span>
+                                <strong>{auction.version}</strong>
+                            </div>
                             <h3>Recent live activity</h3>
-                            {activity.length === 0 ? <p className="muted">No live events in this tab yet.</p> : (
+                            {activity.length === 0 ? (
+                                <p className="muted">No live events in this tab yet.</p>
+                            ) : (
                                 <ul className="activity-list">
-                                    {activity.map((item, index) => <li key={`${item}-${index}`}>{item}</li>)}
+                                    {activity.map((item, index) => (
+                                        <li key={`${item}-${index}`}>{item}</li>
+                                    ))}
                                 </ul>
                             )}
                         </section>
@@ -529,7 +563,10 @@ function applyAuctionClosed(current: AuctionDetail | null, event: LiveAuctionClo
         ...current,
         currentBidAmount: event.finalBidAmount,
         currentBidderId: event.finalBidderId,
-        minimumValidBid: event.finalBidAmount === null ? current.minimumValidBid : event.finalBidAmount + current.minimumBidIncrement,
+        minimumValidBid:
+            event.finalBidAmount === null
+                ? current.minimumValidBid
+                : event.finalBidAmount + current.minimumBidIncrement,
         status: 'Closed',
         version: Math.max(current.version, event.auctionVersion),
         updatedAtUtc: event.closedAtUtc,
@@ -544,7 +581,11 @@ function describeBidError(apiError: ApiErrorResponse | null, caught: unknown) {
         return `Bid is below the current minimum of ${formatMoney(apiError.details.minimumValidBid)}.`;
     }
 
-    if (apiError.code === 'auction_not_open' || apiError.code === 'auction_not_started' || apiError.code === 'auction_ended') {
+    if (
+        apiError.code === 'auction_not_open' ||
+        apiError.code === 'auction_not_started' ||
+        apiError.code === 'auction_ended'
+    ) {
         return 'This auction is not accepting bids right now.';
     }
 
@@ -571,7 +612,15 @@ function LiveIndicator({ status }: { status: LiveStatus }) {
     return <span className={`live-indicator live-${status}`}>{label}</span>;
 }
 
-function StateMessage({ title, message, tone = 'neutral' }: { title: string; message: string; tone?: 'neutral' | 'error' }) {
+function StateMessage({
+    title,
+    message,
+    tone = 'neutral',
+}: {
+    title: string;
+    message: string;
+    tone?: 'neutral' | 'error';
+}) {
     return (
         <section className={`state-message ${tone}`}>
             <h2>{title}</h2>

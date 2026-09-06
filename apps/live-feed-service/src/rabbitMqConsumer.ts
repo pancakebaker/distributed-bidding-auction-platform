@@ -1,7 +1,7 @@
-import amqp from "amqplib";
-import type { Channel, ChannelModel, ConsumeMessage } from "amqplib";
-import type { LiveFeedConfig } from "./config.js";
-import type { LiveFeedEventProcessor } from "./processor.js";
+import amqp from 'amqplib';
+import type { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
+import type { LiveFeedConfig } from './config.js';
+import type { LiveFeedEventProcessor } from './processor.js';
 
 export class LiveFeedRabbitMqConsumer {
   private connection: ChannelModel | null = null;
@@ -13,7 +13,7 @@ export class LiveFeedRabbitMqConsumer {
 
   public constructor(
     private readonly config: LiveFeedConfig,
-    private readonly processor: LiveFeedEventProcessor
+    private readonly processor: LiveFeedEventProcessor,
   ) {}
 
   public async start(): Promise<void> {
@@ -47,19 +47,19 @@ export class LiveFeedRabbitMqConsumer {
       this.channel = channel;
       this.connected = true;
 
-      connection.on("close", () => {
+      connection.on('close', () => {
         this.connected = false;
         this.channel = null;
         this.connection = null;
 
         if (!this.stopped) {
-          console.warn("RabbitMQ connection closed; reconnecting.");
+          console.warn('RabbitMQ connection closed; reconnecting.');
           this.scheduleReconnect();
         }
       });
 
-      connection.on("error", (error) => {
-        console.warn("RabbitMQ connection error.", { message: error.message });
+      connection.on('error', (error: Error) => {
+        console.warn('RabbitMQ connection error.', { message: error.message });
       });
 
       await this.configureTopology(channel);
@@ -70,39 +70,39 @@ export class LiveFeedRabbitMqConsumer {
         (message) => {
           void this.handleMessage(channel, message);
         },
-        { noAck: false }
+        { noAck: false },
       );
 
-      console.info("Live Feed RabbitMQ consumer started.", {
+      console.info('Live Feed RabbitMQ consumer started.', {
         exchange: this.config.rabbitMqExchange,
         queue: this.config.rabbitMqQueue,
         routingKeys: this.config.rabbitMqRoutingKeys,
-        prefetch: this.config.rabbitMqPrefetch
+        prefetch: this.config.rabbitMqPrefetch,
       });
     } catch (error) {
       this.connected = false;
-      const message = error instanceof Error ? error.message : "RabbitMQ connection failed.";
-      console.warn("RabbitMQ is unavailable for live feed consumer.", { message });
+      const message = error instanceof Error ? error.message : 'RabbitMQ connection failed.';
+      console.warn('RabbitMQ is unavailable for live feed consumer.', { message });
       this.scheduleReconnect();
     }
   }
 
   private async configureTopology(channel: Channel): Promise<void> {
-    await channel.assertExchange(this.config.rabbitMqExchange, "topic", { durable: true });
-    await channel.assertExchange(this.config.rabbitMqDeadLetterExchange, "direct", { durable: true });
+    await channel.assertExchange(this.config.rabbitMqExchange, 'topic', { durable: true });
+    await channel.assertExchange(this.config.rabbitMqDeadLetterExchange, 'direct', { durable: true });
     await channel.assertQueue(this.config.rabbitMqDeadLetterQueue, { durable: true });
     await channel.bindQueue(
       this.config.rabbitMqDeadLetterQueue,
       this.config.rabbitMqDeadLetterExchange,
-      this.config.rabbitMqDeadLetterQueue
+      this.config.rabbitMqDeadLetterQueue,
     );
 
     await channel.assertQueue(this.config.rabbitMqQueue, {
       durable: true,
       arguments: {
-        "x-dead-letter-exchange": this.config.rabbitMqDeadLetterExchange,
-        "x-dead-letter-routing-key": this.config.rabbitMqDeadLetterQueue
-      }
+        'x-dead-letter-exchange': this.config.rabbitMqDeadLetterExchange,
+        'x-dead-letter-routing-key': this.config.rabbitMqDeadLetterQueue,
+      },
     });
 
     for (const routingKey of this.config.rabbitMqRoutingKeys) {
@@ -118,15 +118,15 @@ export class LiveFeedRabbitMqConsumer {
     try {
       const result = await this.processor.process(message.content);
 
-      if (result.action === "invalid") {
+      if (result.action === 'invalid') {
         channel.nack(message, false, false);
         return;
       }
 
       channel.ack(message);
     } catch (error) {
-      const messageText = error instanceof Error ? error.message : "Live-feed processing failed.";
-      console.warn("Transient live-feed processing failure; message will be requeued.", { message: messageText });
+      const messageText = error instanceof Error ? error.message : 'Live-feed processing failed.';
+      console.warn('Transient live-feed processing failure; message will be requeued.', { message: messageText });
       channel.nack(message, false, true);
     }
   }

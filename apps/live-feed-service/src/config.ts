@@ -32,10 +32,13 @@ function numberFromEnv(name: string, fallback: number): number {
 function routingKeysFromEnv(): string[] {
   const raw = process.env.LIVE_FEED_RABBITMQ_ROUTING_KEYS ?? process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY;
   if (!raw) {
-    return ["auction.bid.accepted", "auction.closed", "auction.winner.selected"];
+    return ['auction.bid.accepted', 'auction.closed', 'auction.winner.selected'];
   }
 
-  return raw.split(",").map((key) => key.trim()).filter(Boolean);
+  return raw
+    .split(',')
+    .map((key) => key.trim())
+    .filter(Boolean);
 }
 
 function rabbitMqUrlFromEnv(): string {
@@ -43,29 +46,29 @@ function rabbitMqUrlFromEnv(): string {
     return process.env.RABBITMQ_URL;
   }
 
-  const host = process.env.RABBITMQ_HOST ?? "localhost";
-  const port = process.env.RABBITMQ_AMQP_PORT ?? "5672";
-  const username = encodeURIComponent(process.env.RABBITMQ_USERNAME ?? "auction");
-  const password = encodeURIComponent(process.env.RABBITMQ_PASSWORD ?? "change_me_in_local_env");
-  const virtualHost = process.env.RABBITMQ_VHOST ? `/${encodeURIComponent(process.env.RABBITMQ_VHOST)}` : "";
+  const host = process.env.RABBITMQ_HOST ?? 'localhost';
+  const port = process.env.RABBITMQ_AMQP_PORT ?? '5672';
+  const username = encodeURIComponent(process.env.RABBITMQ_USERNAME ?? 'auction');
+  const password = encodeURIComponent(process.env.RABBITMQ_PASSWORD ?? 'change_me_in_local_env');
+  const virtualHost = process.env.RABBITMQ_VHOST ? `/${encodeURIComponent(process.env.RABBITMQ_VHOST)}` : '';
 
   return `amqp://${username}:${password}@${host}:${port}${virtualHost}`;
 }
 
 export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedConfig {
   return {
-    port: numberFromEnv("PORT", 3001),
-    clientOrigin: process.env.CLIENT_ORIGIN ?? "http://localhost:8000",
-    redisUrl: process.env.REDIS_URL ?? "redis://localhost:6379",
+    port: numberFromEnv('PORT', 3001),
+    clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:8000',
+    redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
     rabbitMqUrl: rabbitMqUrlFromEnv(),
-    rabbitMqExchange: process.env.RABBITMQ_EXCHANGE ?? "auction.events",
-    rabbitMqQueue: process.env.LIVE_FEED_RABBITMQ_QUEUE ?? "live-feed.bid-events",
-    rabbitMqRoutingKey: process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY ?? "auction.bid.accepted",
+    rabbitMqExchange: process.env.RABBITMQ_EXCHANGE ?? 'auction.events',
+    rabbitMqQueue: process.env.LIVE_FEED_RABBITMQ_QUEUE ?? 'live-feed.bid-events',
+    rabbitMqRoutingKey: process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY ?? 'auction.bid.accepted',
     rabbitMqRoutingKeys: routingKeysFromEnv(),
-    rabbitMqPrefetch: numberFromEnv("LIVE_FEED_RABBITMQ_PREFETCH", 10),
-    rabbitMqDeadLetterExchange: process.env.LIVE_FEED_RABBITMQ_DLX ?? "live-feed.dead-letter",
-    rabbitMqDeadLetterQueue: process.env.LIVE_FEED_RABBITMQ_DLQ ?? "live-feed.bid-events.dlq",
-    idempotencyTtlSeconds: numberFromEnv("LIVE_FEED_IDEMPOTENCY_TTL_SECONDS", 86400),
-    ...overrides
+    rabbitMqPrefetch: numberFromEnv('LIVE_FEED_RABBITMQ_PREFETCH', 10),
+    rabbitMqDeadLetterExchange: process.env.LIVE_FEED_RABBITMQ_DLX ?? 'live-feed.dead-letter',
+    rabbitMqDeadLetterQueue: process.env.LIVE_FEED_RABBITMQ_DLQ ?? 'live-feed.bid-events.dlq',
+    idempotencyTtlSeconds: numberFromEnv('LIVE_FEED_IDEMPOTENCY_TTL_SECONDS', 86400),
+    ...overrides,
   };
 }

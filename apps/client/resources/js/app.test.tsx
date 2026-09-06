@@ -3,7 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './app';
-import type { AuctionDetail, AuctionSummary, Bid, LiveAuctionClosed, LiveBidAccepted, LiveWinnerSelected } from './types';
+import type {
+    AuctionDetail,
+    AuctionSummary,
+    Bid,
+    LiveAuctionClosed,
+    LiveBidAccepted,
+    LiveWinnerSelected,
+} from './types';
 
 const socketHandlers = new Map<string, (...args: any[]) => void>();
 const socketIoHandlers = new Map<string, (...args: any[]) => void>();
@@ -83,7 +90,9 @@ const bids: Bid[] = [
 ];
 
 function json(data: unknown, status = 200) {
-    return Promise.resolve(new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }));
+    return Promise.resolve(
+        new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }),
+    );
 }
 
 function mockFetch() {
@@ -103,18 +112,21 @@ function mockFetch() {
         }
 
         if (url.endsWith(`/api/auctions/${macBook.id}/bids`) && init?.method === 'POST') {
-            return json({
-                bidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
-                auctionId: macBook.id,
-                bidderId: 'alice',
-                amount: 1600,
-                currentBidAmount: 1600,
-                currentBidderId: 'alice',
-                nextMinimumBid: 1650,
-                auctionVersion: 10,
-                createdAtUtc: new Date().toISOString(),
-                correlationId: 'test-correlation',
-            }, 201);
+            return json(
+                {
+                    bidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+                    auctionId: macBook.id,
+                    bidderId: 'alice',
+                    amount: 1600,
+                    currentBidAmount: 1600,
+                    currentBidderId: 'alice',
+                    nextMinimumBid: 1650,
+                    auctionVersion: 10,
+                    createdAtUtc: new Date().toISOString(),
+                    correlationId: 'test-correlation',
+                },
+                201,
+            );
         }
 
         return json({ code: 'not_found', message: 'Not found.' }, 404);
@@ -174,7 +186,7 @@ describe('auction UI', () => {
     it('valid bid form submits expected payload and disables while pending', async () => {
         const user = userEvent.setup();
         const fetchMock = vi.mocked(fetch);
-        let resolvePost: ((value: Response) => void) | null = null;
+        let resolvePost: ((value: Response) => void) | undefined;
 
         fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
@@ -197,23 +209,35 @@ describe('auction UI', () => {
         await user.click(screen.getByRole('button', { name: 'Place bid' }));
 
         expect(screen.getByRole('button', { name: 'Placing bid...' })).toBeDisabled();
-        resolvePost?.(new Response(JSON.stringify({
-            bidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
-            auctionId: macBook.id,
-            bidderId: 'alice',
-            amount: 1600,
-            currentBidAmount: 1600,
-            currentBidderId: 'alice',
-            nextMinimumBid: 1650,
-            auctionVersion: 10,
-            createdAtUtc: new Date().toISOString(),
-            correlationId: 'test-correlation',
-        }), { status: 201, headers: { 'Content-Type': 'application/json' } }));
+        if (!resolvePost) {
+            throw new Error('POST promise resolver was not captured.');
+        }
+
+        const completePost = resolvePost;
+        completePost(
+            new Response(
+                JSON.stringify({
+                    bidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+                    auctionId: macBook.id,
+                    bidderId: 'alice',
+                    amount: 1600,
+                    currentBidAmount: 1600,
+                    currentBidderId: 'alice',
+                    nextMinimumBid: 1650,
+                    auctionVersion: 10,
+                    createdAtUtc: new Date().toISOString(),
+                    correlationId: 'test-correlation',
+                }),
+                { status: 201, headers: { 'Content-Type': 'application/json' } },
+            ),
+        );
         await screen.findByText('Your bid was accepted.');
         expect(screen.getByLabelText('Bid amount')).toHaveValue('1650');
         expect(screen.queryByText('alice placed $1,600')).not.toBeInTheDocument();
 
-        const postCall = fetchMock.mock.calls.find((call) => String(call[0]).endsWith(`/api/auctions/${macBook.id}/bids`) && call[1]?.method === 'POST');
+        const postCall = fetchMock.mock.calls.find(
+            (call) => String(call[0]).endsWith(`/api/auctions/${macBook.id}/bids`) && call[1]?.method === 'POST',
+        );
         expect(postCall?.[1]?.body).toBe(JSON.stringify({ bidderId: 'Alice', amount: 1600 }));
         expect((postCall?.[1]?.headers as Record<string, string>)['X-Correlation-ID']).toBe('client-correlation-id');
     });
@@ -222,7 +246,14 @@ describe('auction UI', () => {
         vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
             if (init?.method === 'POST') {
-                return json({ code: 'bid_below_minimum', message: 'Too low.', details: { currentBidAmount: 1500, minimumValidBid: 1550, auctionVersion: 9 } }, 400);
+                return json(
+                    {
+                        code: 'bid_below_minimum',
+                        message: 'Too low.',
+                        details: { currentBidAmount: 1500, minimumValidBid: 1550, auctionVersion: 9 },
+                    },
+                    400,
+                );
             }
             if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
             if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(macBook);
@@ -348,7 +379,9 @@ describe('auction UI', () => {
         await screen.findByRole('heading', { name: 'MacBook Pro' });
         await user.click(screen.getByRole('button', { name: 'Place bid' }));
 
-        expect(await screen.findByText('Auction state changed while bidding. Refreshing latest state.')).toBeInTheDocument();
+        expect(
+            await screen.findByText('Auction state changed while bidding. Refreshing latest state.'),
+        ).toBeInTheDocument();
     });
     it('auction:closed updates status and disables bidding', async () => {
         renderAt(`/auctions/${macBook.id}`);

@@ -1,8 +1,8 @@
 export type BidAcceptedEnvelope = {
   eventId: string;
-  eventType: "BidAccepted";
+  eventType: 'BidAccepted';
   occurredAtUtc: string;
-  aggregateType: "Auction";
+  aggregateType: 'Auction';
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
@@ -17,9 +17,9 @@ export type BidAcceptedEnvelope = {
 
 export type AuctionClosedEnvelope = {
   eventId: string;
-  eventType: "AuctionClosed";
+  eventType: 'AuctionClosed';
   occurredAtUtc: string;
-  aggregateType: "Auction";
+  aggregateType: 'Auction';
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
@@ -34,9 +34,9 @@ export type AuctionClosedEnvelope = {
 
 export type WinnerSelectedEnvelope = {
   eventId: string;
-  eventType: "WinnerSelected";
+  eventType: 'WinnerSelected';
   occurredAtUtc: string;
-  aggregateType: "Auction";
+  aggregateType: 'Auction';
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
@@ -84,32 +84,32 @@ export type WinnerSelectedSocketPayload = {
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isUuid(value: unknown): value is string {
-  return typeof value === "string" && uuidRegex.test(value);
+  return typeof value === 'string' && uuidRegex.test(value);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isIsoDate(value: unknown): value is string {
-  return typeof value === "string" && Number.isFinite(Date.parse(value));
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
 function isPositiveInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value > 0;
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
 function isValidAmount(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
 export function parseLiveFeedEnvelope(body: Buffer): LiveFeedEnvelope {
   let parsed: unknown;
 
   try {
-    parsed = JSON.parse(body.toString("utf8"));
+    parsed = JSON.parse(body.toString('utf8'));
   } catch {
-    throw new Error("Message body is not valid JSON.");
+    throw new Error('Message body is not valid JSON.');
   }
 
   return validateLiveFeedEnvelope(parsed);
@@ -117,8 +117,8 @@ export function parseLiveFeedEnvelope(body: Buffer): LiveFeedEnvelope {
 
 export function parseBidAcceptedEnvelope(body: Buffer): BidAcceptedEnvelope {
   const envelope = parseLiveFeedEnvelope(body);
-  if (envelope.eventType !== "BidAccepted") {
-    throw new Error("Unsupported eventType.");
+  if (envelope.eventType !== 'BidAccepted') {
+    throw new Error('Unsupported eventType.');
   }
 
   return envelope;
@@ -128,28 +128,28 @@ export function validateLiveFeedEnvelope(value: unknown): LiveFeedEnvelope {
   const base = validateBaseEnvelope(value);
 
   if (!isRecord(base.payload)) {
-    throw new Error("Event payload must be an object.");
+    throw new Error('Event payload must be an object.');
   }
 
-  if (base.eventType === "BidAccepted") {
+  if (base.eventType === 'BidAccepted') {
     return validateBidAcceptedEnvelopeFromBase(base);
   }
 
-  if (base.eventType === "AuctionClosed") {
+  if (base.eventType === 'AuctionClosed') {
     return validateAuctionClosedEnvelopeFromBase(base);
   }
 
-  if (base.eventType === "WinnerSelected") {
+  if (base.eventType === 'WinnerSelected') {
     return validateWinnerSelectedEnvelopeFromBase(base);
   }
 
-  throw new Error("Unsupported eventType.");
+  throw new Error('Unsupported eventType.');
 }
 
 export function validateBidAcceptedEnvelope(value: unknown): BidAcceptedEnvelope {
   const envelope = validateLiveFeedEnvelope(value);
-  if (envelope.eventType !== "BidAccepted") {
-    throw new Error("Unsupported eventType.");
+  if (envelope.eventType !== 'BidAccepted') {
+    throw new Error('Unsupported eventType.');
   }
 
   return envelope;
@@ -159,49 +159,49 @@ function validateBaseEnvelope(value: unknown): Record<string, unknown> & {
   eventId: string;
   eventType: string;
   occurredAtUtc: string;
-  aggregateType: "Auction";
+  aggregateType: 'Auction';
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
   payload: unknown;
 } {
   if (!isRecord(value)) {
-    throw new Error("Event envelope must be an object.");
+    throw new Error('Event envelope must be an object.');
   }
 
   if (!isUuid(value.eventId)) {
-    throw new Error("Event envelope has an invalid eventId.");
+    throw new Error('Event envelope has an invalid eventId.');
   }
 
-  if (typeof value.eventType !== "string" || value.eventType.trim().length === 0) {
-    throw new Error("Event envelope has an invalid eventType.");
+  if (typeof value.eventType !== 'string' || value.eventType.trim().length === 0) {
+    throw new Error('Event envelope has an invalid eventType.');
   }
 
   if (!isIsoDate(value.occurredAtUtc)) {
-    throw new Error("Event envelope has an invalid occurredAtUtc.");
+    throw new Error('Event envelope has an invalid occurredAtUtc.');
   }
 
-  if (value.aggregateType !== "Auction") {
-    throw new Error("Unsupported aggregateType.");
+  if (value.aggregateType !== 'Auction') {
+    throw new Error('Unsupported aggregateType.');
   }
 
   if (!isUuid(value.aggregateId)) {
-    throw new Error("Event envelope has an invalid aggregateId.");
+    throw new Error('Event envelope has an invalid aggregateId.');
   }
 
   if (!isPositiveInteger(value.aggregateVersion)) {
-    throw new Error("Event envelope has an invalid aggregateVersion.");
+    throw new Error('Event envelope has an invalid aggregateVersion.');
   }
 
-  if (value.correlationId !== null && typeof value.correlationId !== "string") {
-    throw new Error("Event envelope has an invalid correlationId.");
+  if (value.correlationId !== null && typeof value.correlationId !== 'string') {
+    throw new Error('Event envelope has an invalid correlationId.');
   }
 
   return value as Record<string, unknown> & {
     eventId: string;
     eventType: string;
     occurredAtUtc: string;
-    aggregateType: "Auction";
+    aggregateType: 'Auction';
     aggregateId: string;
     aggregateVersion: number;
     correlationId: string | null;
@@ -213,32 +213,32 @@ function validateBidAcceptedEnvelopeFromBase(value: ReturnType<typeof validateBa
   const payload = value.payload as Record<string, unknown>;
 
   if (!isUuid(payload.bidId)) {
-    throw new Error("BidAccepted payload has an invalid bidId.");
+    throw new Error('BidAccepted payload has an invalid bidId.');
   }
 
   if (!isUuid(payload.auctionId)) {
-    throw new Error("BidAccepted payload has an invalid auctionId.");
+    throw new Error('BidAccepted payload has an invalid auctionId.');
   }
 
   if (payload.auctionId !== value.aggregateId) {
-    throw new Error("BidAccepted payload auctionId must match aggregateId.");
+    throw new Error('BidAccepted payload auctionId must match aggregateId.');
   }
 
-  if (typeof payload.bidderId !== "string" || payload.bidderId.trim().length === 0) {
-    throw new Error("BidAccepted payload has an invalid bidderId.");
+  if (typeof payload.bidderId !== 'string' || payload.bidderId.trim().length === 0) {
+    throw new Error('BidAccepted payload has an invalid bidderId.');
   }
 
   if (!isValidAmount(payload.amount)) {
-    throw new Error("BidAccepted payload has an invalid amount.");
+    throw new Error('BidAccepted payload has an invalid amount.');
   }
 
   if (payload.auctionVersion !== value.aggregateVersion) {
-    throw new Error("BidAccepted payload auctionVersion must match aggregateVersion.");
+    throw new Error('BidAccepted payload auctionVersion must match aggregateVersion.');
   }
 
   return {
     eventId: value.eventId,
-    eventType: "BidAccepted",
+    eventType: 'BidAccepted',
     occurredAtUtc: value.occurredAtUtc,
     aggregateType: value.aggregateType,
     aggregateId: value.aggregateId,
@@ -249,8 +249,8 @@ function validateBidAcceptedEnvelopeFromBase(value: ReturnType<typeof validateBa
       auctionId: payload.auctionId,
       bidderId: payload.bidderId,
       amount: payload.amount,
-      auctionVersion: payload.auctionVersion
-    }
+      auctionVersion: payload.auctionVersion,
+    },
   };
 }
 
@@ -258,32 +258,35 @@ function validateAuctionClosedEnvelopeFromBase(value: ReturnType<typeof validate
   const payload = value.payload as Record<string, unknown>;
 
   if (!isUuid(payload.auctionId)) {
-    throw new Error("AuctionClosed payload has an invalid auctionId.");
+    throw new Error('AuctionClosed payload has an invalid auctionId.');
   }
 
   if (payload.auctionId !== value.aggregateId) {
-    throw new Error("AuctionClosed payload auctionId must match aggregateId.");
+    throw new Error('AuctionClosed payload auctionId must match aggregateId.');
   }
 
   if (!isIsoDate(payload.closedAtUtc)) {
-    throw new Error("AuctionClosed payload has an invalid closedAtUtc.");
+    throw new Error('AuctionClosed payload has an invalid closedAtUtc.');
   }
 
   if (payload.finalBidAmount !== null && !isValidAmount(payload.finalBidAmount)) {
-    throw new Error("AuctionClosed payload has an invalid finalBidAmount.");
+    throw new Error('AuctionClosed payload has an invalid finalBidAmount.');
   }
 
-  if (payload.finalBidderId !== null && (typeof payload.finalBidderId !== "string" || payload.finalBidderId.trim().length === 0)) {
-    throw new Error("AuctionClosed payload has an invalid finalBidderId.");
+  if (
+    payload.finalBidderId !== null &&
+    (typeof payload.finalBidderId !== 'string' || payload.finalBidderId.trim().length === 0)
+  ) {
+    throw new Error('AuctionClosed payload has an invalid finalBidderId.');
   }
 
   if (payload.auctionVersion !== value.aggregateVersion) {
-    throw new Error("AuctionClosed payload auctionVersion must match aggregateVersion.");
+    throw new Error('AuctionClosed payload auctionVersion must match aggregateVersion.');
   }
 
   return {
     eventId: value.eventId,
-    eventType: "AuctionClosed",
+    eventType: 'AuctionClosed',
     occurredAtUtc: value.occurredAtUtc,
     aggregateType: value.aggregateType,
     aggregateId: value.aggregateId,
@@ -294,45 +297,47 @@ function validateAuctionClosedEnvelopeFromBase(value: ReturnType<typeof validate
       closedAtUtc: payload.closedAtUtc,
       finalBidAmount: payload.finalBidAmount,
       finalBidderId: payload.finalBidderId,
-      auctionVersion: payload.auctionVersion
-    }
+      auctionVersion: payload.auctionVersion,
+    },
   };
 }
 
-function validateWinnerSelectedEnvelopeFromBase(value: ReturnType<typeof validateBaseEnvelope>): WinnerSelectedEnvelope {
+function validateWinnerSelectedEnvelopeFromBase(
+  value: ReturnType<typeof validateBaseEnvelope>,
+): WinnerSelectedEnvelope {
   const payload = value.payload as Record<string, unknown>;
 
   if (!isUuid(payload.auctionId)) {
-    throw new Error("WinnerSelected payload has an invalid auctionId.");
+    throw new Error('WinnerSelected payload has an invalid auctionId.');
   }
 
   if (payload.auctionId !== value.aggregateId) {
-    throw new Error("WinnerSelected payload auctionId must match aggregateId.");
+    throw new Error('WinnerSelected payload auctionId must match aggregateId.');
   }
 
   if (!isUuid(payload.winningBidId)) {
-    throw new Error("WinnerSelected payload has an invalid winningBidId.");
+    throw new Error('WinnerSelected payload has an invalid winningBidId.');
   }
 
-  if (typeof payload.winnerId !== "string" || payload.winnerId.trim().length === 0) {
-    throw new Error("WinnerSelected payload has an invalid winnerId.");
+  if (typeof payload.winnerId !== 'string' || payload.winnerId.trim().length === 0) {
+    throw new Error('WinnerSelected payload has an invalid winnerId.');
   }
 
   if (!isValidAmount(payload.amount)) {
-    throw new Error("WinnerSelected payload has an invalid amount.");
+    throw new Error('WinnerSelected payload has an invalid amount.');
   }
 
   if (!isIsoDate(payload.selectedAtUtc)) {
-    throw new Error("WinnerSelected payload has an invalid selectedAtUtc.");
+    throw new Error('WinnerSelected payload has an invalid selectedAtUtc.');
   }
 
   if (payload.auctionVersion !== value.aggregateVersion) {
-    throw new Error("WinnerSelected payload auctionVersion must match aggregateVersion.");
+    throw new Error('WinnerSelected payload auctionVersion must match aggregateVersion.');
   }
 
   return {
     eventId: value.eventId,
-    eventType: "WinnerSelected",
+    eventType: 'WinnerSelected',
     occurredAtUtc: value.occurredAtUtc,
     aggregateType: value.aggregateType,
     aggregateId: value.aggregateId,
@@ -344,13 +349,15 @@ function validateWinnerSelectedEnvelopeFromBase(value: ReturnType<typeof validat
       winnerId: payload.winnerId,
       amount: payload.amount,
       selectedAtUtc: payload.selectedAtUtc,
-      auctionVersion: payload.auctionVersion
-    }
+      auctionVersion: payload.auctionVersion,
+    },
   };
 }
 
-export function toSocketPayload(envelope: LiveFeedEnvelope): BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload {
-  if (envelope.eventType === "BidAccepted") {
+export function toSocketPayload(
+  envelope: LiveFeedEnvelope,
+): BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload {
+  if (envelope.eventType === 'BidAccepted') {
     return {
       auctionId: envelope.payload.auctionId,
       bidId: envelope.payload.bidId,
@@ -358,18 +365,18 @@ export function toSocketPayload(envelope: LiveFeedEnvelope): BidAcceptedSocketPa
       amount: envelope.payload.amount,
       auctionVersion: envelope.payload.auctionVersion,
       occurredAtUtc: envelope.occurredAtUtc,
-      correlationId: envelope.correlationId
+      correlationId: envelope.correlationId,
     };
   }
 
-  if (envelope.eventType === "AuctionClosed") {
+  if (envelope.eventType === 'AuctionClosed') {
     return {
       auctionId: envelope.payload.auctionId,
       closedAtUtc: envelope.payload.closedAtUtc,
       finalBidAmount: envelope.payload.finalBidAmount,
       finalBidderId: envelope.payload.finalBidderId,
       auctionVersion: envelope.payload.auctionVersion,
-      correlationId: envelope.correlationId
+      correlationId: envelope.correlationId,
     };
   }
 
@@ -380,6 +387,6 @@ export function toSocketPayload(envelope: LiveFeedEnvelope): BidAcceptedSocketPa
     amount: envelope.payload.amount,
     selectedAtUtc: envelope.payload.selectedAtUtc,
     auctionVersion: envelope.payload.auctionVersion,
-    correlationId: envelope.correlationId
+    correlationId: envelope.correlationId,
   };
 }

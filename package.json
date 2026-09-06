@@ -1,0 +1,30 @@
+{
+  "name": "distributed-bidding-auction-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "npm run typecheck --prefix apps/live-feed-service && npm run typecheck --prefix apps/client",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
+    "build": "npm run build --prefix apps/live-feed-service && npm run build --prefix apps/client",
+    "test": "npm test --prefix apps/live-feed-service && npm test --prefix apps/client"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-import-resolver-typescript": "^4.4.5",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-jsx-a11y": "^6.10.2",
+    "eslint-plugin-n": "^18.3.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
+    "prettier": "^3.9.6",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.69.0"
+  }
+}

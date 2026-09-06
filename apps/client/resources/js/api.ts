@@ -26,13 +26,32 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
         throw new Error('Bidding API is unavailable. Check that the .NET service is running.');
     }
 
-    const body = await response.json().catch(() => null);
+    const body: unknown = await response.json().catch((): null => null);
 
     if (!response.ok) {
-        throw new ApiClientError(response.status, body ?? { code: 'request_failed', message: 'Request failed.' });
+        throw new ApiClientError(response.status, toApiErrorResponse(body));
     }
 
     return body as T;
+}
+
+function toApiErrorResponse(body: unknown): ApiErrorResponse {
+    if (isApiErrorResponse(body)) {
+        return body;
+    }
+
+    return { code: 'request_failed', message: 'Request failed.' };
+}
+
+function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
+    return (
+        typeof value === 'object' &&
+        value !== null &&
+        'code' in value &&
+        'message' in value &&
+        typeof value.code === 'string' &&
+        typeof value.message === 'string'
+    );
 }
 
 export function getAuctions(): Promise<AuctionSummary[]> {

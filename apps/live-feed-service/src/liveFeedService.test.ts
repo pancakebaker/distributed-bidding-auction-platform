@@ -1,31 +1,31 @@
-import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import test from "node:test";
-import amqp from "amqplib";
-import type { Channel, ChannelModel } from "amqplib";
-import { io as createSocketClient } from "socket.io-client";
-import type { Socket } from "socket.io-client";
-import { createClient } from "redis";
-import type { RedisClientType } from "redis";
-import { createLiveFeedService } from "./service.js";
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import test from 'node:test';
+import amqp from 'amqplib';
+import type { Channel, ChannelModel } from 'amqplib';
+import { io as createSocketClient } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
+import { createClient } from 'redis';
+import type { RedisClientType } from 'redis';
+import { createLiveFeedService } from './service.js';
 import type {
   AuctionClosedEnvelope,
   AuctionClosedSocketPayload,
   BidAcceptedEnvelope,
   BidAcceptedSocketPayload,
   WinnerSelectedEnvelope,
-  WinnerSelectedSocketPayload
-} from "./events.js";
-import type { LiveFeedConfig } from "./config.js";
+  WinnerSelectedSocketPayload,
+} from './events.js';
+import type { LiveFeedConfig } from './config.js';
 
-const rabbitMqUrl = process.env.RABBITMQ_URL ?? "amqp://auction:change_me_in_local_env@localhost:5672";
-const redisUrl = process.env.LIVE_FEED_TEST_REDIS_URL ?? "redis://localhost:6379/1";
-const exchange = process.env.RABBITMQ_EXCHANGE ?? "auction.events";
+const rabbitMqUrl = process.env.RABBITMQ_URL ?? 'amqp://auction:change_me_in_local_env@localhost:5672';
+const redisUrl = process.env.LIVE_FEED_TEST_REDIS_URL ?? 'redis://localhost:6379/1';
+const exchange = process.env.RABBITMQ_EXCHANGE ?? 'auction.events';
 
 const routingKeys = {
-  BidAccepted: "auction.bid.accepted",
-  AuctionClosed: "auction.closed",
-  WinnerSelected: "auction.winner.selected"
+  BidAccepted: 'auction.bid.accepted',
+  AuctionClosed: 'auction.closed',
+  WinnerSelected: 'auction.winner.selected',
 } as const;
 
 type TestContext = {
@@ -44,28 +44,28 @@ function bidAccepted(overrides: Partial<BidAcceptedEnvelope> = {}): BidAcceptedE
 
   return {
     eventId: randomUUID(),
-    eventType: "BidAccepted",
+    eventType: 'BidAccepted',
     occurredAtUtc: new Date().toISOString(),
-    aggregateType: "Auction",
+    aggregateType: 'Auction',
     aggregateId: auctionId,
     aggregateVersion,
     correlationId: randomUUID(),
     payload: {
       bidId: randomUUID(),
       auctionId,
-      bidderId: "alice",
+      bidderId: 'alice',
       amount: 10500,
-      auctionVersion: aggregateVersion
+      auctionVersion: aggregateVersion,
     },
     ...overrides,
     payload: {
       bidId: randomUUID(),
       auctionId,
-      bidderId: "alice",
+      bidderId: 'alice',
       amount: 10500,
       auctionVersion: aggregateVersion,
-      ...overrides.payload
-    }
+      ...overrides.payload,
+    },
   };
 }
 
@@ -75,9 +75,9 @@ function auctionClosed(overrides: Partial<AuctionClosedEnvelope> = {}): AuctionC
 
   return {
     eventId: randomUUID(),
-    eventType: "AuctionClosed",
+    eventType: 'AuctionClosed',
     occurredAtUtc: new Date().toISOString(),
-    aggregateType: "Auction",
+    aggregateType: 'Auction',
     aggregateId: auctionId,
     aggregateVersion,
     correlationId: randomUUID(),
@@ -85,18 +85,18 @@ function auctionClosed(overrides: Partial<AuctionClosedEnvelope> = {}): AuctionC
       auctionId,
       closedAtUtc: new Date().toISOString(),
       finalBidAmount: 13000,
-      finalBidderId: "bob",
-      auctionVersion: aggregateVersion
+      finalBidderId: 'bob',
+      auctionVersion: aggregateVersion,
     },
     ...overrides,
     payload: {
       auctionId,
       closedAtUtc: new Date().toISOString(),
       finalBidAmount: 13000,
-      finalBidderId: "bob",
+      finalBidderId: 'bob',
       auctionVersion: aggregateVersion,
-      ...overrides.payload
-    }
+      ...overrides.payload,
+    },
   };
 }
 
@@ -106,30 +106,30 @@ function winnerSelected(overrides: Partial<WinnerSelectedEnvelope> = {}): Winner
 
   return {
     eventId: randomUUID(),
-    eventType: "WinnerSelected",
+    eventType: 'WinnerSelected',
     occurredAtUtc: new Date().toISOString(),
-    aggregateType: "Auction",
+    aggregateType: 'Auction',
     aggregateId: auctionId,
     aggregateVersion,
     correlationId: randomUUID(),
     payload: {
       auctionId,
       winningBidId: randomUUID(),
-      winnerId: "bob",
+      winnerId: 'bob',
       amount: 13000,
       selectedAtUtc: new Date().toISOString(),
-      auctionVersion: aggregateVersion
+      auctionVersion: aggregateVersion,
     },
     ...overrides,
     payload: {
       auctionId,
       winningBidId: randomUUID(),
-      winnerId: "bob",
+      winnerId: 'bob',
       amount: 13000,
       selectedAtUtc: new Date().toISOString(),
       auctionVersion: aggregateVersion,
-      ...overrides.payload
-    }
+      ...overrides.payload,
+    },
   };
 }
 
@@ -141,7 +141,7 @@ async function createContext(): Promise<TestContext> {
   const rabbitConnection = await amqp.connect(rabbitMqUrl);
   const rabbitChannel = await rabbitConnection.createChannel();
 
-  await rabbitChannel.assertExchange(exchange, "topic", { durable: true });
+  await rabbitChannel.assertExchange(exchange, 'topic', { durable: true });
   await rabbitChannel.deleteQueue(queue).catch(() => undefined);
   await rabbitChannel.deleteQueue(dlq).catch(() => undefined);
   await rabbitChannel.deleteExchange(dlx).catch(() => undefined);
@@ -161,7 +161,7 @@ async function createContext(): Promise<TestContext> {
     rabbitMqPrefetch: 3,
     rabbitMqDeadLetterExchange: dlx,
     rabbitMqDeadLetterQueue: dlq,
-    idempotencyTtlSeconds: 120
+    idempotencyTtlSeconds: 120,
   };
 
   const service = createLiveFeedService(config);
@@ -182,31 +182,32 @@ async function cleanup(context: TestContext): Promise<void> {
 }
 
 function publish(context: TestContext, message: unknown): void {
-  const body = Buffer.isBuffer(message) ? message : Buffer.from(JSON.stringify(message), "utf8");
-  const eventType = !Buffer.isBuffer(message) && typeof message === "object" && message && "eventType" in message
-    ? String((message as { eventType: string }).eventType)
-    : "BidAccepted";
+  const body = Buffer.isBuffer(message) ? message : Buffer.from(JSON.stringify(message), 'utf8');
+  const eventType =
+    !Buffer.isBuffer(message) && typeof message === 'object' && message && 'eventType' in message
+      ? String((message as { eventType: string }).eventType)
+      : 'BidAccepted';
   const routingKey = routingKeys[eventType as keyof typeof routingKeys] ?? routingKeys.BidAccepted;
 
   context.rabbitChannel.publish(exchange, routingKey, body, {
     persistent: true,
-    contentType: "application/json"
+    contentType: 'application/json',
   });
 }
 
 async function connectClient(context: TestContext, auctionId: string): Promise<Socket> {
   const socket = createSocketClient(context.service.url(), {
-    transports: ["websocket"],
-    reconnection: false
+    transports: ['websocket'],
+    reconnection: false,
   });
 
-  await once<void>(socket, "connect", 1500);
+  await once<void>(socket, 'connect', 1500);
   await new Promise<void>((resolve, reject) => {
-    socket.emit("auction:subscribe", auctionId, (response: { ok: boolean; error?: string }) => {
+    socket.emit('auction:subscribe', auctionId, (response: { ok: boolean; error?: string }) => {
       if (response.ok) {
         resolve();
       } else {
-        reject(new Error(response.error ?? "Subscription failed."));
+        reject(new Error(response.error ?? 'Subscription failed.'));
       }
     });
   });
@@ -256,20 +257,20 @@ async function waitFor(assertion: () => Promise<void> | void, timeoutMs = 3000):
     }
   }
 
-  throw lastError instanceof Error ? lastError : new Error("Timed out waiting for assertion.");
+  throw lastError instanceof Error ? lastError : new Error('Timed out waiting for assertion.');
 }
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-test("valid BidAccepted event is consumed, ACKed, broadcast, and recorded in Redis", async () => {
+void test('valid BidAccepted event is consumed, ACKed, broadcast, and recorded in Redis', async () => {
   const context = await createContext();
   const accepted = bidAccepted();
   const client = await connectClient(context, accepted.aggregateId);
 
   try {
-    const received = once<BidAcceptedSocketPayload>(client, "bid:accepted", 1500);
+    const received = once<BidAcceptedSocketPayload>(client, 'bid:accepted', 1500);
     publish(context, accepted);
 
     const payload = await received;
@@ -286,20 +287,23 @@ test("valid BidAccepted event is consumed, ACKed, broadcast, and recorded in Red
     });
 
     assert.equal(await context.redis.exists(`live-feed:processed-event:${accepted.eventId}`), 1);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${accepted.aggregateId}`), String(accepted.aggregateVersion));
+    assert.equal(
+      await context.redis.get(`live-feed:auction-version:${accepted.aggregateId}`),
+      String(accepted.aggregateVersion),
+    );
   } finally {
     client.disconnect();
     await cleanup(context);
   }
 });
 
-test("malformed lifecycle event is dead-lettered and not broadcast", async () => {
+void test('malformed lifecycle event is dead-lettered and not broadcast', async () => {
   const context = await createContext();
   const client = await connectClient(context, randomUUID());
 
   try {
-    publish(context, { ...auctionClosed(), payload: { auctionId: "not-a-uuid" } });
-    await expectNoEvent(client, "auction:closed");
+    publish(context, { ...auctionClosed(), payload: { auctionId: 'not-a-uuid' } });
+    await expectNoEvent(client, 'auction:closed');
 
     await waitFor(async () => {
       const dlqState = await context.rabbitChannel.checkQueue(context.dlq);
@@ -311,7 +315,7 @@ test("malformed lifecycle event is dead-lettered and not broadcast", async () =>
   }
 });
 
-test("AuctionClosed and WinnerSelected events broadcast to the correct auction room", async () => {
+void test('AuctionClosed and WinnerSelected events broadcast to the correct auction room', async () => {
   const context = await createContext();
   const auctionId = randomUUID();
   const otherAuctionId = randomUUID();
@@ -321,19 +325,19 @@ test("AuctionClosed and WinnerSelected events broadcast to the correct auction r
   const winner = winnerSelected({ aggregateId: auctionId, aggregateVersion: 16, correlationId: closed.correlationId });
 
   try {
-    const closedReceived = once<AuctionClosedSocketPayload>(client, "auction:closed", 1500);
+    const closedReceived = once<AuctionClosedSocketPayload>(client, 'auction:closed', 1500);
     publish(context, closed);
     assert.equal((await closedReceived).auctionVersion, 16);
-    await expectNoEvent(otherClient, "auction:closed");
+    await expectNoEvent(otherClient, 'auction:closed');
 
-    const winnerReceived = once<WinnerSelectedSocketPayload>(client, "winner:selected", 1500);
+    const winnerReceived = once<WinnerSelectedSocketPayload>(client, 'winner:selected', 1500);
     publish(context, winner);
     const winnerPayload = await winnerReceived;
     assert.equal(winnerPayload.auctionId, auctionId);
     assert.equal(winnerPayload.winningBidId, winner.payload.winningBidId);
-    assert.equal(winnerPayload.winnerId, "bob");
+    assert.equal(winnerPayload.winnerId, 'bob');
     assert.equal(winnerPayload.auctionVersion, 16);
-    await expectNoEvent(otherClient, "winner:selected");
+    await expectNoEvent(otherClient, 'winner:selected');
   } finally {
     client.disconnect();
     otherClient.disconnect();
@@ -341,15 +345,15 @@ test("AuctionClosed and WinnerSelected events broadcast to the correct auction r
   }
 });
 
-test("duplicate lifecycle eventId is ACKed but not broadcast twice", async () => {
+void test('duplicate lifecycle eventId is ACKed but not broadcast twice', async () => {
   const context = await createContext();
   const closed = auctionClosed({ aggregateVersion: 5 });
   const winner = winnerSelected({ aggregateId: closed.aggregateId, aggregateVersion: 5 });
   const client = await connectClient(context, closed.aggregateId);
   const closedSeen: AuctionClosedSocketPayload[] = [];
   const winnerSeen: WinnerSelectedSocketPayload[] = [];
-  client.on("auction:closed", (payload) => closedSeen.push(payload));
-  client.on("winner:selected", (payload) => winnerSeen.push(payload));
+  client.on('auction:closed', (payload: AuctionClosedSocketPayload) => closedSeen.push(payload));
+  client.on('winner:selected', (payload: WinnerSelectedSocketPayload) => winnerSeen.push(payload));
 
   try {
     publish(context, closed);
@@ -369,20 +373,20 @@ test("duplicate lifecycle eventId is ACKed but not broadcast twice", async () =>
   }
 });
 
-test("same-version sibling lifecycle events are both accepted in either order", async () => {
+void test('same-version sibling lifecycle events are both accepted in either order', async () => {
   const context = await createContext();
   const auctionId = randomUUID();
   const client = await connectClient(context, auctionId);
   const seen: string[] = [];
-  client.on("auction:closed", () => seen.push("closed"));
-  client.on("winner:selected", () => seen.push("winner"));
+  client.on('auction:closed', () => seen.push('closed'));
+  client.on('winner:selected', () => seen.push('winner'));
 
   try {
     publish(context, auctionClosed({ aggregateId: auctionId, aggregateVersion: 16 }));
-    await waitFor(() => assert.deepEqual(seen, ["closed"]));
+    await waitFor(() => assert.deepEqual(seen, ['closed']));
     publish(context, winnerSelected({ aggregateId: auctionId, aggregateVersion: 16 }));
-    await waitFor(() => assert.deepEqual(seen, ["closed", "winner"]));
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), "16");
+    await waitFor(() => assert.deepEqual(seen, ['closed', 'winner']));
+    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
   } finally {
     client.disconnect();
     await cleanup(context);
@@ -392,28 +396,32 @@ test("same-version sibling lifecycle events are both accepted in either order", 
   const reverseAuctionId = randomUUID();
   const reverseClient = await connectClient(reverse, reverseAuctionId);
   const reverseSeen: string[] = [];
-  reverseClient.on("auction:closed", () => reverseSeen.push("closed"));
-  reverseClient.on("winner:selected", () => reverseSeen.push("winner"));
+  reverseClient.on('auction:closed', () => reverseSeen.push('closed'));
+  reverseClient.on('winner:selected', () => reverseSeen.push('winner'));
 
   try {
     publish(reverse, winnerSelected({ aggregateId: reverseAuctionId, aggregateVersion: 16 }));
-    await waitFor(() => assert.deepEqual(reverseSeen, ["winner"]));
+    await waitFor(() => assert.deepEqual(reverseSeen, ['winner']));
     publish(reverse, auctionClosed({ aggregateId: reverseAuctionId, aggregateVersion: 16 }));
-    await waitFor(() => assert.deepEqual(reverseSeen, ["winner", "closed"]));
-    assert.equal(await reverse.redis.get(`live-feed:auction-version:${reverseAuctionId}`), "16");
+    await waitFor(() => assert.deepEqual(reverseSeen, ['winner', 'closed']));
+    assert.equal(await reverse.redis.get(`live-feed:auction-version:${reverseAuctionId}`), '16');
   } finally {
     reverseClient.disconnect();
     await cleanup(reverse);
   }
 });
 
-test("aggregateVersion lower events are stale, same-version new events are accepted, and higher versions advance", async () => {
+void test('aggregateVersion lower events are stale, same-version new events are accepted, and higher versions advance', async () => {
   const context = await createContext();
   const auctionId = randomUUID();
   const client = await connectClient(context, auctionId);
   const seen: Array<{ event: string; version: number }> = [];
-  client.on("auction:closed", (payload: AuctionClosedSocketPayload) => seen.push({ event: "closed", version: payload.auctionVersion }));
-  client.on("winner:selected", (payload: WinnerSelectedSocketPayload) => seen.push({ event: "winner", version: payload.auctionVersion }));
+  client.on('auction:closed', (payload: AuctionClosedSocketPayload) =>
+    seen.push({ event: 'closed', version: payload.auctionVersion }),
+  );
+  client.on('winner:selected', (payload: WinnerSelectedSocketPayload) =>
+    seen.push({ event: 'winner', version: payload.auctionVersion }),
+  );
 
   try {
     publish(context, auctionClosed({ aggregateId: auctionId, aggregateVersion: 16 }));
@@ -422,39 +430,42 @@ test("aggregateVersion lower events are stale, same-version new events are accep
     publish(context, winnerSelected({ aggregateId: auctionId, aggregateVersion: 15 }));
     await delay(400);
     assert.equal(seen.length, 1);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), "16");
+    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
 
     publish(context, winnerSelected({ aggregateId: auctionId, aggregateVersion: 16 }));
     await waitFor(() => assert.equal(seen.length, 2));
     assert.equal(seen[1].version, 16);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), "16");
+    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
 
     publish(context, auctionClosed({ aggregateId: auctionId, aggregateVersion: 17 }));
     await waitFor(() => assert.equal(seen.length, 3));
     assert.equal(seen[2].version, 17);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), "17");
+    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '17');
   } finally {
     client.disconnect();
     await cleanup(context);
   }
 });
 
-test("duplicate eventId is ignored regardless of version", async () => {
+void test('duplicate eventId is ignored regardless of version', async () => {
   const context = await createContext();
   const auctionId = randomUUID();
   const eventId = randomUUID();
   const client = await connectClient(context, auctionId);
   const seen: AuctionClosedSocketPayload[] = [];
-  client.on("auction:closed", (payload) => seen.push(payload));
+  client.on('auction:closed', (payload: AuctionClosedSocketPayload) => seen.push(payload));
 
   try {
     publish(context, auctionClosed({ eventId, aggregateId: auctionId, aggregateVersion: 16 }));
     await waitFor(() => assert.equal(seen.length, 1));
-    publish(context, auctionClosed({ eventId, aggregateId: auctionId, aggregateVersion: 17, payload: { auctionVersion: 17 } }));
+    publish(
+      context,
+      auctionClosed({ eventId, aggregateId: auctionId, aggregateVersion: 17, payload: { auctionVersion: 17 } }),
+    );
     await delay(400);
 
     assert.equal(seen.length, 1);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), "16");
+    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
   } finally {
     client.disconnect();
     await cleanup(context);
