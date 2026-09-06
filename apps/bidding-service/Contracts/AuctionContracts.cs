@@ -1,5 +1,11 @@
+// <copyright file="AuctionContracts.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 namespace bidding_service.Contracts;
 
+/// <summary>
+/// Summarizes auction state for list views.
+/// </summary>
 public sealed record AuctionSummaryResponse(
     Guid Id,
     string Title,
@@ -13,6 +19,9 @@ public sealed record AuctionSummaryResponse(
     DateTimeOffset EndTimeUtc,
     long Version);
 
+/// <summary>
+/// Returns detailed auction state for the auction detail view.
+/// </summary>
 public sealed record AuctionDetailResponse(
     Guid Id,
     string Title,
@@ -29,6 +38,9 @@ public sealed record AuctionDetailResponse(
     DateTimeOffset UpdatedAtUtc,
     long Version);
 
+/// <summary>
+/// Describes an accepted bid returned by the bidding API.
+/// </summary>
 public sealed record BidResponse(
     Guid Id,
     Guid AuctionId,
@@ -36,8 +48,14 @@ public sealed record BidResponse(
     decimal Amount,
     DateTimeOffset CreatedAtUtc);
 
+/// <summary>
+/// Carries a bidder identity and bid amount for bid placement.
+/// </summary>
 public sealed record PlaceBidRequest(string BidderId, decimal Amount);
 
+/// <summary>
+/// Describes the accepted bid and resulting auction state.
+/// </summary>
 public sealed record PlaceBidResponse(
     Guid BidId,
     Guid AuctionId,
@@ -50,8 +68,14 @@ public sealed record PlaceBidResponse(
     DateTimeOffset CreatedAtUtc,
     string CorrelationId);
 
+/// <summary>
+/// Provides a stable error shape for API clients.
+/// </summary>
 public sealed record ApiErrorResponse(string Code, string Message, object? Details = null);
 
+/// <summary>
+/// Provides current auction values that help clients correct rejected bids.
+/// </summary>
 public sealed record BidRuleErrorDetails(decimal? CurrentBidAmount, decimal MinimumValidBid, long AuctionVersion);
 
 

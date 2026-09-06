@@ -1,3 +1,6 @@
+// <copyright file="AuctionEndpoints.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using bidding_service.Contracts;
 using bidding_service.Data;
 using bidding_service.Domain;
@@ -8,10 +11,16 @@ using Microsoft.Extensions.Options;
 
 namespace bidding_service.Endpoints;
 
+/// <summary>
+/// Maps auction discovery, detail, history, and bid placement endpoints.
+/// </summary>
 public static class AuctionEndpoints
 {
     private const string CorrelationIdHeader = "X-Correlation-ID";
 
+    /// <summary>
+    /// Registers auction and bid endpoints on the web application.
+    /// </summary>
     public static RouteGroupBuilder MapAuctionEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/auctions").WithTags("Auctions");

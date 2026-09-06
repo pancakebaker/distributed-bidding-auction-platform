@@ -1,12 +1,21 @@
+// <copyright file="Worker.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using Microsoft.Extensions.Options;
 
 namespace auction_scheduler;
 
+/// <summary>
+/// Runs the background worker loop for this service.
+/// </summary>
 public sealed class Worker(
     AuctionClosingService closingService,
     IOptions<Options.SchedulerOptions> options,
     ILogger<Worker> logger) : BackgroundService
 {
+    /// <summary>
+    /// Runs the hosted background processing loop.
+    /// </summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation(

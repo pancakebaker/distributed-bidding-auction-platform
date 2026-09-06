@@ -1,3 +1,6 @@
+// <copyright file="AuctionClosingService.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Data;
 using System.Text.Json;
 using auction_scheduler.Outbox;
@@ -7,6 +10,9 @@ using NpgsqlTypes;
 
 namespace auction_scheduler;
 
+/// <summary>
+/// Closes expired open auctions and records lifecycle outbox events.
+/// </summary>
 public sealed class AuctionClosingService(
     NpgsqlDataSource dataSource,
     TimeProvider timeProvider,
@@ -18,6 +24,9 @@ public sealed class AuctionClosingService(
     private const string AggregateType = "Auction";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// Closes a bounded batch of expired open auctions.
+    /// </summary>
     public async Task<int> CloseExpiredAuctionsAsync(CancellationToken cancellationToken)
     {
         var now = timeProvider.GetUtcNow();
@@ -42,6 +51,9 @@ public sealed class AuctionClosingService(
         return closedCount;
     }
 
+    /// <summary>
+    /// Claims and closes one expired open auction in a PostgreSQL transaction.
+    /// </summary>
     public async Task<bool> CloseNextExpiredAuctionAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);

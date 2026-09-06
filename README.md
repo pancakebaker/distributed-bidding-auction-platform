@@ -189,6 +189,18 @@ Run JavaScript tests:
 npm test --prefix apps/live-feed-service
 npm test --prefix apps/client
 ```
+## Static Analysis
+
+.NET analyzer configuration is centralized in `Directory.Build.props`, `.editorconfig`, and `stylecop.json`. The repository enables built-in .NET/Roslyn analyzers and `StyleCop.Analyzers` for the C# solution.
+
+Production C# files are expected to have the project MIT source header and useful XML summaries for public API surface, domain types, endpoint groups, message contracts, and background services. Test projects keep correctness analyzers enabled, but XML/header documentation noise is relaxed so descriptive test names remain the primary behavior documentation.
+
+Run validation locally with:
+
+```powershell
+dotnet build
+dotnet test
+```
 
 ## Repository Structure
 

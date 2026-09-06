@@ -1,14 +1,32 @@
+// <copyright file="BiddingDbContext.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using bidding_service.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace bidding_service.Data;
 
+/// <summary>
+/// Configures EF Core persistence for auctions, bids, and outbox messages.
+/// </summary>
 public sealed class BiddingDbContext(DbContextOptions<BiddingDbContext> options) : DbContext(options)
 {
+    /// <summary>
+    /// Gets the auctions.
+    /// </summary>
     public DbSet<Auction> Auctions => Set<Auction>();
+    /// <summary>
+    /// Gets or sets the accepted bid history for the auction.
+    /// </summary>
     public DbSet<Bid> Bids => Set<Bid>();
+    /// <summary>
+    /// Gets the outbox messages.
+    /// </summary>
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
+    /// <summary>
+    /// Runs the on model creating operation.
+    /// </summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Auction>(auction =>

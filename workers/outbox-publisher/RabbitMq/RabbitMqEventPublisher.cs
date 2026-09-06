@@ -1,3 +1,6 @@
+// <copyright file="RabbitMqEventPublisher.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Text;
 using Microsoft.Extensions.Options;
 using outbox_publisher.Options;
@@ -6,13 +9,22 @@ using RabbitMQ.Client;
 
 namespace outbox_publisher.RabbitMq;
 
+/// <summary>
+/// Publishes confirmed integration events to RabbitMQ.
+/// </summary>
 public sealed class RabbitMqEventPublisher(IOptions<RabbitMqOptions> options, ILogger<RabbitMqEventPublisher> logger)
 {
     private const string BidAcceptedRoutingKey = "auction.bid.accepted";
     private const string AuctionClosedRoutingKey = "auction.closed";
     private const string WinnerSelectedRoutingKey = "auction.winner.selected";
 
+    /// <summary>
+    /// Gets the RabbitMQ exchange used for auction events.
+    /// </summary>
     public string Exchange => options.Value.Exchange;
+    /// <summary>
+    /// Selects the RabbitMQ routing key for an outbox message.
+    /// </summary>
     public string RoutingKeyFor(OutboxMessage message) => message.EventType switch
     {
         "BidAccepted" => BidAcceptedRoutingKey,
@@ -21,6 +33,9 @@ public sealed class RabbitMqEventPublisher(IOptions<RabbitMqOptions> options, IL
         _ => $"auction.{message.EventType.ToLowerInvariant()}"
     };
 
+    /// <summary>
+    /// Publishes one event envelope to RabbitMQ using publisher confirmations.
+    /// </summary>
     public async Task PublishAsync(OutboxMessage message, string envelopeJson, CancellationToken cancellationToken)
     {
         await using var connection = await CreateConnectionAsync(cancellationToken);
@@ -59,6 +74,9 @@ public sealed class RabbitMqEventPublisher(IOptions<RabbitMqOptions> options, IL
             cancellationToken: cancellationToken);
     }
 
+    /// <summary>
+    /// Declares the RabbitMQ exchange and optional development debug queue.
+    /// </summary>
     public async Task DeclareTopologyAsync(CancellationToken cancellationToken)
     {
         await using var connection = await CreateConnectionAsync(cancellationToken);

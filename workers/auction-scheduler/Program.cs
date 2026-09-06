@@ -1,3 +1,6 @@
+// <copyright file="Program.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using auction_scheduler;
 using auction_scheduler.Options;
 using Npgsql;

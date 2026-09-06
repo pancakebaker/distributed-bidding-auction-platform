@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using auction_scheduler.Options;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -381,7 +382,7 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
         await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
         await using var command = new NpgsqlCommand("SELECT count(*) FROM outbox_messages", connection);
-        return Convert.ToInt32(await command.ExecuteScalarAsync(CancellationToken.None));
+        return Convert.ToInt32(await command.ExecuteScalarAsync(CancellationToken.None), CultureInfo.InvariantCulture);
     }
 
     private sealed record AuctionRow(string Status, long Version);

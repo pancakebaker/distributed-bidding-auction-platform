@@ -1,8 +1,14 @@
+// <copyright file="OutboxModels.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace outbox_publisher.Outbox;
 
+/// <summary>
+/// Represents a durable integration event pending publication from PostgreSQL.
+/// </summary>
 public sealed record OutboxMessage(
     Guid Id,
     string EventType,
@@ -15,6 +21,9 @@ public sealed record OutboxMessage(
     DateTimeOffset CreatedAtUtc,
     int PublishAttempts);
 
+/// <summary>
+/// Represents the JSON event envelope published to RabbitMQ.
+/// </summary>
 public sealed record IntegrationEventEnvelope(
     Guid EventId,
     string EventType,
@@ -27,6 +36,9 @@ public sealed record IntegrationEventEnvelope(
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <summary>
+    /// Builds a publishable event envelope from an outbox row.
+    /// </summary>
     public static IntegrationEventEnvelope FromOutboxMessage(OutboxMessage message)
     {
         return new IntegrationEventEnvelope(
@@ -40,5 +52,8 @@ public sealed record IntegrationEventEnvelope(
             JsonNode.Parse(message.Payload));
     }
 
+    /// <summary>
+    /// Serializes the event envelope as UTF-8 JSON content.
+    /// </summary>
     public string ToJson() => JsonSerializer.Serialize(this, JsonOptions);
 }

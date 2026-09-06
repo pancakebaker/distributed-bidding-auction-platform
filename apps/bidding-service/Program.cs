@@ -1,3 +1,6 @@
+// <copyright file="Program.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using bidding_service.Data;
 using bidding_service.Endpoints;
 using bidding_service.Services;
@@ -58,4 +61,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 
 app.Run();
 
+/// <summary>
+/// Represents the program component.
+/// </summary>
 public partial class Program;

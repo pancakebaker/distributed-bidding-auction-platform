@@ -19,6 +19,7 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
     private const string MaintenanceConnectionString = "Host=127.0.0.1;Port=55432;Database=postgres;Username=auction_app;Password=change_me_in_local_env";
     private const string ExchangeName = "auction.events";
     private const string DebugQueue = "auction.events.debug";
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly RabbitMqOptions _rabbitOptions = new()
     {
         HostName = "localhost",
@@ -253,7 +254,7 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
             amount = 10500m,
             occurredAtUtc = occurredAt,
             auctionVersion = aggregateVersion
-        }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        }, JsonOptions);
 
         await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
         await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);

@@ -1,14 +1,32 @@
+// <copyright file="DatabaseSeeder.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using bidding_service.Domain;
 using Microsoft.EntityFrameworkCore;
 
 namespace bidding_service.Data;
 
+/// <summary>
+/// Creates deterministic local demo auction data.
+/// </summary>
 public static class DatabaseSeeder
 {
+    /// <summary>
+    /// Stable identifier for the open MacBook Pro demo auction.
+    /// </summary>
     public static readonly Guid OpenAuctionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+    /// <summary>
+    /// Stable identifier for the scheduled Camera demo auction.
+    /// </summary>
     public static readonly Guid ScheduledAuctionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+    /// <summary>
+    /// Stable identifier for the closed Gaming Console demo auction.
+    /// </summary>
     public static readonly Guid ClosedAuctionId = Guid.Parse("33333333-3333-3333-3333-333333333333");
 
+    /// <summary>
+    /// Seeds deterministic demo auctions and bid history when the database is empty.
+    /// </summary>
     public static async Task SeedAsync(BiddingDbContext db, TimeProvider timeProvider, CancellationToken cancellationToken = default)
     {
         if (await db.Auctions.AnyAsync(cancellationToken))

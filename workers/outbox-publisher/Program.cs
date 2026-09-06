@@ -1,3 +1,6 @@
+// <copyright file="Program.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using Npgsql;
 using outbox_publisher;
 using outbox_publisher.Options;
