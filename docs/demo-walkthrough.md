@@ -1,0 +1,62 @@
+# Demo Walkthrough
+
+This is a 3-5 minute technical demo script for interviews or portfolio reviews.
+
+## Setup
+
+From the repository root:
+
+```powershell
+scripts\start-infrastructure.ps1
+scripts\reset-demo.ps1
+scripts\start-demo.ps1
+```
+
+Open two browser windows at `http://localhost:8000/auctions`.
+
+## Walkthrough
+
+1. **Show the architecture briefly.**
+   Point out the Laravel/React client, .NET Bidding Service, PostgreSQL, transactional outbox, Outbox Publisher, RabbitMQ, Live Feed Service, Redis, Socket.IO, and Auction Scheduler.
+
+2. **Open the same auction in two clients.**
+   Use the MacBook Pro auction. Set one browser to Alice and the other to Bob.
+
+3. **Place Alice's bid.**
+   Alice receives an immediate REST success response from the Bidding Service. Explain that REST is the command result and remains authoritative.
+
+4. **Watch both clients update.**
+   The accepted bid persists with a `BidAccepted` outbox row, the publisher sends it to RabbitMQ, Live Feed consumes it, Redis records idempotency/version state, and Socket.IO broadcasts `bid:accepted`.
+
+5. **Place Bob's higher bid.**
+   Show the current bid, highest bidder, auction version, and bid history updating. Mention that simultaneous bid races are handled by PostgreSQL optimistic concurrency on `Auction.Version`.
+
+6. **Explain `aggregateVersion`.**
+   It is the resulting auction version for ordering and stale-event protection. It is not a unique event sequence number; `eventId` is the event identity.
+
+7. **Let a short auction expire.**
+   Open the Short Demo Auction in both clients. Optionally place a bid before it closes. Wait for server UTC to pass `EndTimeUtc`.
+
+8. **Observe automatic closure.**
+   The Auction Scheduler closes the auction in PostgreSQL, increments `Auction.Version` once, and writes `AuctionClosed` plus `WinnerSelected` when a winning bid exists.
+
+9. **Watch real-time lifecycle updates.**
+   Both clients transition to Closed without refresh. The bid form disables. If there is a winner, the UI shows the winner; if no bids exist, it shows that no bids were placed.
+
+10. **Briefly show failure resilience.**
+    Explain that RabbitMQ can be down while bids or closures commit because the API/scheduler only depend on PostgreSQL. The publisher retries later. Duplicate delivery is expected, and consumers dedupe by `eventId`.
+
+## Useful URLs
+
+- Client: `http://localhost:8000/auctions`
+- Bidding API Swagger: `http://localhost:5000/swagger`
+- Live Feed health: `http://localhost:3001/health`
+- RabbitMQ management: `http://localhost:15672`
+
+## Closing Talking Points
+
+- PostgreSQL is authoritative for bid and auction state.
+- RabbitMQ is durable event transport, not the command path.
+- Redis powers live fan-out and demo-level dedupe/version state, not auction authority.
+- The browser is a projection. REST refresh reconciles missed live events.
+- This is a functional architecture demo, not a production auction platform.

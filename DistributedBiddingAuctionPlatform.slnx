@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/apps/">
+    <Project Path="apps/bidding-service.Tests/bidding-service.Tests.csproj" />
+    <Project Path="apps/bidding-service/bidding-service.csproj" />
+  </Folder>
+  <Folder Name="/workers/">
+    <Project Path="workers/auction-scheduler.Tests/auction-scheduler.Tests.csproj" />
+    <Project Path="workers/auction-scheduler/auction-scheduler.csproj" />
+    <Project Path="workers/outbox-publisher.Tests/outbox-publisher.Tests.csproj" />
+    <Project Path="workers/outbox-publisher/outbox-publisher.csproj" />
+  </Folder>
+</Solution>

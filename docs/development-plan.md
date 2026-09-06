@@ -36,10 +36,14 @@ Implemented: separate .NET scheduler worker, server-UTC closure checks, PostgreS
 
 Implemented: Live Feed Service consumption for `AuctionClosed` and `WinnerSelected`, same-version sibling event handling, Socket.IO `auction:closed` and `winner:selected` broadcasts, React closed/winner UI state, no-bid closure display, and REST reconciliation for missed live lifecycle events.
 
-## Phase 9: Billing and notification workers
+## Phase 9: Portfolio/demo hardening
+
+Implemented: root .NET solution, reviewer startup/reset scripts, README portfolio rewrite, local Mermaid architecture diagram, demo walkthrough, failure-scenario documentation, dependency-audit notes, and clean build/test verification.
+
+## Phase 10: Billing and notification workers
 
 Add idempotent worker flows for payment and notification events.
 
-## Phase 10: Integration/demo scenarios, tests, documentation, cleanup, GitHub presentation
+## Phase 11: Integration/demo scenarios, tests, documentation, cleanup, GitHub presentation
 
-Create repeatable demos, polish documentation, prepare diagrams, and shape the repository for a strong GitHub portfolio presentation.
+Continue polishing diagrams, evidence, and repository presentation after the remaining planned workers are implemented.
