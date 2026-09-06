@@ -94,5 +94,10 @@ jobs:
       - name: Build JS/TS projects
         run: npm run build
 
-      - name: Test JS/TS projects
-        run: npm test
+      - name: Test live-feed service
+        run: npm test --prefix apps/live-feed-service
+
+      - name: Test client
+        run: npm test --prefix apps/client
+        env:
+          LARAVEL_BYPASS_ENV_CHECK: '1'
