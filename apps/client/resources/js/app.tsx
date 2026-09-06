@@ -4,9 +4,26 @@ import React, { FormEvent, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ApiClientError, getAuction, getAuctionBids, getAuctions, placeBid } from './api';
 import { connectAuctionFeed } from './liveFeed';
-import type { ApiErrorResponse, AuctionDetail, AuctionSummary, Bid, LiveBidAccepted, LiveStatus } from './types';
+import type {
+    ApiErrorResponse,
+    AuctionDetail,
+    AuctionSummary,
+    Bid,
+    LiveAuctionClosed,
+    LiveBidAccepted,
+    LiveStatus,
+    LiveWinnerSelected,
+} from './types';
 
 const bidders = ['Alice', 'Bob', 'Charlie', 'Diana'];
+
+type WinnerState = {
+    winnerId: string;
+    winningBidId?: string;
+    amount: number;
+    selectedAtUtc?: string;
+    auctionVersion: number;
+};
 
 function formatMoney(value: number | null | undefined) {
     if (value === null || value === undefined) {
@@ -184,6 +201,7 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     const [formMessage, setFormMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
     const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
     const [activity, setActivity] = useState<string[]>([]);
+    const [winner, setWinner] = useState<WinnerState | null>(null);
     const now = useNow();
 
     const refresh = () => {
@@ -194,6 +212,15 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                 setBids(bidResponse);
                 setLoadError(null);
                 setAmount(String(auctionResponse.minimumValidBid));
+                setWinner(
+                    auctionResponse.status === 'Closed' && auctionResponse.currentBidderId && auctionResponse.currentBidAmount !== null
+                        ? {
+                              winnerId: auctionResponse.currentBidderId,
+                              amount: auctionResponse.currentBidAmount,
+                              auctionVersion: auctionResponse.version,
+                          }
+                        : null,
+                );
             })
             .catch((caught) => setLoadError(caught instanceof Error ? caught.message : 'Unable to load auction.'))
             .finally(() => setLoading(false));
@@ -243,6 +270,50 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
                 setActivity((current) => [`${event.bidderId} bid ${formatMoney(event.amount)}`, ...current].slice(0, 4));
             },
+            onAuctionClosed: (event) => {
+                if (event.auctionId !== auctionId) {
+                    return;
+                }
+
+                setAuction((current) => applyAuctionClosed(current, event));
+                setFormMessage({ tone: 'error', text: 'This auction is now closed.' });
+                setActivity((current) => ['Auction closed', ...current].slice(0, 4));
+            },
+            onWinnerSelected: (event) => {
+                if (event.auctionId !== auctionId) {
+                    return;
+                }
+
+                setAuction((current) => {
+                    if (!current || event.auctionVersion < current.version) {
+                        return current;
+                    }
+
+                    return {
+                        ...current,
+                        currentBidAmount: event.amount,
+                        currentBidderId: event.winnerId,
+                        status: 'Closed',
+                        minimumValidBid: event.amount + current.minimumBidIncrement,
+                        version: Math.max(current.version, event.auctionVersion),
+                        updatedAtUtc: event.selectedAtUtc,
+                    };
+                });
+                setWinner((current) => {
+                    if (current && event.auctionVersion < current.auctionVersion) {
+                        return current;
+                    }
+
+                    return {
+                        winnerId: event.winnerId,
+                        winningBidId: event.winningBidId,
+                        amount: event.amount,
+                        selectedAtUtc: event.selectedAtUtc,
+                        auctionVersion: event.auctionVersion,
+                    };
+                });
+                setActivity((current) => [`Winner selected: ${event.winnerId}`, ...current].slice(0, 4));
+            },
         });
 
         return () => socket.disconnect();
@@ -250,11 +321,18 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
     const minimumBid = auction?.minimumValidBid ?? 0;
     const countdown = auction ? getCountdown(auction, now) : '';
+    const biddingUnavailable = !auction || auction.status !== 'Open' || countdown === 'Closed';
+    const displayedWinner =
+        winner ??
+        (auction?.status === 'Closed' && auction.currentBidderId && auction.currentBidAmount !== null
+            ? { winnerId: auction.currentBidderId, amount: auction.currentBidAmount, auctionVersion: auction.version }
+            : null);
 
     async function onSubmit(event: FormEvent) {
         event.preventDefault();
 
-        if (!auction) {
+        if (!auction || biddingUnavailable) {
+            setFormMessage({ tone: 'error', text: 'This auction is not accepting bids right now.' });
             return;
         }
 
@@ -322,10 +400,26 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         <p className="description">{auction.description}</p>
 
                         <div className="price-panel">
-                            <span>Current bid</span>
+                            <span>{auction.status === 'Closed' ? 'Final bid' : 'Current bid'}</span>
                             <strong>{formatMoney(auction.currentBidAmount ?? auction.startingPrice)}</strong>
                             <small>{auction.currentBidderId ? `Highest bidder: ${auction.currentBidderId}` : 'No accepted bidder yet'}</small>
                         </div>
+
+                        {auction.status === 'Closed' && (
+                            <section className="closed-panel" aria-label="Auction closed summary">
+                                <span>Auction closed</span>
+                                <strong>{auction.currentBidAmount === null ? 'No bids were placed.' : `Final bid ${formatMoney(auction.currentBidAmount)}`}</strong>
+                                {displayedWinner ? (
+                                    <p>
+                                        {displayedWinner.winnerId.toLowerCase() === bidderId.toLowerCase()
+                                            ? 'You won this auction.'
+                                            : `Winner: ${displayedWinner.winnerId}`}
+                                    </p>
+                                ) : (
+                                    <p>No winner was selected.</p>
+                                )}
+                            </section>
+                        )}
 
                         <dl className="detail-metrics">
                             <div>
@@ -373,7 +467,7 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                             <h2>Place bid</h2>
                             <label>
                                 Acting as
-                                <select value={bidderId} onChange={(event) => setBidderId(event.target.value)}>
+                                <select disabled={biddingUnavailable} value={bidderId} onChange={(event) => setBidderId(event.target.value)}>
                                     {bidders.map((bidder) => (
                                         <option key={bidder} value={bidder.toLowerCase()}>
                                             {bidder}
@@ -388,11 +482,12 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                     step="1"
                                     inputMode="decimal"
                                     value={amount}
+                                    disabled={biddingUnavailable}
                                     onChange={(event) => setAmount(event.target.value)}
                                 />
                             </label>
-                            <button className="primary-button" disabled={submitting} type="submit">
-                                {submitting ? 'Placing bid...' : 'Place bid'}
+                            <button className="primary-button" disabled={submitting || biddingUnavailable} type="submit">
+                                {biddingUnavailable ? 'Auction closed' : submitting ? 'Placing bid...' : 'Place bid'}
                             </button>
                             {formMessage && <p className={`form-message ${formMessage.tone}`}>{formMessage.text}</p>}
                         </form>
@@ -416,6 +511,21 @@ function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     );
 }
 
+function applyAuctionClosed(current: AuctionDetail | null, event: LiveAuctionClosed): AuctionDetail | null {
+    if (!current || event.auctionVersion < current.version) {
+        return current;
+    }
+
+    return {
+        ...current,
+        currentBidAmount: event.finalBidAmount,
+        currentBidderId: event.finalBidderId,
+        minimumValidBid: event.finalBidAmount === null ? current.minimumValidBid : event.finalBidAmount + current.minimumBidIncrement,
+        status: 'Closed',
+        version: Math.max(current.version, event.auctionVersion),
+        updatedAtUtc: event.closedAtUtc,
+    };
+}
 function describeBidError(apiError: ApiErrorResponse | null, caught: unknown) {
     if (!apiError) {
         return caught instanceof Error ? caught.message : 'Bid submission failed.';

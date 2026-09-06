@@ -1,10 +1,10 @@
 import type { Server } from "socket.io";
-import { parseBidAcceptedEnvelope, toSocketPayload } from "./events.js";
+import { parseLiveFeedEnvelope, toSocketPayload } from "./events.js";
 import { auctionRoom } from "./rooms.js";
 import type { LiveFeedStateStore } from "./redisState.js";
 
 export type ProcessResult =
-  | { action: "broadcast"; eventId: string; aggregateId: string; aggregateVersion: number }
+  | { action: "broadcast"; socketEvent: string; eventId: string; aggregateId: string; aggregateVersion: number }
   | { action: "ignored"; reason: "duplicate" | "stale"; eventId: string; aggregateId: string; aggregateVersion: number }
   | { action: "invalid"; reason: string };
 
@@ -18,7 +18,7 @@ export class LiveFeedEventProcessor {
     let envelope;
 
     try {
-      envelope = parseBidAcceptedEnvelope(body);
+      envelope = parseLiveFeedEnvelope(body);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Invalid event envelope.";
       console.warn("Dropping invalid live-feed message.", { reason: message });
@@ -28,8 +28,9 @@ export class LiveFeedEventProcessor {
     const acceptance = await this.stateStore.acceptEvent(envelope);
 
     if (acceptance.status === "duplicate" || acceptance.status === "stale") {
-      console.info("Ignoring duplicate or stale BidAccepted event.", {
+      console.info("Ignoring duplicate or stale live-feed event.", {
         eventId: envelope.eventId,
+        eventType: envelope.eventType,
         aggregateId: envelope.aggregateId,
         aggregateVersion: envelope.aggregateVersion,
         currentVersion: acceptance.previousVersion,
@@ -47,8 +48,9 @@ export class LiveFeedEventProcessor {
     }
 
     if (acceptance.status === "gap") {
-      console.warn("BidAccepted event advanced auction version with a gap.", {
+      console.warn("Live-feed event advanced auction version with a gap.", {
         eventId: envelope.eventId,
+        eventType: envelope.eventType,
         aggregateId: envelope.aggregateId,
         previousVersion: acceptance.previousVersion,
         aggregateVersion: envelope.aggregateVersion,
@@ -56,11 +58,13 @@ export class LiveFeedEventProcessor {
       });
     }
 
+    const socketEvent = socketEventName(envelope.eventType);
     const payload = toSocketPayload(envelope);
-    this.io.to(auctionRoom(payload.auctionId)).emit("bid:accepted", payload);
+    this.io.to(auctionRoom(payload.auctionId)).emit(socketEvent, payload);
 
-    console.info("Broadcast BidAccepted event.", {
+    console.info("Broadcast live-feed event.", {
       eventId: envelope.eventId,
+      eventType: envelope.eventType,
       aggregateId: envelope.aggregateId,
       aggregateVersion: envelope.aggregateVersion,
       correlationId: envelope.correlationId
@@ -68,9 +72,22 @@ export class LiveFeedEventProcessor {
 
     return {
       action: "broadcast",
+      socketEvent,
       eventId: envelope.eventId,
       aggregateId: envelope.aggregateId,
       aggregateVersion: envelope.aggregateVersion
     };
   }
+}
+
+function socketEventName(eventType: "BidAccepted" | "AuctionClosed" | "WinnerSelected"): "bid:accepted" | "auction:closed" | "winner:selected" {
+  if (eventType === "BidAccepted") {
+    return "bid:accepted";
+  }
+
+  if (eventType === "AuctionClosed") {
+    return "auction:closed";
+  }
+
+  return "winner:selected";
 }

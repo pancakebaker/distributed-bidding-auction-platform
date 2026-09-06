@@ -1,10 +1,12 @@
 import { io, type Socket } from 'socket.io-client';
-import type { LiveBidAccepted } from './types';
+import type { LiveAuctionClosed, LiveBidAccepted, LiveWinnerSelected } from './types';
 
 const liveFeedUrl = import.meta.env.VITE_LIVE_FEED_URL ?? 'http://localhost:3001';
 
 export type LiveFeedHandlers = {
     onBidAccepted: (event: LiveBidAccepted) => void;
+    onAuctionClosed: (event: LiveAuctionClosed) => void;
+    onWinnerSelected: (event: LiveWinnerSelected) => void;
     onStatus: (status: 'connected' | 'reconnecting' | 'offline') => void;
 };
 
@@ -23,6 +25,8 @@ export function connectAuctionFeed(auctionId: string, handlers: LiveFeedHandlers
     socket.on('disconnect', () => handlers.onStatus('offline'));
     socket.on('connect_error', () => handlers.onStatus('offline'));
     socket.on('bid:accepted', handlers.onBidAccepted);
+    socket.on('auction:closed', handlers.onAuctionClosed);
+    socket.on('winner:selected', handlers.onWinnerSelected);
 
     return socket;
 }

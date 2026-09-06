@@ -1,6 +1,6 @@
 # Event Catalog
 
-This catalog documents planned integration event contracts. Phase 4 publishes outbox rows to RabbitMQ, Phase 5 consumes `BidAccepted` messages in the Live Feed Service, and Phase 7 adds persisted lifecycle events for auction closure. No shared event package is introduced yet.
+This catalog documents planned integration event contracts. Phase 4 publishes outbox rows to RabbitMQ, Phase 5 consumes bid messages in the Live Feed Service, Phase 7 adds persisted lifecycle events for auction closure, and Phase 8 projects those lifecycle events to clients. No shared event package is introduced yet.
 
 ## Event Envelope
 
@@ -18,7 +18,7 @@ This catalog documents planned integration event contracts. Phase 4 publishes ou
 
 `eventId` supports idempotency by giving every consumer a stable identifier it can record and ignore if delivered again.
 
-`aggregateVersion` supports ordering and stale-event detection by identifying the version of the aggregate that produced the event. For `BidAccepted`, it equals the `Auction.Version` after the accepted bid commits.
+`aggregateVersion` supports ordering and stale-event detection by identifying the resulting version of the aggregate that produced the event. It is not a unique per-event sequence. `AuctionClosed` and `WinnerSelected` from one closure transaction can share the same aggregate version; `eventId` distinguishes the events.
 
 `correlationId` supports tracing flows across HTTP requests, outbox persistence, future RabbitMQ delivery, workers, and live fan-out. The Bidding API accepts `X-Correlation-ID`; if it is absent, the API generates a GUID.
 
@@ -136,10 +136,10 @@ A local debug queue named `auction.events.debug` may be declared and bound with 
 Delivery semantics are at-least-once. Duplicate messages are possible if the publisher crashes after RabbitMQ confirms but before PostgreSQL records `PublishedAtUtc`; consumers must be idempotent using `eventId`.
 ## Live Feed Consumer
 
-Phase 5 consumes `BidAccepted` from the durable queue `live-feed.bid-events`, bound to `auction.events` with routing key `auction.bid.accepted`.
+Phase 8 consumes `BidAccepted`, `AuctionClosed`, and `WinnerSelected` from the durable queue `live-feed.bid-events`, bound to `auction.events` with routing keys `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`.
 
-The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale observations cannot move clients backward.
+The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale lower-version observations cannot move clients backward. New same-version lifecycle sibling events are accepted when their `eventId` has not been processed.
 
 If an event version jumps forward, the service broadcasts the newer authoritative event and logs the gap. This keeps the demo simple while making it clear that RabbitMQ delivery should be treated as at-least-once, not globally perfectly ordered.
 
-The Socket.IO event emitted to subscribed clients is `bid:accepted`. Internal broker metadata and outbox publish state are not exposed to browser clients.
+The Socket.IO events emitted to subscribed clients are `bid:accepted`, `auction:closed`, and `winner:selected`. Internal broker metadata and outbox publish state are not exposed to browser clients.

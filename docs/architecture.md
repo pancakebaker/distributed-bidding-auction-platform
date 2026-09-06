@@ -5,11 +5,11 @@ This project demonstrates a distributed bidding architecture with clear service 
 
 ## Client Application
 
-The Laravel client is the browser-facing web shell. React renders the demo auction list and auction detail routes, calls the Bidding Service REST API directly, and subscribes to the Live Feed Service for `bid:accepted` projections.
+The Laravel client is the browser-facing web shell. React renders the demo auction list and auction detail routes, calls the Bidding Service REST API directly, and subscribes to the Live Feed Service for `bid:accepted`, `auction:closed`, and `winner:selected` projections.
 
 The client never decides whether a bid is valid. It submits commands to the Bidding Service, handles structured REST responses, and updates local UI state from accepted command responses. Socket.IO events are used for multi-browser convergence and live awareness.
 
-Client-side version checks protect the view from stale live events: if an incoming `auctionVersion` is not greater than the current UI version, the event is ignored. This improves UI resilience but does not make browser state authoritative.
+Client-side version checks protect the view from stale live events. Lower versions are ignored. `BidAccepted` must advance the current version, while distinct lifecycle sibling events at the same version are allowed because one closure transaction may produce both `AuctionClosed` and `WinnerSelected`. This improves UI resilience but does not make browser state authoritative.
 
 Browser countdowns are visual only. Server-side UTC validation in the Bidding Service remains the source of truth for scheduled, open, and closed auction behavior.
 ## Bidding Service Authority
@@ -100,19 +100,19 @@ For a bid-versus-close race, PostgreSQL transaction ordering decides the seriali
 
 The Live Feed Service never decides whether a bid is valid. It only broadcasts accepted events that originated from the authoritative Bidding Service and arrived through RabbitMQ.
 
-It consumes from one durable shared queue, `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`. Manual acknowledgement is used: valid messages are ACKed after validation, Redis idempotency/order checks, and Socket.IO fan-out. Malformed messages are NACKed without requeue and dead-lettered to `live-feed.bid-events.dlq`; transient processing failures are NACKed with requeue.
+It consumes from one durable shared queue, `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. Manual acknowledgement is used: valid messages are ACKed after validation, Redis idempotency/order checks, and Socket.IO fan-out. Malformed messages are NACKed without requeue and dead-lettered to `live-feed.bid-events.dlq`; transient processing failures are NACKed with requeue.
 
 Redis supports live-feed behavior, not auction authority. It powers the Socket.IO Redis adapter for multi-instance fan-out, stores short-lived event idempotency keys by `eventId`, and stores the highest observed `aggregateVersion` per auction. The version update is atomic in Redis so competing live-feed instances do not race through a naive read-then-write path.
 
-The service ignores duplicate and stale observations. If an event advances from version 42 to 44, the service accepts and broadcasts the newer authoritative state while logging the gap; it does not fabricate missing events or run a replay engine in this demo phase.
+The service ignores duplicate event IDs and stale lower-version observations. `eventId` provides event uniqueness; `aggregateVersion` represents the resulting aggregate state version. Because one aggregate transition can produce multiple events, a new `AuctionClosed v16` and a new `WinnerSelected v16` are both accepted. If an event advances from version 42 to 44, the service accepts and broadcasts the newer authoritative state while logging the gap; it does not fabricate missing events or run a replay engine in this demo phase.
 
-Socket.IO rooms are constructed server-side as `auction:{auctionId}` after validating that the client supplied a syntactically valid UUID. The frontend-facing event is `bid:accepted` with auction ID, bid ID, bidder ID, amount, auction version, occurrence time, and correlation ID.
+Socket.IO rooms are constructed server-side as `auction:{auctionId}` after validating that the client supplied a syntactically valid UUID. The frontend-facing events are `bid:accepted`, `auction:closed`, and `winner:selected`. They expose only auction-oriented payloads such as bid amount, final amount, winner, auction version, event time, and correlation ID; broker metadata stays internal.
 
 ## RabbitMQ
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
 
-RabbitMQ publishing is implemented for outbox `BidAccepted`, `AuctionClosed`, and `WinnerSelected` messages. The Live Feed Service currently consumes `BidAccepted`; lifecycle-event consumers are future work.
+RabbitMQ publishing is implemented for outbox `BidAccepted`, `AuctionClosed`, and `WinnerSelected` messages. The Live Feed Service consumes all three for real-time auction UI projection.
 
 ## Server Time
 
@@ -126,5 +126,4 @@ The bidding database is not shared directly with billing, catalog, notification,
 
 The Bidding Service owns Auction, Bid, and OutboxMessage state in PostgreSQL through EF Core and Npgsql. Money is represented with `decimal` and mapped with fixed precision. Auction validity is evaluated with server-side UTC through .NET `TimeProvider`; browser/client time is not trusted.
 
-RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid broadcasts, the Laravel/React auction UI, and automatic auction closing are implemented through Phase 7. Billing workflows, notification workflows, production authentication, payment flows, lifecycle live-feed projections, and admin auction management remain future work.
-
+RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid and lifecycle broadcasts, the Laravel/React auction UI, automatic auction closing, and real-time closed/winner UI projection are implemented through Phase 8. Billing workflows, notification workflows, production authentication, payment flows, and admin auction management remain future work.

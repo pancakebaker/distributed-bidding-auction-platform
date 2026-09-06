@@ -76,7 +76,7 @@ export class LiveFeedRabbitMqConsumer {
       console.info("Live Feed RabbitMQ consumer started.", {
         exchange: this.config.rabbitMqExchange,
         queue: this.config.rabbitMqQueue,
-        routingKey: this.config.rabbitMqRoutingKey,
+        routingKeys: this.config.rabbitMqRoutingKeys,
         prefetch: this.config.rabbitMqPrefetch
       });
     } catch (error) {
@@ -105,7 +105,9 @@ export class LiveFeedRabbitMqConsumer {
       }
     });
 
-    await channel.bindQueue(this.config.rabbitMqQueue, this.config.rabbitMqExchange, this.config.rabbitMqRoutingKey);
+    for (const routingKey of this.config.rabbitMqRoutingKeys) {
+      await channel.bindQueue(this.config.rabbitMqQueue, this.config.rabbitMqExchange, routingKey);
+    }
   }
 
   private async handleMessage(channel: Channel, message: ConsumeMessage | null): Promise<void> {

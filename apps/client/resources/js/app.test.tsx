@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from './app';
-import type { AuctionDetail, AuctionSummary, Bid, LiveBidAccepted } from './types';
+import type { AuctionDetail, AuctionSummary, Bid, LiveAuctionClosed, LiveBidAccepted, LiveWinnerSelected } from './types';
 
 const socketHandlers = new Map<string, (...args: any[]) => void>();
 const socketIoHandlers = new Map<string, (...args: any[]) => void>();
@@ -134,6 +134,13 @@ function live(event: LiveBidAccepted) {
     socketHandlers.get('bid:accepted')?.(event);
 }
 
+function liveClosed(event: LiveAuctionClosed) {
+    socketHandlers.get('auction:closed')?.(event);
+}
+
+function liveWinner(event: LiveWinnerSelected) {
+    socketHandlers.get('winner:selected')?.(event);
+}
 describe('auction UI', () => {
     beforeEach(() => {
         socketHandlers.clear();
@@ -340,6 +347,151 @@ describe('auction UI', () => {
 
         expect(await screen.findByText('Auction state changed while bidding. Refreshing latest state.')).toBeInTheDocument();
     });
+    it('auction:closed updates status and disables bidding', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        liveClosed({
+            auctionId: macBook.id,
+            closedAtUtc: new Date().toISOString(),
+            finalBidAmount: 1500,
+            finalBidderId: 'erin',
+            auctionVersion: 10,
+            correlationId: 'close-test',
+        });
+
+        expect(await screen.findByText('This auction is now closed.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
+        expect(screen.getByLabelText('Bid amount')).toBeDisabled();
+        expect(screen.getByText('Final bid $1,500')).toBeInTheDocument();
+        expect(screen.getByText('Winner: erin')).toBeInTheDocument();
+    });
+
+    it('winner:selected displays winner state for the acting bidder', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        liveWinner({
+            auctionId: macBook.id,
+            winningBidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+            winnerId: 'Alice',
+            amount: 1700,
+            selectedAtUtc: new Date().toISOString(),
+            auctionVersion: 10,
+            correlationId: 'winner-test',
+        });
+
+        expect(await screen.findByText('You won this auction.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
+        expect(screen.getByText('Final bid $1,700')).toBeInTheDocument();
+    });
+
+    it('no-bid auction close renders without waiting for a winner event', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        liveClosed({
+            auctionId: macBook.id,
+            closedAtUtc: new Date().toISOString(),
+            finalBidAmount: null,
+            finalBidderId: null,
+            auctionVersion: 10,
+            correlationId: 'no-bid-close',
+        });
+
+        expect(await screen.findByText('No bids were placed.')).toBeInTheDocument();
+        expect(screen.getByText('No winner was selected.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
+    });
+
+    it('lower-version lifecycle event is ignored', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        liveClosed({
+            auctionId: macBook.id,
+            closedAtUtc: new Date().toISOString(),
+            finalBidAmount: 1500,
+            finalBidderId: 'erin',
+            auctionVersion: 8,
+            correlationId: 'stale-close',
+        });
+
+        expect(screen.queryByText('This auction is now closed.')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Place bid' })).not.toBeDisabled();
+    });
+
+    it('same-version sibling lifecycle event is accepted', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        liveClosed({
+            auctionId: macBook.id,
+            closedAtUtc: new Date().toISOString(),
+            finalBidAmount: 1700,
+            finalBidderId: 'bob',
+            auctionVersion: 10,
+            correlationId: 'same-version',
+        });
+        liveWinner({
+            auctionId: macBook.id,
+            winningBidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+            winnerId: 'Alice',
+            amount: 1700,
+            selectedAtUtc: new Date().toISOString(),
+            auctionVersion: 10,
+            correlationId: 'same-version',
+        });
+
+        expect(await screen.findByText('You won this auction.')).toBeInTheDocument();
+        expect(screen.getByText('Winner selected: Alice')).toBeInTheDocument();
+    });
+
+    it('REST-loaded Closed auction starts with bidding disabled', async () => {
+        const closedAuction: AuctionDetail = {
+            ...macBook,
+            status: 'Closed',
+            endTimeUtc: new Date(Date.now() - 10_000).toISOString(),
+            currentBidderId: 'erin',
+            currentBidAmount: 1500,
+        };
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(closedAuction);
+            return json(auctions);
+        });
+
+        renderAt(`/auctions/${macBook.id}`);
+
+        expect(await screen.findByText('Final bid $1,500')).toBeInTheDocument();
+        expect(screen.getByText('Winner: erin')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
+        expect(screen.getAllByText('Closed').length).toBeGreaterThan(0);
+    });
+
+    it('Live Feed outage does not prevent REST Closed state from rendering', async () => {
+        const closedAuction: AuctionDetail = {
+            ...macBook,
+            status: 'Closed',
+            endTimeUtc: new Date(Date.now() - 10_000).toISOString(),
+            currentBidderId: null,
+            currentBidAmount: null,
+        };
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(closedAuction);
+            return json(auctions);
+        });
+
+        renderAt(`/auctions/${macBook.id}`);
+        socketHandlers.get('connect_error')?.();
+
+        expect(await screen.findByText('Offline')).toBeInTheDocument();
+        expect(screen.getByText('No bids were placed.')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
+    });
     it('API unavailable state renders cleanly', async () => {
         vi.mocked(fetch).mockRejectedValue(new Error('network down'));
         renderAt('/auctions');
@@ -347,6 +499,3 @@ describe('auction UI', () => {
         expect(await screen.findByText('Bidding API unavailable')).toBeInTheDocument();
     });
 });
-
-
-

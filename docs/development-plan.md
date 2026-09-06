@@ -32,11 +32,14 @@ Implemented: Laravel routes for the React app shell, auction list/detail screens
 
 Implemented: separate .NET scheduler worker, server-UTC closure checks, PostgreSQL `FOR UPDATE SKIP LOCKED` row claiming, atomic auction close plus lifecycle outbox transaction, no-bid closure handling, `AuctionClosed` and `WinnerSelected` event payloads, duplicate-pass protection, and PostgreSQL-backed scheduler tests.
 
-## Phase 8: Billing and notification workers
+## Phase 8: Real-time auction lifecycle
 
-Add idempotent worker flows for payment and notification events, and optionally project lifecycle events into the live UI.
+Implemented: Live Feed Service consumption for `AuctionClosed` and `WinnerSelected`, same-version sibling event handling, Socket.IO `auction:closed` and `winner:selected` broadcasts, React closed/winner UI state, no-bid closure display, and REST reconciliation for missed live lifecycle events.
 
-## Phase 9: Integration/demo scenarios, tests, documentation, cleanup, GitHub presentation
+## Phase 9: Billing and notification workers
+
+Add idempotent worker flows for payment and notification events.
+
+## Phase 10: Integration/demo scenarios, tests, documentation, cleanup, GitHub presentation
 
 Create repeatable demos, polish documentation, prepare diagrams, and shape the repository for a strong GitHub portfolio presentation.
-

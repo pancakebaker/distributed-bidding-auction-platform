@@ -60,3 +60,21 @@ export type LiveBidAccepted = {
 };
 
 export type LiveStatus = 'connecting' | 'connected' | 'reconnecting' | 'offline';
+export type LiveAuctionClosed = {
+    auctionId: string;
+    closedAtUtc: string;
+    finalBidAmount: number | null;
+    finalBidderId: string | null;
+    auctionVersion: number;
+    correlationId: string | null;
+};
+
+export type LiveWinnerSelected = {
+    auctionId: string;
+    winningBidId: string;
+    winnerId: string;
+    amount: number;
+    selectedAtUtc: string;
+    auctionVersion: number;
+    correlationId: string | null;
+};

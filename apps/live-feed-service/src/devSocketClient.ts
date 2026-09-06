@@ -28,7 +28,15 @@ socket.on("connect", () => {
 });
 
 socket.on("bid:accepted", (payload) => {
-  console.log(JSON.stringify(payload, null, 2));
+  console.log("bid:accepted", JSON.stringify(payload, null, 2));
+});
+
+socket.on("auction:closed", (payload) => {
+  console.log("auction:closed", JSON.stringify(payload, null, 2));
+});
+
+socket.on("winner:selected", (payload) => {
+  console.log("winner:selected", JSON.stringify(payload, null, 2));
 });
 
 socket.on("subscription:error", (payload) => {

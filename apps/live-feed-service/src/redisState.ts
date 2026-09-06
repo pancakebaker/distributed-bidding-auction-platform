@@ -1,8 +1,8 @@
 import type { RedisClientType } from "redis";
-import type { BidAcceptedEnvelope } from "./events.js";
+import type { LiveFeedEnvelope } from "./events.js";
 
 export type EventAcceptanceResult = {
-  status: "accepted" | "duplicate" | "stale" | "gap";
+  status: "accepted" | "duplicate" | "stale" | "same-version" | "gap";
   previousVersion: number | null;
 };
 
@@ -17,15 +17,22 @@ if redis.call('EXISTS', processedKey) == 1 then
   return {'duplicate', currentVersion or ''}
 end
 
-redis.call('SET', processedKey, '1', 'EX', ttlSeconds)
-
 local currentVersion = redis.call('GET', versionKey)
-if currentVersion and tonumber(currentVersion) >= incomingVersion then
+local numericCurrentVersion = currentVersion and tonumber(currentVersion) or nil
+
+if numericCurrentVersion and incomingVersion < numericCurrentVersion then
+  redis.call('SET', processedKey, '1', 'EX', ttlSeconds)
   return {'stale', currentVersion}
 end
 
+redis.call('SET', processedKey, '1', 'EX', ttlSeconds)
+
+if numericCurrentVersion and incomingVersion == numericCurrentVersion then
+  return {'same-version', currentVersion}
+end
+
 local status = 'accepted'
-if currentVersion and incomingVersion > tonumber(currentVersion) + 1 then
+if numericCurrentVersion and incomingVersion > numericCurrentVersion + 1 then
   status = 'gap'
 end
 
@@ -39,7 +46,7 @@ export class LiveFeedStateStore {
     private readonly idempotencyTtlSeconds: number
   ) {}
 
-  public async acceptEvent(envelope: BidAcceptedEnvelope): Promise<EventAcceptanceResult> {
+  public async acceptEvent(envelope: LiveFeedEnvelope): Promise<EventAcceptanceResult> {
     const processedKey = this.processedEventKey(envelope.eventId);
     const versionKey = this.auctionVersionKey(envelope.aggregateId);
 
@@ -50,7 +57,7 @@ export class LiveFeedStateStore {
 
     const previousVersion = result[1] ? Number(result[1]) : null;
 
-    if (!["accepted", "duplicate", "stale", "gap"].includes(result[0])) {
+    if (!["accepted", "duplicate", "stale", "same-version", "gap"].includes(result[0])) {
       throw new Error(`Unexpected Redis event acceptance status: ${result[0]}`);
     }
 

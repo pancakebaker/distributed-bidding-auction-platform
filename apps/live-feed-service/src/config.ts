@@ -6,6 +6,7 @@ export type LiveFeedConfig = {
   rabbitMqExchange: string;
   rabbitMqQueue: string;
   rabbitMqRoutingKey: string;
+  rabbitMqRoutingKeys: string[];
   rabbitMqPrefetch: number;
   rabbitMqDeadLetterExchange: string;
   rabbitMqDeadLetterQueue: string;
@@ -26,6 +27,15 @@ function numberFromEnv(name: string, fallback: number): number {
   }
 
   return parsed;
+}
+
+function routingKeysFromEnv(): string[] {
+  const raw = process.env.LIVE_FEED_RABBITMQ_ROUTING_KEYS ?? process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY;
+  if (!raw) {
+    return ["auction.bid.accepted", "auction.closed", "auction.winner.selected"];
+  }
+
+  return raw.split(",").map((key) => key.trim()).filter(Boolean);
 }
 
 function rabbitMqUrlFromEnv(): string {
@@ -51,6 +61,7 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     rabbitMqExchange: process.env.RABBITMQ_EXCHANGE ?? "auction.events",
     rabbitMqQueue: process.env.LIVE_FEED_RABBITMQ_QUEUE ?? "live-feed.bid-events",
     rabbitMqRoutingKey: process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY ?? "auction.bid.accepted",
+    rabbitMqRoutingKeys: routingKeysFromEnv(),
     rabbitMqPrefetch: numberFromEnv("LIVE_FEED_RABBITMQ_PREFETCH", 10),
     rabbitMqDeadLetterExchange: process.env.LIVE_FEED_RABBITMQ_DLX ?? "live-feed.dead-letter",
     rabbitMqDeadLetterQueue: process.env.LIVE_FEED_RABBITMQ_DLQ ?? "live-feed.bid-events.dlq",
