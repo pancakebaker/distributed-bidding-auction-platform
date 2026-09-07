@@ -35,6 +35,7 @@ Auctions close using server-side UTC, with `AuctionClosed` and `WinnerSelected` 
 - automatic server-authoritative auction closure
 - REST reconciliation when live projections are missed
 - failure/retry behavior across service boundaries
+- Laravel-owned admin, CMS, audit, cache, queue, scheduler, notification preference, and export workflows without taking bidding authority
 
 ## Architecture
 
@@ -101,6 +102,15 @@ npm ci --prefix apps/client
 composer install --working-dir=apps/client
 ```
 
+
+For local admin/CMS demo data, prepare the Laravel client database from `apps/client`:
+
+```powershell
+php artisan migrate
+php artisan db:seed
+```
+
+This creates a demo admin and published CMS Pages/FAQs for local manual testing. The full client notes are in [docs/client/README.md](docs/client/README.md).
 Start the full demo stack in separate PowerShell windows:
 
 ```powershell
@@ -157,6 +167,8 @@ scripts\reset-demo.ps1 -ClosedScreenshot
 
 A more interview-friendly walkthrough lives in [docs/demo-walkthrough.md](docs/demo-walkthrough.md).
 
+Client-side admin, CMS, queue, notification, export, and React/Vite architecture notes start at [docs/client/README.md](docs/client/README.md).
+
 ## Failure Scenarios
 
 Tested and documented scenarios include concurrent bids, stale bids, RabbitMQ outages, duplicate events, stale aggregate versions, live-feed outage, competing scheduler instances, and bid-after-close rejection.
@@ -173,7 +185,7 @@ Current automated test coverage by component:
 | Outbox Publisher | 7 | PostgreSQL claiming, RabbitMQ publishing, confirms, failure/recovery |
 | Auction Scheduler | 6 | closure, winner selection, locking, rollback, duplicate-pass prevention |
 | Live Feed Service | 7 | RabbitMQ consumption, Redis dedupe/versioning, lifecycle events, DLQ behavior |
-| Client | 19 | auction UI, bid form/errors, live bid updates, closed/winner state |
+| Client | 60 Laravel tests + 32 Vitest tests | admin authorization, CMS, audit/cache/events, queues/scheduled publishing/exports/notifications, React auction/admin/CMS UI |
 
 Run all .NET tests from the root solution:
 
@@ -250,7 +262,7 @@ scripts/
 
 ## Current Scope
 
-Implemented through Phase 9 hardening:
+Implemented through the final Laravel/React client expansion audit:
 
 - functional infrastructure and monorepo foundation
 - authoritative bidding API with optimistic concurrency
