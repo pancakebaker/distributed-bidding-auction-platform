@@ -2,7 +2,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from './app';
+import { AuctionApp as App } from './app/AuctionApp';
 import type {
     AuctionDetail,
     AuctionSummary,
@@ -363,6 +363,14 @@ describe('auction UI', () => {
         expect(emitMock).toHaveBeenCalledWith('auction:subscribe', macBook.id);
     });
 
+    it('disconnects the live feed subscription when the auction detail unmounts', async () => {
+        const rendered = renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        rendered.unmount();
+
+        expect(disconnectMock).toHaveBeenCalledTimes(1);
+    });
     it('auction concurrency conflict displays refresh guidance', async () => {
         vi.mocked(fetch).mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
             const url = String(input);
