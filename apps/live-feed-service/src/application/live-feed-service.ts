@@ -8,12 +8,14 @@ import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
 import type { RedisClientType } from 'redis';
-import type { LiveFeedConfig } from './config.js';
-import { loadConfig } from './config.js';
-import { LiveFeedEventProcessor } from './processor.js';
-import { LiveFeedRabbitMqConsumer } from './rabbitMqConsumer.js';
-import { auctionRoom, parseAuctionSubscription } from './rooms.js';
-import { LiveFeedStateStore } from './redisState.js';
+import type { LiveFeedConfig } from '../config/config.js';
+import { loadConfig } from '../config/config.js';
+import { LiveFeedEventProcessor } from './processors/live-feed-event-processor.js';
+import { LiveFeedRabbitMqConsumer } from '../infrastructure/messaging/rabbitmq-consumer.js';
+import { auctionRoom, parseAuctionSubscription } from '../transport/websocket/rooms.js';
+import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
+import { EventLoopMonitor } from '../infrastructure/runtime/event-loop-monitor.js';
+import { getProcessMetrics } from '../infrastructure/runtime/process-metrics.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -53,6 +55,20 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const stateStore = new LiveFeedStateStore(redis, config.idempotencyTtlSeconds);
   const processor = new LiveFeedEventProcessor(io, stateStore);
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
+  const eventLoopMonitor = new EventLoopMonitor();
+
+  app.get('/diagnostics/runtime', (_request, response) => {
+    const processMetrics = getProcessMetrics();
+    response.json({
+      service: 'live-feed-service',
+      runtime: {
+        nodeVersion: processMetrics.nodeVersion,
+        uptimeSeconds: processMetrics.uptimeSeconds,
+      },
+      memory: processMetrics.memory,
+      eventLoop: eventLoopMonitor.snapshot(),
+    });
+  });
 
   app.get('/health', (_request, response) => {
     response.json({
@@ -106,6 +122,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
 
   return {
     async start() {
+      eventLoopMonitor.start();
       await Promise.all([redis.connect(), redisPub.connect(), redisSub.connect()]);
       io.adapter(createAdapter(redisPub, redisSub));
       await new Promise<void>((resolve) => {
@@ -116,6 +133,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     },
     async stop() {
       await consumer.stop();
+      eventLoopMonitor.stop();
       await new Promise<void>((resolve) => {
         void io.close(() => resolve());
       });

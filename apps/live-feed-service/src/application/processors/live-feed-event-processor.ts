@@ -2,9 +2,9 @@
  * Live-feed event processor that validates broker messages and broadcasts accepted events to auction rooms.
  */
 import type { Server } from 'socket.io';
-import { parseLiveFeedEnvelope, toSocketPayload } from './events.js';
-import { auctionRoom } from './rooms.js';
-import type { LiveFeedStateStore } from './redisState.js';
+import { parseLiveFeedEnvelope, toSocketPayload } from '../../domain/events.js';
+import { auctionRoom } from '../../transport/websocket/rooms.js';
+import type { LiveFeedStateStore } from '../../infrastructure/cache/redis-state.js';
 
 /**
  * Result of handling a broker message, used by the RabbitMQ consumer to ACK, ignore, or dead-letter.

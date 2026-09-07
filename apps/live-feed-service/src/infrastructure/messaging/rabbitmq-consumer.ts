@@ -3,8 +3,8 @@
  */
 import amqp from 'amqplib';
 import type { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
-import type { LiveFeedConfig } from './config.js';
-import type { LiveFeedEventProcessor } from './processor.js';
+import type { LiveFeedConfig } from '../../config/config.js';
+import type { LiveFeedEventProcessor } from '../../application/processors/live-feed-event-processor.js';
 
 /**
  * Owns the live-feed RabbitMQ queue, bindings, reconnect loop, and ACK/NACK behavior.

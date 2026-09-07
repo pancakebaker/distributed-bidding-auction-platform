@@ -1,7 +1,7 @@
 /**
  * Process entrypoint that starts the live-feed service and handles shutdown signals.
  */
-import { createLiveFeedService } from './service.js';
+import { createLiveFeedService } from './application/live-feed-service.js';
 
 const service = createLiveFeedService();
 

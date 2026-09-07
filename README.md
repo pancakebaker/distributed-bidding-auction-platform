@@ -122,6 +122,7 @@ Open:
 - Client: http://localhost:8000/auctions
 - Bidding API Swagger: http://localhost:5000/swagger
 - Live Feed health: http://localhost:3001/health
+- Live Feed runtime diagnostics: http://localhost:3001/diagnostics/runtime
 - RabbitMQ management: http://localhost:15672
 
 Stop local app/worker processes:
@@ -230,6 +231,12 @@ apps/
   bidding-service.Tests/    PostgreSQL-backed API/domain tests
   client/                   Laravel + React + Vite demo UI
   live-feed-service/        Node.js/TypeScript RabbitMQ + Redis + Socket.IO service
+    src/application/       composition and event processing
+    src/domain/            event contracts and validation
+    src/infrastructure/    Redis, RabbitMQ, and runtime integrations
+    src/transport/         Socket.IO transport helpers
+    scripts/               development-only utilities
+    tests/                 integration and runtime unit tests
 workers/
   auction-scheduler/        .NET worker that closes expired auctions
   auction-scheduler.Tests/  PostgreSQL-backed scheduler tests

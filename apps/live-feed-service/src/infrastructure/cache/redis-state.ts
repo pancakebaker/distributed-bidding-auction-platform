@@ -2,7 +2,7 @@
  * Redis-backed idempotency and aggregate-version state for live-feed event processing.
  */
 import type { RedisClientType } from 'redis';
-import type { LiveFeedEnvelope } from './events.js';
+import type { LiveFeedEnvelope } from '../../domain/events.js';
 
 const EVENT_ACCEPTANCE_STATUSES = ['accepted', 'duplicate', 'stale', 'same-version', 'gap'] as const;
 

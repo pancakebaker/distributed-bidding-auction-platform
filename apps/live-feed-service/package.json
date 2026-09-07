@@ -7,13 +7,13 @@
     "build": "tsc",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
-    "test": "node --import tsx --test src/**/*.test.ts",
-    "watch:auction": "tsx src/devSocketClient.ts",
+    "test": "node --import tsx --test tests/**/*.test.ts",
+    "watch:auction": "tsx scripts/dev-socket-client.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src/**/*.ts",
-    "lint:fix": "eslint src/**/*.ts --fix",
-    "format": "prettier src/**/*.ts --write",
-    "format:check": "prettier src/**/*.ts --check"
+    "lint": "eslint src/**/*.ts tests/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts tests/**/*.ts --fix",
+    "format": "prettier src/**/*.ts tests/**/*.ts scripts/**/*.ts --write",
+    "format:check": "prettier src/**/*.ts tests/**/*.ts scripts/**/*.ts --check"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",

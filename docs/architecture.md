@@ -107,6 +107,31 @@ Redis supports live-feed behavior, not auction authority. It powers the Socket.I
 The service ignores duplicate event IDs and stale lower-version observations. `eventId` provides event uniqueness; `aggregateVersion` represents the resulting aggregate state version. Because one aggregate transition can produce multiple events, a new `AuctionClosed v16` and a new `WinnerSelected v16` are both accepted. If an event advances from version 42 to 44, the service accepts and broadcasts the newer authoritative state while logging the gap; it does not fabricate missing events or run a replay engine in this demo phase.
 
 Socket.IO rooms are constructed server-side as `auction:{auctionId}` after validating that the client supplied a syntactically valid UUID. The frontend-facing events are `bid:accepted`, `auction:closed`, and `winner:selected`. They expose only auction-oriented payloads such as bid amount, final amount, winner, auction version, event time, and correlation ID; broker metadata stays internal.
+### Live Feed Node Phase 1 structure and runtime diagnostics
+
+The Node live-feed source is organized by its current responsibilities rather than by speculative abstractions:
+
+```text
+apps/live-feed-service/
+  src/
+    application/                 composition and event processing
+    config/                      environment-backed configuration
+    domain/                      event contracts and validation
+    infrastructure/cache/        Redis state integration
+    infrastructure/messaging/    RabbitMQ integration
+    infrastructure/runtime/      event-loop and process diagnostics
+    transport/websocket/         Socket.IO room/subscription helpers
+    index.ts                     executable bootstrap
+  scripts/                       development-only Socket.IO observer
+  tests/integration/             RabbitMQ/Redis live-feed behavior tests
+  tests/unit/                    runtime diagnostic tests
+```
+
+`GET /diagnostics/runtime` is a read-only, observational endpoint. It reports Node version, process uptime, selected `process.memoryUsage()` categories (`rss`, `heapTotal`, `heapUsed`, `external`, and `arrayBuffers`, all in bytes), event-loop utilization, and event-loop delay percentiles normalized from nanoseconds to milliseconds. It does not read or modify auction state, Redis state, RabbitMQ messages, or Socket.IO rooms. `/health` remains unchanged.
+
+Node JavaScript runs primarily on the event-loop thread. Async I/O allows the process to await external work, but JavaScript execution itself is not automatically multithreaded. Event-loop delay indicates blocked or overloaded JavaScript execution; CPU-heavy work must not block that thread. Worker Threads are reserved for a later phase and are not implemented here. Cluster, Child Processes, streaming exports, SSR, PostgreSQL, and BFF behavior are also outside this phase.
+
+The runtime monitor starts and stops explicitly with the service, has no import-time side effects, and does not continuously log or poll. V8/process memory categories are diagnostic observations only. The Bidding Service remains authoritative for bid acceptance/rejection, auction state, lifecycle transitions, and aggregate-version assignment; the Node service remains a downstream RabbitMQ/Redis/Socket.IO projection and fan-out service.
 
 ## RabbitMQ
 

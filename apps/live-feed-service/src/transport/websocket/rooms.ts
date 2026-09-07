@@ -1,7 +1,7 @@
 /**
  * Socket.IO room naming and subscription validation for auction-specific live updates.
  */
-import { isUuid } from './events.js';
+import { isUuid } from '../../domain/events.js';
 
 /**
  * Builds the server-owned Socket.IO room name for a validated auction identifier.

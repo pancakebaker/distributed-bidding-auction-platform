@@ -7,7 +7,7 @@ import { io as createSocketClient } from 'socket.io-client';
 import type { Socket } from 'socket.io-client';
 import { createClient } from 'redis';
 import type { RedisClientType } from 'redis';
-import { createLiveFeedService } from './service.js';
+import { createLiveFeedService } from '../../src/application/live-feed-service.js';
 import type {
   AuctionClosedEnvelope,
   AuctionClosedSocketPayload,
@@ -15,8 +15,8 @@ import type {
   BidAcceptedSocketPayload,
   WinnerSelectedEnvelope,
   WinnerSelectedSocketPayload,
-} from './events.js';
-import type { LiveFeedConfig } from './config.js';
+} from '../../src/domain/events.js';
+import type { LiveFeedConfig } from '../../src/config/config.js';
 
 const rabbitMqUrl = process.env.RABBITMQ_URL ?? 'amqp://auction:change_me_in_local_env@localhost:5672';
 const redisUrl = process.env.LIVE_FEED_TEST_REDIS_URL ?? 'redis://localhost:6379/1';
@@ -468,6 +468,31 @@ void test('duplicate eventId is ignored regardless of version', async () => {
     assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
   } finally {
     client.disconnect();
+    await cleanup(context);
+  }
+});
+
+void test('runtime diagnostics are read-only and expose expected sections', async () => {
+  const context = await createContext();
+
+  try {
+    const response = await fetch(`${context.service.url()}/diagnostics/runtime`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as {
+      service: string;
+      runtime: { nodeVersion: string; uptimeSeconds: number };
+      memory: Record<string, number>;
+      eventLoop: { utilization: number; delayMs: Record<string, number> };
+    };
+
+    assert.equal(body.service, 'live-feed-service');
+    assert.equal(typeof body.runtime.nodeVersion, 'string');
+    assert.ok(body.runtime.uptimeSeconds >= 0);
+    assert.ok(body.memory.heapUsed >= 0);
+    assert.ok(body.eventLoop.utilization >= 0);
+    assert.ok(body.eventLoop.delayMs.p95 >= 0);
+    assert.equal('env' in body, false);
+  } finally {
     await cleanup(context);
   }
 });
