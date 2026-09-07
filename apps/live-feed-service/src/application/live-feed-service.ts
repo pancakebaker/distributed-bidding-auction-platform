@@ -16,6 +16,7 @@ import { auctionRoom, parseAuctionSubscription } from '../transport/websocket/ro
 import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
 import { EventLoopMonitor } from '../infrastructure/runtime/event-loop-monitor.js';
 import { getProcessMetrics } from '../infrastructure/runtime/process-metrics.js';
+import { getContext, runWithContext } from '../infrastructure/runtime/async-context.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -57,6 +58,12 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
   const eventLoopMonitor = new EventLoopMonitor();
 
+  app.use((request, _response, next) => {
+    const requestId = request.get('x-request-id') ?? undefined;
+    const correlationId = request.get('x-correlation-id') ?? requestId;
+    runWithContext({ requestId, correlationId }, next);
+  });
+
   app.get('/diagnostics/runtime', (_request, response) => {
     const processMetrics = getProcessMetrics();
     response.json({
@@ -67,6 +74,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
       },
       memory: processMetrics.memory,
       eventLoop: eventLoopMonitor.snapshot(),
+      requestContext: getContext(),
     });
   });
 

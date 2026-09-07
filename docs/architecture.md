@@ -133,6 +133,29 @@ Node JavaScript runs primarily on the event-loop thread. Async I/O allows the pr
 
 The runtime monitor starts and stops explicitly with the service, has no import-time side effects, and does not continuously log or poll. V8/process memory categories are diagnostic observations only. The Bidding Service remains authoritative for bid acceptance/rejection, auction state, lifecycle transitions, and aggregate-version assignment; the Node service remains a downstream RabbitMQ/Redis/Socket.IO projection and fan-out service.
 
+### Live Feed Node Phase 2 asynchronous context tracking
+
+The live-feed service uses Node's built-in `AsyncLocalStorage` to attach observational metadata to one HTTP request or RabbitMQ delivery without manually threading correlation fields through every asynchronous method. The context may contain `requestId`, `correlationId`, `eventId`, and `auctionId`.
+
+HTTP requests are scoped in Express middleware. An incoming `x-correlation-id` is preserved, and an optional `x-request-id` is tracked when supplied; no competing request-ID generator is introduced. The existing `/health` contract is unchanged. The runtime diagnostics response may include the safe, additive `requestContext` fields.
+
+RabbitMQ deliveries are scoped after parsing the existing event envelope:
+
+```text
+RabbitMQ Event
+↓
+AsyncLocalStorage context
+↓
+Processor
+↓
+Redis
+↓
+Socket.IO
+```
+
+AsyncLocalStorage context propagates through Promise/await continuations and standard asynchronous resources. Each request or message receives an isolated scope, so concurrent operations cannot cross-contaminate correlation metadata. Missing or malformed correlation metadata produces an empty/partial observational context and never changes validation, Redis acceptance, ACK/NACK, retry, DLQ, ordering, or client output behavior.
+
+Context is not application state and is never used as a source of auction correctness. The Bidding Service remains authoritative, and event contracts remain unchanged. Existing direct console logging was intentionally not redesigned in this phase; `getContext()` is available for a later focused logging integration.
 ## RabbitMQ
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.

@@ -5,6 +5,9 @@ import amqp from 'amqplib';
 import type { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
 import type { LiveFeedConfig } from '../../config/config.js';
 import type { LiveFeedEventProcessor } from '../../application/processors/live-feed-event-processor.js';
+import { parseLiveFeedEnvelope } from '../../domain/events.js';
+import type { AsyncContext } from '../runtime/async-context.js';
+import { runWithContext } from '../runtime/async-context.js';
 
 /**
  * Owns the live-feed RabbitMQ queue, bindings, reconnect loop, and ACK/NACK behavior.
@@ -130,22 +133,23 @@ export class LiveFeedRabbitMqConsumer {
       return;
     }
 
-    try {
-      const result = await this.processor.process(message.content);
+    await runWithContext(contextFromMessage(message.content), async () => {
+      try {
+        const result = await this.processor.process(message.content);
 
-      if (result.action === 'invalid') {
-        channel.nack(message, false, false);
-        return;
+        if (result.action === 'invalid') {
+          channel.nack(message, false, false);
+          return;
+        }
+
+        channel.ack(message);
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : 'Live-feed processing failed.';
+        console.warn('Transient live-feed processing failure; message will be requeued.', { message: messageText });
+        channel.nack(message, false, true);
       }
-
-      channel.ack(message);
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : 'Live-feed processing failed.';
-      console.warn('Transient live-feed processing failure; message will be requeued.', { message: messageText });
-      channel.nack(message, false, true);
-    }
+    });
   }
-
   private scheduleReconnect(): void {
     if (this.stopped || this.reconnectTimer) {
       return;
@@ -155,5 +159,18 @@ export class LiveFeedRabbitMqConsumer {
       this.reconnectTimer = null;
       void this.connect();
     }, 2000);
+  }
+}
+
+function contextFromMessage(body: Buffer): AsyncContext {
+  try {
+    const envelope = parseLiveFeedEnvelope(body);
+    return {
+      correlationId: envelope.correlationId ?? undefined,
+      eventId: envelope.eventId,
+      auctionId: envelope.payload.auctionId,
+    };
+  } catch {
+    return {};
   }
 }

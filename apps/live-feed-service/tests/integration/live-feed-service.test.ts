@@ -476,13 +476,16 @@ void test('runtime diagnostics are read-only and expose expected sections', asyn
   const context = await createContext();
 
   try {
-    const response = await fetch(`${context.service.url()}/diagnostics/runtime`);
+    const response = await fetch(`${context.service.url()}/diagnostics/runtime`, {
+      headers: { 'x-correlation-id': 'http-correlation-a' },
+    });
     assert.equal(response.status, 200);
     const body = (await response.json()) as {
       service: string;
       runtime: { nodeVersion: string; uptimeSeconds: number };
       memory: Record<string, number>;
       eventLoop: { utilization: number; delayMs: Record<string, number> };
+      requestContext: { correlationId?: string; requestId?: string };
     };
 
     assert.equal(body.service, 'live-feed-service');
@@ -491,6 +494,13 @@ void test('runtime diagnostics are read-only and expose expected sections', asyn
     assert.ok(body.memory.heapUsed >= 0);
     assert.ok(body.eventLoop.utilization >= 0);
     assert.ok(body.eventLoop.delayMs.p95 >= 0);
+    assert.equal(body.requestContext.correlationId, 'http-correlation-a');
+
+    const secondResponse = await fetch(`${context.service.url()}/diagnostics/runtime`, {
+      headers: { 'x-correlation-id': 'http-correlation-b' },
+    });
+    const secondBody = (await secondResponse.json()) as { requestContext: { correlationId?: string } };
+    assert.equal(secondBody.requestContext.correlationId, 'http-correlation-b');
     assert.equal('env' in body, false);
   } finally {
     await cleanup(context);
