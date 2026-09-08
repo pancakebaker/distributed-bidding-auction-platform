@@ -14,6 +14,7 @@ import { LiveFeedEventProcessor } from './processors/live-feed-event-processor.j
 import { LiveFeedRabbitMqConsumer } from '../infrastructure/messaging/rabbitmq-consumer.js';
 import { auctionRoom, parseAuctionSubscription } from '../transport/websocket/rooms.js';
 import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
+import { SocketIoLiveFeedPublisher } from '../transport/websocket/socketio-live-feed-publisher.js';
 import { EventLoopMonitor } from '../infrastructure/runtime/event-loop-monitor.js';
 import { getProcessMetrics } from '../infrastructure/runtime/process-metrics.js';
 import { getContext, runWithContext } from '../infrastructure/runtime/async-context.js';
@@ -57,7 +58,8 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const redisPub = redis.duplicate() as RedisClientType;
   const redisSub = redis.duplicate() as RedisClientType;
   const stateStore = new LiveFeedStateStore(redis, config.idempotencyTtlSeconds);
-  const processor = new LiveFeedEventProcessor(io, stateStore);
+  const publisher = new SocketIoLiveFeedPublisher(io);
+  const processor = new LiveFeedEventProcessor(publisher, stateStore);
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
   const eventLoopMonitor = new EventLoopMonitor();
 

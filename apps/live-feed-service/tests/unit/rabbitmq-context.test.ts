@@ -6,6 +6,7 @@ import type {
   LiveFeedEventProcessor,
   ProcessResult,
 } from '../../src/application/processors/live-feed-event-processor.js';
+import type { LiveFeedEnvelope } from '../../src/domain/events.js';
 import { loadConfig } from '../../src/config/config.js';
 import { LiveFeedRabbitMqConsumer } from '../../src/infrastructure/messaging/rabbitmq-consumer.js';
 import { getContext, getContextValue } from '../../src/infrastructure/runtime/async-context.js';
@@ -49,7 +50,7 @@ void test('RabbitMQ deliveries receive isolated event context without changing A
     auctionId: string | undefined;
   }> = [];
   const processor = {
-    async process(body: Buffer): Promise<ProcessResult> {
+    async process(envelope: LiveFeedEnvelope): Promise<ProcessResult> {
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
       const context = getContext();
       observed.push({
@@ -57,17 +58,12 @@ void test('RabbitMQ deliveries receive isolated event context without changing A
         eventId: context?.eventId,
         auctionId: context?.auctionId,
       });
-      const parsed = JSON.parse(body.toString('utf8')) as {
-        eventId: string;
-        aggregateId: string;
-        aggregateVersion: number;
-      };
       return {
         action: 'broadcast',
         socketEvent: 'bid:accepted',
-        eventId: parsed.eventId,
-        aggregateId: parsed.aggregateId,
-        aggregateVersion: parsed.aggregateVersion,
+        eventId: envelope.eventId,
+        aggregateId: envelope.aggregateId,
+        aggregateVersion: envelope.aggregateVersion,
       };
     },
   } as unknown as LiveFeedEventProcessor;

@@ -181,6 +181,32 @@ RabbitMQ cancellation stops new deliveries where the client permits it; already-
 `unhandledRejection` and `uncaughtException` are treated as fatal process conditions. The lifecycle manager records a concise diagnostic, sets a non-zero exit intent, and invokes the same graceful shutdown path once. The service does not attempt to continue normal operation after an uncaught exception. Ordinary signal shutdown does not set a failure exit code.
 
 AsyncLocalStorage and runtime diagnostics remain observational only. Shutdown does not mutate auction state, alter Redis version guards, change broker topology, or change Socket.IO contracts. The Bidding Service remains authoritative for all auction and bidding correctness decisions.
+### Live Feed Node Phase 4 framework-agnostic boundaries
+
+The live-feed composition root still owns framework-specific wiring, but the core event processor now depends on two narrow application ports:
+
+- `LiveStateStore` decides idempotency and aggregate-version outcomes.
+- `LiveFeedPublisher` publishes an already-shaped client update.
+
+The dependency direction is:
+
+```text
+RabbitMQ adapter
+    ↓ validated domain event
+Application event processor
+    ↓ LiveStateStore port
+Redis state adapter
+
+Application event processor
+    ↓ LiveFeedPublisher port
+Socket.IO publisher adapter
+```
+
+The RabbitMQ adapter parses the existing envelope, seeds AsyncLocalStorage, invokes the processor, and retains all existing ACK/NACK decisions. The Redis adapter retains the Lua script, keys, serialization, TTL, and stale-version behavior. The Socket.IO adapter retains the `auction:{auctionId}` room names, browser event names, and payload shapes. Express remains a transport/composition concern for routes, middleware, error handling, and runtime endpoints.
+
+Because the processor accepts validated domain events and narrow ports, it can be tested with small in-memory fakes without Express, RabbitMQ, Redis, or Socket.IO objects. These ports are intentionally use-case-specific rather than a generic repository or message-bus abstraction. The framework-specific composition and lifecycle code remains in the composition root by design; this phase does not claim complete framework independence.
+
+This refactor changes dependency direction only. The Bidding Service remains authoritative, event contracts are unchanged, and Node remains a downstream projection/fan-out service. Redis stale-version semantics, RabbitMQ topology and ACK/NACK behavior, Socket.IO subscriptions, and HTTP contracts are unchanged.
 ## RabbitMQ
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.

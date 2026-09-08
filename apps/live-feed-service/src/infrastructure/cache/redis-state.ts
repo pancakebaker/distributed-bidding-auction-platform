@@ -3,21 +3,11 @@
  */
 import type { RedisClientType } from 'redis';
 import type { LiveFeedEnvelope } from '../../domain/events.js';
-
-const EVENT_ACCEPTANCE_STATUSES = ['accepted', 'duplicate', 'stale', 'same-version', 'gap'] as const;
-
-/**
- * Decision returned by Redis when a live-feed event is checked for duplication and ordering.
- */
-export type EventAcceptanceStatus = (typeof EVENT_ACCEPTANCE_STATUSES)[number];
-
-/**
- * Redis acceptance result with the previously observed auction version when available.
- */
-export type EventAcceptanceResult = {
-  status: EventAcceptanceStatus;
-  previousVersion: number | null;
-};
+import type {
+  EventAcceptanceResult,
+  EventAcceptanceStatus,
+  LiveStateStore,
+} from '../../application/ports/live-state-store.js';
 
 const acceptEventScript = `
 local processedKey = KEYS[1]
@@ -61,7 +51,7 @@ return {status, currentVersion or ''}
 /**
  * Stores processed event IDs and highest auction versions in Redis using one atomic script.
  */
-export class LiveFeedStateStore {
+export class LiveFeedStateStore implements LiveStateStore {
   public constructor(
     private readonly redis: RedisClientType,
     private readonly idempotencyTtlSeconds: number,
@@ -117,6 +107,6 @@ export class LiveFeedStateStore {
   }
 
   private isAcceptanceStatus(value: string): value is EventAcceptanceStatus {
-    return EVENT_ACCEPTANCE_STATUSES.includes(value as EventAcceptanceStatus);
+    return ['accepted', 'duplicate', 'stale', 'same-version', 'gap'].includes(value);
   }
 }

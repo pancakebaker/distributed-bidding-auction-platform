@@ -1,42 +1,37 @@
 /**
- * Live-feed event processor that validates broker messages and broadcasts accepted events to auction rooms.
+ * Framework-agnostic live-feed event processing and projection decisions.
  */
-import type { Server } from 'socket.io';
-import { parseLiveFeedEnvelope, toSocketPayload } from '../../domain/events.js';
-import { auctionRoom } from '../../transport/websocket/rooms.js';
-import type { LiveFeedStateStore } from '../../infrastructure/cache/redis-state.js';
+import type { LiveFeedEnvelope } from '../../domain/events.js';
+import { toSocketPayload } from '../../domain/events.js';
+import type { LiveFeedPublisher } from '../ports/live-feed-publisher.js';
+import type { LiveStateStore } from '../ports/live-state-store.js';
 
 /**
- * Result of handling a broker message, used by the RabbitMQ consumer to ACK, ignore, or dead-letter.
+ * Result of handling a validated live-feed event, used by the RabbitMQ adapter for ACK decisions.
  */
 export type ProcessResult =
   | { action: 'broadcast'; socketEvent: string; eventId: string; aggregateId: string; aggregateVersion: number }
-  | { action: 'ignored'; reason: 'duplicate' | 'stale'; eventId: string; aggregateId: string; aggregateVersion: number }
-  | { action: 'invalid'; reason: string };
+  | {
+      action: 'ignored';
+      reason: 'duplicate' | 'stale';
+      eventId: string;
+      aggregateId: string;
+      aggregateVersion: number;
+    };
 
 /**
- * Validates live-feed events, applies Redis idempotency/order checks, and broadcasts accepted events.
+ * Applies live-feed state decisions and delegates client publication through narrow application ports.
  */
 export class LiveFeedEventProcessor {
   public constructor(
-    private readonly io: Server,
-    private readonly stateStore: LiveFeedStateStore,
+    private readonly publisher: LiveFeedPublisher,
+    private readonly stateStore: LiveStateStore,
   ) {}
 
   /**
-   * Processes one RabbitMQ message body through validation, Redis state checks, and Socket.IO fan-out.
+   * Processes one validated event through state checks and the live-feed publisher port.
    */
-  public async process(body: Buffer): Promise<ProcessResult> {
-    let envelope;
-
-    try {
-      envelope = parseLiveFeedEnvelope(body);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Invalid event envelope.';
-      console.warn('Dropping invalid live-feed message.', { reason: message });
-      return { action: 'invalid', reason: message };
-    }
-
+  public async process(envelope: LiveFeedEnvelope): Promise<ProcessResult> {
     const acceptance = await this.stateStore.acceptEvent(envelope);
 
     if (acceptance.status === 'duplicate' || acceptance.status === 'stale') {
@@ -72,7 +67,7 @@ export class LiveFeedEventProcessor {
 
     const socketEvent = socketEventName(envelope.eventType);
     const payload = toSocketPayload(envelope);
-    this.io.to(auctionRoom(payload.auctionId)).emit(socketEvent, payload);
+    this.publisher.publish({ auctionId: payload.auctionId, eventName: socketEvent, payload });
 
     console.info('Broadcast live-feed event.', {
       eventId: envelope.eventId,

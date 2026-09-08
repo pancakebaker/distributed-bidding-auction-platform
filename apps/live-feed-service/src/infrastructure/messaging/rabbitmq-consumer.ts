@@ -4,7 +4,7 @@
 import amqp from 'amqplib';
 import type { Channel, ChannelModel, ConsumeMessage } from 'amqplib';
 import type { LiveFeedConfig } from '../../config/config.js';
-import type { LiveFeedEventProcessor } from '../../application/processors/live-feed-event-processor.js';
+import type { LiveFeedProcessor } from '../../application/ports/live-feed-processor.js';
 import { parseLiveFeedEnvelope } from '../../domain/events.js';
 import type { AsyncContext } from '../runtime/async-context.js';
 import { runWithContext } from '../runtime/async-context.js';
@@ -28,7 +28,7 @@ export class LiveFeedRabbitMqConsumer {
 
   public constructor(
     private readonly config: LiveFeedConfig,
-    private readonly processor: LiveFeedEventProcessor,
+    private readonly processor: LiveFeedProcessor,
   ) {}
 
   /**
@@ -155,14 +155,19 @@ export class LiveFeedRabbitMqConsumer {
     }
 
     await runWithContext(contextFromMessage(message.content), async () => {
+      let envelope;
+
       try {
-        const result = await this.processor.process(message.content);
+        envelope = parseLiveFeedEnvelope(message.content);
+      } catch (error) {
+        const messageText = error instanceof Error ? error.message : 'Invalid event envelope.';
+        console.warn('Dropping invalid live-feed message.', { reason: messageText });
+        channel.nack(message, false, false);
+        return;
+      }
 
-        if (result.action === 'invalid') {
-          channel.nack(message, false, false);
-          return;
-        }
-
+      try {
+        await this.processor.process(envelope);
         channel.ack(message);
       } catch (error) {
         const messageText = error instanceof Error ? error.message : 'Live-feed processing failed.';
