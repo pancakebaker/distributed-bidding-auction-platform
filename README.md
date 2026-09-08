@@ -35,6 +35,7 @@ Auctions close using server-side UTC, with `AuctionClosed` and `WinnerSelected` 
 - AsyncLocalStorage request/event context for observational correlation tracking
 - centralized HTTP errors and idempotent graceful shutdown for the live-feed runtime
 - narrow application ports for framework-agnostic live-feed processing
+- bounded read-only NDJSON diagnostics streaming with Node backpressure and cancellation
 - automatic server-authoritative auction closure
 - REST reconciliation when live projections are missed
 - failure/retry behavior across service boundaries

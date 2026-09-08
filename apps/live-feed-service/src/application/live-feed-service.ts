@@ -21,6 +21,8 @@ import { getContext, runWithContext } from '../infrastructure/runtime/async-cont
 import { createShutdownCoordinator } from '../infrastructure/runtime/shutdown-coordinator.js';
 import { runWithStartupCleanup } from '../infrastructure/runtime/startup.js';
 import { createHttpErrorHandler } from '../transport/http/error-handler.js';
+import { registerLiveFeedStreamRoute } from '../transport/http/live-feed-stream-route.js';
+import { createLiveFeedStreamRecords } from './streams/create-live-feed-stream.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -90,6 +92,16 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
       rabbitMqConnected: consumer.connected,
       redisConnected: redis.isOpen && redisPub.isOpen && redisSub.isOpen,
       checkedAtUtc: new Date().toISOString(),
+    });
+  });
+
+  registerLiveFeedStreamRoute(app, () => {
+    const processMetrics = getProcessMetrics();
+    return createLiveFeedStreamRecords({
+      nodeVersion: processMetrics.nodeVersion,
+      uptimeSeconds: processMetrics.uptimeSeconds,
+      memory: processMetrics.memory,
+      eventLoop: eventLoopMonitor.snapshot(),
     });
   });
 

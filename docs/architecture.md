@@ -207,6 +207,31 @@ The RabbitMQ adapter parses the existing envelope, seeds AsyncLocalStorage, invo
 Because the processor accepts validated domain events and narrow ports, it can be tested with small in-memory fakes without Express, RabbitMQ, Redis, or Socket.IO objects. These ports are intentionally use-case-specific rather than a generic repository or message-bus abstraction. The framework-specific composition and lifecycle code remains in the composition root by design; this phase does not claim complete framework independence.
 
 This refactor changes dependency direction only. The Bidding Service remains authoritative, event contracts are unchanged, and Node remains a downstream projection/fan-out service. Redis stale-version semantics, RabbitMQ topology and ACK/NACK behavior, Socket.IO subscriptions, and HTTP contracts are unchanged.
+### Live Feed Node Phase 5 read-only streaming
+
+`GET /diagnostics/live-feed/stream` exposes a small, bounded runtime snapshot as newline-delimited JSON. It is diagnostic and read-only: it does not read or mutate auction projections, publish events, ACK/NACK RabbitMQ messages, or affect Socket.IO fan-out. Existing `/health` and `/diagnostics/runtime` contracts remain unchanged.
+
+The endpoint uses Node built-in streams:
+
+```text
+Existing runtime snapshot
+        ↓
+Readable (object records)
+        ↓
+NDJSON Transform
+        ↓
+Buffer chunks
+        ↓
+HTTP response Writable
+```
+
+`pipeline()` connects the stages so backpressure flows from the HTTP socket upstream. When the response Writable applies pressure, Node pauses further source reads instead of building one large response string or array. The source and test sinks use small, explicit `highWaterMark` values as buffering thresholds for this demonstration; a `highWaterMark` is not a hard memory limit.
+
+The transform encodes each line with `Buffer.from(..., 'utf8')`. Node `Buffer` values are `Uint8Array` subclasses, so the byte chunks retain normal typed-array compatibility without converting the application records into binary data prematurely. Serialization, source, and destination failures propagate through `pipeline()` to the HTTP boundary, where internal details remain hidden.
+
+If a client disconnects, the route aborts a request-local `AbortSignal`, which tears down the pipeline and its streams. This cancellation is local to the diagnostic response and cannot block RabbitMQ processing or change Redis, auction, or client state. AsyncLocalStorage request context remains observational and can flow through the streaming callback, but it is not included as auction data or used for correctness.
+
+The data source is intentionally a bounded runtime snapshot rather than a new event archive. Streaming here demonstrates incremental records, byte encoding, backpressure, cancellation, and error propagation without introducing persistence, reporting, PostgreSQL, Worker Threads, Cluster, Child Processes, SSR, or BFF behavior. The Bidding Service remains authoritative and all existing RabbitMQ, Redis, Socket.IO, lifecycle, and event contracts are unchanged.
 ## RabbitMQ
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
