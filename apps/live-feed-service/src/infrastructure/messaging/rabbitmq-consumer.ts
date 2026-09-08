@@ -17,6 +17,9 @@ export class LiveFeedRabbitMqConsumer {
   private channel: Channel | null = null;
   private stopped = false;
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private consumerTag: string | null = null;
+  private readonly inFlight = new Set<Promise<void>>();
+  private stopPromise: Promise<void> | null = null;
 
   /**
    * Indicates whether the consumer currently has an open RabbitMQ channel.
@@ -40,6 +43,14 @@ export class LiveFeedRabbitMqConsumer {
    * Stops reconnect attempts and closes the RabbitMQ channel and connection.
    */
   public async stop(): Promise<void> {
+    if (!this.stopPromise) {
+      this.stopPromise = this.stopInternal();
+    }
+
+    await this.stopPromise;
+  }
+
+  private async stopInternal(): Promise<void> {
     this.stopped = true;
 
     if (this.reconnectTimer) {
@@ -49,13 +60,20 @@ export class LiveFeedRabbitMqConsumer {
 
     this.connected = false;
 
-    await this.channel?.close().catch(() => undefined);
-    await this.connection?.close().catch(() => undefined);
+    const channel = this.channel;
+    const connection = this.connection;
+    if (channel && this.consumerTag) {
+      await channel.cancel(this.consumerTag).catch(() => undefined);
+      this.consumerTag = null;
+    }
+
+    await Promise.allSettled([...this.inFlight]);
+    await channel?.close().catch(() => undefined);
+    await connection?.close().catch(() => undefined);
 
     this.channel = null;
     this.connection = null;
   }
-
   private async connect(): Promise<void> {
     try {
       const connection = await amqp.connect(this.config.rabbitMqUrl);
@@ -83,13 +101,16 @@ export class LiveFeedRabbitMqConsumer {
       await this.configureTopology(channel);
       await channel.prefetch(this.config.rabbitMqPrefetch);
 
-      await channel.consume(
+      const consumer = await channel.consume(
         this.config.rabbitMqQueue,
         (message) => {
-          void this.handleMessage(channel, message);
+          const handling = this.handleMessage(channel, message);
+          this.inFlight.add(handling);
+          void handling.finally(() => this.inFlight.delete(handling)).catch(() => undefined);
         },
         { noAck: false },
       );
+      this.consumerTag = consumer.consumerTag;
 
       console.info('Live Feed RabbitMQ consumer started.', {
         exchange: this.config.rabbitMqExchange,

@@ -33,6 +33,7 @@ Auctions close using server-side UTC, with `AuctionClosed` and `WinnerSelected` 
 - same-version lifecycle sibling events, such as `AuctionClosed` and `WinnerSelected`
 - Redis-backed Socket.IO fan-out for multiple live-feed instances
 - AsyncLocalStorage request/event context for observational correlation tracking
+- centralized HTTP errors and idempotent graceful shutdown for the live-feed runtime
 - automatic server-authoritative auction closure
 - REST reconciliation when live projections are missed
 - failure/retry behavior across service boundaries

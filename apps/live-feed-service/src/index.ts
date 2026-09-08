@@ -1,19 +1,24 @@
 /**
- * Process entrypoint that starts the live-feed service and handles shutdown signals.
+ * Process entrypoint that starts the live-feed service and handles signals and fatal failures.
  */
 import { createLiveFeedService } from './application/live-feed-service.js';
+import { ProcessLifecycle } from './infrastructure/runtime/process-lifecycle.js';
 
 const service = createLiveFeedService();
+const lifecycle = new ProcessLifecycle(
+  async (reason) => {
+    console.info(`Live Feed Service shutdown requested: ${reason}.`);
+    await service.stop();
+  },
+  process,
+  (code) => {
+    process.exitCode = code;
+  },
+);
 
-process.on('SIGINT', () => {
-  void service.stop().finally(() => process.exit(0));
-});
-
-process.on('SIGTERM', () => {
-  void service.stop().finally(() => process.exit(0));
-});
+lifecycle.register();
 
 service.start().catch((error) => {
-  console.error('Live Feed Service failed to start.', error);
-  process.exitCode = 1;
+  console.error('Live Feed Service failed to start.', error instanceof Error ? error.name : typeof error);
+  void lifecycle.shutdown('startup-failure', true);
 });

@@ -17,6 +17,9 @@ import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
 import { EventLoopMonitor } from '../infrastructure/runtime/event-loop-monitor.js';
 import { getProcessMetrics } from '../infrastructure/runtime/process-metrics.js';
 import { getContext, runWithContext } from '../infrastructure/runtime/async-context.js';
+import { createShutdownCoordinator } from '../infrastructure/runtime/shutdown-coordinator.js';
+import { runWithStartupCleanup } from '../infrastructure/runtime/startup.js';
+import { createHttpErrorHandler } from '../transport/http/error-handler.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -128,28 +131,40 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     );
   });
 
+  app.use(createHttpErrorHandler());
+
+  const shutdown = createShutdownCoordinator([
+    { name: 'RabbitMQ consumer', run: () => consumer.stop() },
+    { name: 'Socket.IO and HTTP server', run: () => closeSocketServer(io) },
+    {
+      name: 'Redis clients',
+      run: async () => {
+        await Promise.all([
+          redis.quit().catch(() => undefined),
+          redisPub.quit().catch(() => undefined),
+          redisSub.quit().catch(() => undefined),
+        ]);
+      },
+    },
+    { name: 'event-loop monitor', run: () => eventLoopMonitor.stop() },
+  ]);
+
   return {
     async start() {
-      eventLoopMonitor.start();
-      await Promise.all([redis.connect(), redisPub.connect(), redisSub.connect()]);
-      io.adapter(createAdapter(redisPub, redisSub));
-      await new Promise<void>((resolve) => {
-        httpServer.listen(config.port, resolve);
-      });
-      await consumer.start();
-      console.log(`Live Feed Service listening on ${this.url()}`);
+      await runWithStartupCleanup(async () => {
+        eventLoopMonitor.start();
+        await Promise.all([redis.connect(), redisPub.connect(), redisSub.connect()]);
+        io.adapter(createAdapter(redisPub, redisSub));
+        await new Promise<void>((resolve, reject) => {
+          httpServer.once('error', reject);
+          httpServer.listen(config.port, resolve);
+        });
+        await consumer.start();
+        console.log(`Live Feed Service listening on ${this.url()}`);
+      }, shutdown);
     },
     async stop() {
-      await consumer.stop();
-      eventLoopMonitor.stop();
-      await new Promise<void>((resolve) => {
-        void io.close(() => resolve());
-      });
-      await Promise.all([
-        redis.quit().catch(() => undefined),
-        redisPub.quit().catch(() => undefined),
-        redisSub.quit().catch(() => undefined),
-      ]);
+      await shutdown();
     },
     port() {
       const address = httpServer.address() as AddressInfo | null;
@@ -162,4 +177,10 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     redis,
     consumer,
   };
+}
+
+async function closeSocketServer(io: Server): Promise<void> {
+  await new Promise<void>((resolve) => {
+    void io.close(() => resolve());
+  });
 }

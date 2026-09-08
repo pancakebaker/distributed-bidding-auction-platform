@@ -156,6 +156,31 @@ Socket.IO
 AsyncLocalStorage context propagates through Promise/await continuations and standard asynchronous resources. Each request or message receives an isolated scope, so concurrent operations cannot cross-contaminate correlation metadata. Missing or malformed correlation metadata produces an empty/partial observational context and never changes validation, Redis acceptance, ACK/NACK, retry, DLQ, ordering, or client output behavior.
 
 Context is not application state and is never used as a source of auction correctness. The Bidding Service remains authoritative, and event contracts remain unchanged. Existing direct console logging was intentionally not redesigned in this phase; `getContext()` is available for a later focused logging integration.
+### Live Feed Node Phase 3 failure handling and graceful shutdown
+
+The live-feed service classifies client-safe boundary failures with a small `ApplicationError` model and maps them through one Express error handler. Successful responses, including `/health` and `/diagnostics/runtime`, remain unchanged. Unknown failures receive a generic 500 response without internal causes, stack traces, credentials, or connection strings.
+
+Startup and shutdown are coordinated explicitly. If startup fails after resources have been created, the same cleanup path is run before the original failure is rethrown. For ordinary `SIGTERM` or `SIGINT`, the service runs one idempotent shutdown coordinator:
+
+```text
+SIGTERM / SIGINT
+↓
+shutdown coordinator
+↓
+cancel RabbitMQ consumer and await in-flight handlers
+↓
+close Socket.IO / HTTP
+↓
+close Redis clients
+↓
+stop event-loop monitoring
+```
+
+RabbitMQ cancellation stops new deliveries where the client permits it; already-delivered messages retain their existing processing and ACK/NACK behavior. Cleanup steps continue in order if an already-closing dependency reports an error, and repeated shutdown calls share one completion promise.
+
+`unhandledRejection` and `uncaughtException` are treated as fatal process conditions. The lifecycle manager records a concise diagnostic, sets a non-zero exit intent, and invokes the same graceful shutdown path once. The service does not attempt to continue normal operation after an uncaught exception. Ordinary signal shutdown does not set a failure exit code.
+
+AsyncLocalStorage and runtime diagnostics remain observational only. Shutdown does not mutate auction state, alter Redis version guards, change broker topology, or change Socket.IO contracts. The Bidding Service remains authoritative for all auction and bidding correctness decisions.
 ## RabbitMQ
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
