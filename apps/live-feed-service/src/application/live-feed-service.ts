@@ -3,6 +3,8 @@
  */
 import express from 'express';
 import { createServer } from 'node:http';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { AddressInfo } from 'node:net';
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
@@ -25,6 +27,15 @@ import { registerLiveFeedStreamRoute } from '../transport/http/live-feed-stream-
 import { createLiveFeedStreamRecords } from './streams/create-live-feed-stream.js';
 import { WorkerActivityCalculator } from '../infrastructure/workers/worker-activity-calculator.js';
 import { registerLiveFeedActivityRoute } from '../transport/http/live-feed-activity-route.js';
+import { registerAdminRoutes } from '../transport/http/admin/admin-route.js';
+import { AdminAuth } from '../transport/http/admin/admin-auth.js';
+import { getLiveFeedDashboard } from './diagnostics/get-live-feed-dashboard.js';
+import { RecentActivityStore } from './diagnostics/recent-activity-store.js';
+import {
+  LiveFeedActivityObserver,
+  SocketIoAdminLiveFeedPublisher,
+  adminLiveFeedRoom,
+} from '../transport/websocket/admin-live-feed-publisher.js';
 import { registerRuntimeThreadPoolRoute } from '../transport/http/runtime-thread-pool-route.js';
 import { registerRuntimeChildProcessRoute } from '../transport/http/runtime-child-process-route.js';
 
@@ -65,7 +76,11 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const redisSub = redis.duplicate() as RedisClientType;
   const stateStore = new LiveFeedStateStore(redis, config.idempotencyTtlSeconds);
   const publisher = new SocketIoLiveFeedPublisher(io);
-  const processor = new LiveFeedEventProcessor(publisher, stateStore);
+  const recentActivity = new RecentActivityStore(50);
+  const adminPublisher = new SocketIoAdminLiveFeedPublisher(io);
+  const activityObserver = new LiveFeedActivityObserver(recentActivity, adminPublisher);
+  const processor = new LiveFeedEventProcessor(publisher, stateStore, activityObserver);
+  const adminAuth = new AdminAuth();
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
   const eventLoopMonitor = new EventLoopMonitor();
   const activityCalculator = new WorkerActivityCalculator();
@@ -118,8 +133,31 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   });
   registerRuntimeThreadPoolRoute(app);
   registerRuntimeChildProcessRoute(app);
+  registerAdminRoutes(app, {
+    auth: adminAuth,
+    assetDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../ui'),
+    publicAdminDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../../public/admin'),
+    getSnapshot: () =>
+      getLiveFeedDashboard({
+        eventLoopMonitor,
+        recentActivity,
+        rabbitMqConnected: consumer.connected,
+        redisConnected: redis.isOpen && redisPub.isOpen && redisSub.isOpen,
+        connectedClients: io.sockets.sockets.size,
+        activeRooms: io.sockets.adapter.rooms.size,
+      }),
+  });
 
   io.on('connection', (socket) => {
+    socket.on('admin:subscribe', (acknowledge?: (response: { ok: boolean; error?: string }) => void) => {
+      if (!adminAuth.isAuthorizedCookie(socket.handshake.headers.cookie)) {
+        acknowledge?.({ ok: false, error: 'admin_authorization_required' });
+        return;
+      }
+
+      void socket.join(adminLiveFeedRoom);
+      acknowledge?.({ ok: true });
+    });
     socket.emit('status', {
       service: 'live-feed-service',
       message: 'connected',

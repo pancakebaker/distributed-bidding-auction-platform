@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/build-admin-client.mjs",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "test": "node --import tsx --test tests/**/*.test.ts",
@@ -19,6 +19,8 @@
     "@socket.io/redis-adapter": "^8.3.0",
     "amqplib": "^0.10.5",
     "express": "^5.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
     "redis": "^5.10.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.3"
@@ -27,6 +29,9 @@
     "@types/amqplib": "^0.10.7",
     "@types/express": "^5.0.6",
     "@types/node": "^24.0.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "esbuild": "^0.25.12",
     "tsx": "^4.21.0",
     "typescript": "^5.9.0"
   }

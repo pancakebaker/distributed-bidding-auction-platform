@@ -316,3 +316,11 @@ This project intentionally leaves production concerns visible rather than preten
 - security review, audit logging, and compliance requirements
 
 The development outbox publisher currently allows many one-second retry attempts (`MaxPublishAttempts=1000`) so local RabbitMQ outage demos can recover without manual database repair. A production publisher should use backoff and next-attempt scheduling rather than repeated one-second retries.
+
+### Live Feed Node Phase 8 Operations Admin Page
+
+The Node live-feed service now includes a protected, read-only operations page at `GET /admin/live-feed`. It renders a small server-side React shell, hydrates it in the browser, and subscribes to a dedicated Socket.IO admin channel for bounded operational activity updates. The page reuses the existing runtime diagnostics, process metrics, health/status information, and Phase 6/7 diagnostics without creating a second auction or reporting system.
+
+The page uses a small signed, HttpOnly, SameSite cookie session with credentials supplied through `LIVE_FEED_ADMIN_USERNAME`, `LIVE_FEED_ADMIN_PASSWORD`, and `LIVE_FEED_ADMIN_SESSION_SECRET`. It sets a restrictive Content Security Policy and related browser security headers. This is a portfolio/demo admin boundary, not a replacement for production identity, SSO, CSRF, rate limiting, or centralized authorization.
+
+Recent activity is kept in a fixed-size in-memory buffer for operational visibility only. It is not an event store, audit log, source of truth, or durable history. The Bidding Service remains authoritative, and the page cannot accept bids, change auction state, mutate Redis projections, publish RabbitMQ messages, or alter existing Socket.IO auction events.

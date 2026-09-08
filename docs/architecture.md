@@ -320,3 +320,33 @@ The bidding database is not shared directly with billing, catalog, notification,
 The Bidding Service owns Auction, Bid, and OutboxMessage state in PostgreSQL through EF Core and Npgsql. Money is represented with `decimal` and mapped with fixed precision. Auction validity is evaluated with server-side UTC through .NET `TimeProvider`; browser/client time is not trusted.
 
 RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid and lifecycle broadcasts, the Laravel/React auction UI, automatic auction closing, and real-time closed/winner UI projection are implemented through Phase 8. Billing workflows, notification workflows, production authentication, payment flows, and admin auction management remain future work.
+
+## Node Phase 8 Operations Admin Page
+
+The live-feed service includes one small operations-facing read path at `GET /admin/live-feed`. The HTTP boundary authenticates a signed, short-lived, HttpOnly cookie, applies restrictive browser security headers, and renders a server-side React shell. The browser then hydrates that shell and subscribes to a dedicated admin-only Socket.IO room for bounded operational activity updates.
+
+The flow is intentionally separate from auction correctness:
+
+```text
+HTTP admin request
+    ↓
+Signed cookie boundary + security headers
+    ↓
+Server-side dashboard render
+    ↓
+Browser hydration
+    ↓
+Admin Socket.IO subscription
+    ↓
+Bounded operational activity updates
+```
+
+`RecentActivityStore` retains only a small fixed number of safe summaries such as event type, event ID, auction ID, aggregate version, correlation ID, timestamp, and outcome. It is an in-memory operational ring buffer, not an event store, audit log, or durable source of truth. Activity recording is best-effort and observational: a recorder failure cannot change event acceptance, Redis version guards, ACK/NACK behavior, or client-facing auction payloads.
+
+The page reuses existing runtime diagnostics, memory metrics, RabbitMQ/Redis status, connection counts, and the Phase 5/6/7 diagnostic links. It does not add auction CRUD, persistence, a reporting subsystem, or a BFF layer. The existing `/health`, `/diagnostics/runtime`, `/diagnostics/live-feed/stream`, `/diagnostics/live-feed/activity`, and runtime diagnostic contracts remain unchanged.
+
+The admin boundary is deliberately small. Credentials are read from `LIVE_FEED_ADMIN_USERNAME`, `LIVE_FEED_ADMIN_PASSWORD`, and `LIVE_FEED_ADMIN_SESSION_SECRET`; no credentials or secrets are embedded in the page or initial state. The cookie is signed with an HMAC, marked HttpOnly and SameSite, and scoped to `/admin`. CSP, frame, content-type, referrer, and form-action protections are applied to the admin responses. A process-local fallback session secret means a restart invalidates sessions when an explicit secret is not configured. Production deployments still need a full identity/authorization, CSRF, rate-limiting, TLS, and secret-management strategy.
+
+The Socket.IO admin channel uses a separate `admin:live-feed` room and `admin:activity` event. A socket must present a valid admin cookie when requesting `admin:subscribe`; unauthorized sockets do not join the room. Existing browser auction rooms, event names, payloads, subscription flow, RabbitMQ topology, Redis keys/version semantics, and Bidding Service authority are unaffected.
+
+Server-side rendering is used for a meaningful first response and hydration is used only for live admin updates. The page is intentionally small and uses `renderToString`; the service's Phase 5 NDJSON endpoint remains the separate demonstration of streaming and backpressure. React is a UI implementation detail of this transport boundary, not an application dependency. The dashboard is observational and must never be used to determine whether an auction event is valid or stale.

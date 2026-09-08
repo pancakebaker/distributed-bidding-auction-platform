@@ -3,6 +3,7 @@
  */
 import type { LiveFeedEnvelope } from '../../domain/events.js';
 import { toSocketPayload } from '../../domain/events.js';
+import type { ActivityRecorder } from '../ports/activity-recorder.js';
 import type { LiveFeedPublisher } from '../ports/live-feed-publisher.js';
 import type { LiveStateStore } from '../ports/live-state-store.js';
 
@@ -26,6 +27,7 @@ export class LiveFeedEventProcessor {
   public constructor(
     private readonly publisher: LiveFeedPublisher,
     private readonly stateStore: LiveStateStore,
+    private readonly activityRecorder?: ActivityRecorder,
   ) {}
 
   /**
@@ -45,13 +47,15 @@ export class LiveFeedEventProcessor {
         correlationId: envelope.correlationId,
       });
 
-      return {
+      const result: ProcessResult = {
         action: 'ignored',
         reason: acceptance.status,
         eventId: envelope.eventId,
         aggregateId: envelope.aggregateId,
         aggregateVersion: envelope.aggregateVersion,
       };
+      this.recordActivity(envelope, acceptance.status === 'stale' ? 'stale' : 'ignored');
+      return result;
     }
 
     if (acceptance.status === 'gap') {
@@ -77,13 +81,36 @@ export class LiveFeedEventProcessor {
       correlationId: envelope.correlationId,
     });
 
-    return {
+    const result: ProcessResult = {
       action: 'broadcast',
       socketEvent,
       eventId: envelope.eventId,
       aggregateId: envelope.aggregateId,
       aggregateVersion: envelope.aggregateVersion,
     };
+    this.recordActivity(envelope, 'applied');
+    return result;
+  }
+
+  /**
+   * Records operational metadata without allowing observation to affect processing.
+   */
+  private recordActivity(envelope: LiveFeedEnvelope, outcome: 'applied' | 'stale' | 'ignored'): void {
+    try {
+      this.activityRecorder?.record({
+        eventId: envelope.eventId,
+        eventType: envelope.eventType,
+        auctionId: envelope.payload.auctionId,
+        aggregateVersion: envelope.aggregateVersion,
+        correlationId: envelope.correlationId ?? undefined,
+        receivedAt: new Date().toISOString(),
+        outcome,
+      });
+    } catch (error) {
+      console.warn('Live-feed operational activity observation failed.', {
+        message: error instanceof Error ? error.message : 'unknown_error',
+      });
+    }
   }
 }
 
