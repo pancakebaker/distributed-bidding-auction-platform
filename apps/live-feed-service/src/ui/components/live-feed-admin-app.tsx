@@ -6,6 +6,7 @@ import { io } from 'socket.io-client';
 import type { LiveFeedHistoryResult } from '../../application/history/live-feed-history-types.js';
 import type { LiveFeedDashboardSnapshot } from '../../application/diagnostics/get-live-feed-dashboard.js';
 import { adminActivityEvent, adminLiveFeedRoom } from '../../transport/websocket/admin-live-feed-publisher.js';
+import { mergeRecentActivity } from './live-feed-admin-state.js';
 
 export type LiveFeedAdminAppProps = {
   initialState: LiveFeedDashboardSnapshot;
@@ -70,10 +71,7 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
     socket.on(adminActivityEvent, (activity: LiveFeedDashboardSnapshot['recentActivity'][number]) => {
       setState((current) => ({
         ...current,
-        recentActivity: [activity, ...current.recentActivity.filter((item) => item.eventId !== activity.eventId)].slice(
-          0,
-          50,
-        ),
+        recentActivity: mergeRecentActivity(current.recentActivity, activity),
       }));
     });
 

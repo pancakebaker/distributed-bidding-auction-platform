@@ -2,7 +2,10 @@
  * Process entrypoint that starts the live-feed service and handles signals and fatal failures.
  */
 import { createLiveFeedService } from './application/live-feed-service.js';
+import { loadLocalEnvironment } from './config/load-local-env.js';
 import { ProcessLifecycle } from './infrastructure/runtime/process-lifecycle.js';
+
+loadLocalEnvironment();
 
 const service = createLiveFeedService();
 const lifecycle = new ProcessLifecycle(

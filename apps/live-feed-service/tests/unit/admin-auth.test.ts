@@ -18,6 +18,8 @@ void test('admin auth creates a secure HttpOnly same-site cookie and validates i
   assert.ok(cookie);
   assert.match(cookie, /HttpOnly/);
   assert.match(cookie, /SameSite=Lax/);
+  assert.match(cookie, /Path=\//);
+  assert.doesNotMatch(cookie, /Path=\/admin/);
   assert.doesNotMatch(cookie, /password/);
   assert.equal(auth.isAuthorizedCookie(cookie), true);
   assert.equal(auth.isAuthorizedCookie(undefined), false);

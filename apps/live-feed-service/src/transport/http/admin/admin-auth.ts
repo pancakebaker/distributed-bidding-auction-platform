@@ -53,7 +53,7 @@ export class AdminAuth {
       payload +
       '.' +
       signature +
-      '; HttpOnly; SameSite=Lax; Path=/admin; Max-Age=' +
+      '; HttpOnly; SameSite=Lax; Path=/; Max-Age=' +
       this.sessionLifetimeSeconds +
       secure
     );
@@ -84,7 +84,7 @@ export class AdminAuth {
    * Returns a deletion cookie for logout.
    */
   public clearCookie(): string {
-    return 'live_feed_admin=; HttpOnly; SameSite=Lax; Path=/admin; Max-Age=0';
+    return 'live_feed_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0';
   }
 
   private sign(payload: string): string {
