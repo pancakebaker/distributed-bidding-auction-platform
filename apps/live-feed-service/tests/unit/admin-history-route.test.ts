@@ -59,11 +59,11 @@ function fakeStore(queryResult: LiveFeedHistoryResult = result): LiveFeedHistory
 
 void test('history API requires admin auth and returns bounded filtered rows', async () => {
   const app = express();
-  const auth = new AdminAuth({ username: 'admin', password: 'password', secret: 'test-secret', secure: false });
+  const auth = new AdminAuth({ secret: 'test-secret' });
   registerAdminHistoryRoutes(app, { auth, store: fakeStore() });
   app.use(createHttpErrorHandler());
   const server = await startApp(app);
-  const cookie = auth.authenticate('admin', 'password');
+  const cookie = auth.createSession();
 
   try {
     const unauthorized = await fetch(server.baseUrl + '/admin/api/history');
@@ -85,11 +85,11 @@ void test('history API requires admin auth and returns bounded filtered rows', a
 
 void test('history PDF is authenticated, downloadable, and emits PDF bytes', async () => {
   const app = express();
-  const auth = new AdminAuth({ username: 'admin', password: 'password', secret: 'test-secret', secure: false });
+  const auth = new AdminAuth({ secret: 'test-secret' });
   registerAdminHistoryRoutes(app, { auth, store: fakeStore() });
   app.use(createHttpErrorHandler());
   const server = await startApp(app);
-  const cookie = auth.authenticate('admin', 'password');
+  const cookie = auth.createSession();
 
   try {
     const response = await fetch(server.baseUrl + '/admin/api/history.pdf', {
@@ -109,7 +109,7 @@ void test('history API rejects an over-large range without querying the store', 
   let queried = false;
   const store = fakeStore();
   const app = express();
-  const auth = new AdminAuth({ username: 'admin', password: 'password', secret: 'test-secret', secure: false });
+  const auth = new AdminAuth({ secret: 'test-secret' });
   registerAdminHistoryRoutes(app, {
     auth,
     store: {
@@ -122,7 +122,7 @@ void test('history API rejects an over-large range without querying the store', 
   });
   app.use(createHttpErrorHandler());
   const server = await startApp(app);
-  const cookie = auth.authenticate('admin', 'password');
+  const cookie = auth.createSession();
 
   try {
     const response = await fetch(

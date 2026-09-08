@@ -55,3 +55,7 @@ pnpm-debug.log*
 Thumbs.db
 Desktop.ini
 
+
+# Local asymmetric admin token keys
+apps/client/storage/keys/*.pem
+apps/live-feed-service/config/*.pem

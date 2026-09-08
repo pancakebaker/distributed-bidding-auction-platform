@@ -1,6 +1,9 @@
 /**
  * Environment-backed configuration for the live-feed service runtime and integration dependencies.
  */
+import { dirname, isAbsolute, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 /**
  * Runtime settings for HTTP, Redis, RabbitMQ, PostgreSQL history, and live-feed idempotency behavior.
  */
@@ -21,6 +24,9 @@ export type LiveFeedConfig = {
   liveFeedDbPoolMax: number;
   liveFeedDbIdleTimeoutMs: number;
   liveFeedDbConnectionTimeoutMs: number;
+  adminTokenPublicKeyPath: string;
+  adminTokenIssuer: string;
+  adminTokenAudience: string;
 };
 
 function numberFromEnv(name: string, fallback: number): number {
@@ -69,6 +75,9 @@ function rabbitMqUrlFromEnv(): string {
  * Loads live-feed configuration from environment variables with optional test overrides.
  */
 export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedConfig {
+  const serviceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const configuredPublicKeyPath = process.env.LIVE_FEED_ADMIN_TOKEN_PUBLIC_KEY_PATH;
+
   return {
     port: numberFromEnv('PORT', 3001),
     clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:8000',
@@ -86,6 +95,13 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     liveFeedDbPoolMax: numberFromEnv('LIVE_FEED_DB_POOL_MAX', 5),
     liveFeedDbIdleTimeoutMs: numberFromEnv('LIVE_FEED_DB_IDLE_TIMEOUT_MS', 10000),
     liveFeedDbConnectionTimeoutMs: numberFromEnv('LIVE_FEED_DB_CONNECTION_TIMEOUT_MS', 2000),
+    adminTokenPublicKeyPath: configuredPublicKeyPath
+      ? isAbsolute(configuredPublicKeyPath)
+        ? configuredPublicKeyPath
+        : resolve(serviceRoot, configuredPublicKeyPath)
+      : resolve(serviceRoot, 'config/live-feed-admin-public.pem'),
+    adminTokenIssuer: process.env.LIVE_FEED_ADMIN_TOKEN_ISSUER ?? 'auction-client',
+    adminTokenAudience: process.env.LIVE_FEED_ADMIN_TOKEN_AUDIENCE ?? 'live-feed-admin',
     ...overrides,
   };
 }

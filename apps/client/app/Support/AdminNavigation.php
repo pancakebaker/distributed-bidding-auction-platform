@@ -13,6 +13,7 @@ class AdminNavigation
     {
         return [
             ['label' => 'Dashboard', 'href' => route('admin.dashboard'), 'active' => $activePage === 'dashboard'],
+            ['label' => 'Live Feed Operations', 'href' => route('admin.live-feed'), 'active' => $activePage === 'live-feed'],
             ['label' => 'Users', 'href' => route('admin.users.index'), 'active' => $activePage === 'users'],
             ['label' => 'Pages', 'href' => route('admin.pages.index'), 'active' => $activePage === 'pages'],
             ['label' => 'FAQs', 'href' => route('admin.faqs.index'), 'active' => $activePage === 'faqs'],

@@ -1,6 +1,3 @@
-/**
- * Tests the protected admin route and login boundary.
- */
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
@@ -8,6 +5,7 @@ import test from 'node:test';
 import express from 'express';
 import { AdminAuth } from '../../src/transport/http/admin/admin-auth.js';
 import { registerAdminRoutes } from '../../src/transport/http/admin/admin-route.js';
+import type { AdminTokenClaims, AdminTokenVerifier } from '../../src/application/ports/admin-token-verifier.js';
 import type { LiveFeedDashboardSnapshot } from '../../src/application/diagnostics/get-live-feed-dashboard.js';
 
 const snapshot: LiveFeedDashboardSnapshot = {
@@ -28,47 +26,80 @@ async function startApp(app: express.Express): Promise<{ baseUrl: string; close:
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
-
   return {
     baseUrl: 'http://127.0.0.1:' + address.port,
     close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
   };
 }
 
-void test('admin page redirects without a valid session and serves SSR after login', async () => {
+const claims: AdminTokenClaims = {
+  sub: '1',
+  email: 'admin@example.test',
+  role: 'admin',
+  permissions: ['access-live-feed-admin'],
+  iss: 'auction-client',
+  aud: 'live-feed-admin',
+  iat: 1,
+  exp: 9_999_999_999,
+};
+const verifier: AdminTokenVerifier = {
+  verify: (token) => {
+    if (token !== 'valid-token') throw new Error('invalid');
+    return claims;
+  },
+};
+
+void test('admin token exchange creates a session and serves SSR without Node credentials', async () => {
   const app = express();
-  const auth = new AdminAuth({ username: 'admin', password: 'password', secret: 'test-secret' });
+  const auth = new AdminAuth({ secret: 'test-secret', secure: false });
   registerAdminRoutes(app, {
     auth,
+    tokenVerifier: verifier,
+    clientOrigin: 'http://localhost:8000',
     assetDirectory: 'dist/ui',
     publicAdminDirectory: 'public/admin',
     getSnapshot: () => snapshot,
   });
   const server = await startApp(app);
-
   try {
     const unauthorized = await fetch(server.baseUrl + '/admin/live-feed', { redirect: 'manual' });
     assert.equal(unauthorized.status, 302);
-    assert.equal(unauthorized.headers.get('location'), '/admin/login');
-    assert.equal(unauthorized.headers.get('content-security-policy')?.includes("frame-ancestors 'none'"), true);
-
-    const login = await fetch(server.baseUrl + '/admin/login', {
+    const exchange = await fetch(server.baseUrl + '/admin/auth/token', {
       method: 'POST',
-      headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: 'username=admin&password=password',
+      headers: { authorization: 'Bearer valid-token' },
       redirect: 'manual',
     });
-    assert.equal(login.status, 302);
-    const cookie = login.headers.get('set-cookie');
-    assert.ok(cookie);
-
-    const page = await fetch(server.baseUrl + '/admin/live-feed', {
-      headers: { cookie: cookie.split(';')[0] },
-    });
+    assert.equal(exchange.status, 302);
+    assert.match(exchange.headers.get('set-cookie') ?? '', /Path=\//);
+    const cookie = exchange.headers.get('set-cookie')?.split(';')[0] ?? '';
+    const page = await fetch(server.baseUrl + '/admin/live-feed', { headers: { cookie } });
     const html = await page.text();
     assert.equal(page.status, 200);
     assert.match(html, /What is the Live Feed Service doing right now/);
     assert.doesNotMatch(html, /password/);
+  } finally {
+    await server.close();
+  }
+});
+
+void test('invalid admin token is rejected without issuing a cookie', async () => {
+  const app = express();
+  registerAdminRoutes(app, {
+    auth: new AdminAuth({ secret: 'test-secret' }),
+    tokenVerifier: verifier,
+    clientOrigin: 'http://localhost:8000',
+    assetDirectory: 'dist/ui',
+    publicAdminDirectory: 'public/admin',
+    getSnapshot: () => snapshot,
+  });
+  const server = await startApp(app);
+  try {
+    const response = await fetch(server.baseUrl + '/admin/auth/token', {
+      method: 'POST',
+      headers: { authorization: 'Bearer invalid-token' },
+    });
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.has('set-cookie'), false);
   } finally {
     await server.close();
   }

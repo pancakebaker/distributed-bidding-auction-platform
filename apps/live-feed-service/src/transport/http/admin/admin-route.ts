@@ -1,8 +1,10 @@
 /**
- * Express admin transport boundary for the read-only live-feed operations page.
+ * Express admin transport boundary for Laravel-authorized live-feed operations.
  */
 import express from 'express';
-import type { Express } from 'express';
+import type { Express, Request, Response } from 'express';
+import { ApplicationError } from '../../../application/errors/application-error.js';
+import type { AdminTokenVerifier } from '../../../application/ports/admin-token-verifier.js';
 import type { LiveFeedDashboardSnapshot } from '../../../application/diagnostics/get-live-feed-dashboard.js';
 import { renderLiveFeedAdmin } from '../../../ui/server/render-live-feed-admin.js';
 import type { AdminAuth } from './admin-auth.js';
@@ -13,37 +15,48 @@ import { applyAdminSecurityHeaders } from './admin-security.js';
  */
 export type AdminRouteDependencies = {
   auth: AdminAuth;
+  tokenVerifier: AdminTokenVerifier;
+  clientOrigin: string;
   getSnapshot: () => LiveFeedDashboardSnapshot;
   assetDirectory: string;
   publicAdminDirectory: string;
 };
 
 /**
- * Registers protected SSR, login, logout, and static asset routes for the admin surface.
+ * Registers token exchange, protected SSR, logout, and static asset routes for the admin surface.
  */
 export function registerAdminRoutes(app: Express, dependencies: AdminRouteDependencies): void {
   app.use('/admin', express.static(dependencies.assetDirectory));
   app.use('/admin', express.static(dependencies.publicAdminDirectory));
 
   app.get('/admin/login', (_request, response) => {
-    applyAdminSecurityHeaders(response);
-    response.type('html').send(loginPage());
+    response.redirect(dependencies.clientOrigin + '/admin/live-feed');
   });
 
-  app.post('/admin/login', express.urlencoded({ extended: false }), (request, response) => {
-    applyAdminSecurityHeaders(response);
-    const body = request.body as { username?: unknown; password?: unknown };
-    const username = typeof body.username === 'string' ? body.username : '';
-    const password = typeof body.password === 'string' ? body.password : '';
-    const cookie = dependencies.auth.authenticate(username, password);
+  app.options('/admin/auth/token', (_request, response) => {
+    applyTokenExchangeCors(_request, response, dependencies.clientOrigin);
+    response.status(204).end();
+  });
 
-    if (!cookie) {
-      response.status(401).type('html').send(loginPage('Invalid admin credentials.'));
+  app.post('/admin/auth/token', express.urlencoded({ extended: false }), (request, response) => {
+    applyTokenExchangeCors(request, response, dependencies.clientOrigin);
+    const token = bearerToken(request.get('authorization')) ?? tokenFromBody(request.body);
+    if (!token) {
+      response.status(401).json({ error: 'invalid_admin_token', message: 'A Laravel admin token is required.' });
       return;
     }
 
-    response.setHeader('Set-Cookie', cookie);
-    response.redirect('/admin/live-feed');
+    try {
+      dependencies.tokenVerifier.verify(token);
+      response.setHeader('Set-Cookie', dependencies.auth.createSession());
+      response.redirect('/admin/live-feed');
+    } catch (error) {
+      const statusCode = error instanceof ApplicationError ? error.statusCode : 401;
+      response.status(statusCode).json({
+        error: error instanceof ApplicationError ? error.code : 'invalid_admin_token',
+        message: statusCode >= 500 ? 'Admin token verification is unavailable.' : 'Invalid admin token.',
+      });
+    }
   });
 
   app.post('/admin/logout', (_request, response) => {
@@ -68,14 +81,23 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
   });
 }
 
-function loginPage(message?: string): string {
-  const notice = message ? '<p role="alert">' + message + '</p>' : '';
-  return (
-    '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">' +
-    '<title>Live Feed Admin Login</title></head><body><main><h1>Live Feed Operations</h1>' +
-    notice +
-    '<form method="post" action="/admin/login"><label>Username <input name="username" autocomplete="username" required></label>' +
-    '<label>Password <input type="password" name="password" autocomplete="current-password" required></label>' +
-    '<button type="submit">Sign in</button></form></main></body></html>'
-  );
+function bearerToken(authorization: string | undefined): string | undefined {
+  if (!authorization?.startsWith('Bearer ')) return undefined;
+  const token = authorization.slice('Bearer '.length).trim();
+  return token || undefined;
+}
+
+function tokenFromBody(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const token = (body as { token?: unknown }).token;
+  return typeof token === 'string' && token.length > 0 ? token : undefined;
+}
+
+function applyTokenExchangeCors(request: Request, response: Response, allowedOrigin: string): void {
+  if (request.get('origin') !== allowedOrigin) return;
+  response.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+  response.setHeader('Access-Control-Allow-Credentials', 'true');
+  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  response.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  response.setHeader('Vary', 'Origin');
 }
