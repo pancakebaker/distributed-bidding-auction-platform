@@ -20,6 +20,7 @@ const snapshot: LiveFeedDashboardSnapshot = {
   redis: { connected: true },
   websocket: { connectedClients: 0, activeRooms: 0 },
   recentActivity: [],
+  database: { configured: false, available: false, totalCount: 0, idleCount: 0, waitingCount: 0 },
 };
 
 async function startApp(app: express.Express): Promise<{ baseUrl: string; close: () => Promise<void> }> {

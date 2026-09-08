@@ -3,6 +3,7 @@
  */
 import type { EventLoopMetrics, EventLoopMonitor } from '../../infrastructure/runtime/event-loop-monitor.js';
 import { getProcessMetrics, type ProcessMetrics } from '../../infrastructure/runtime/process-metrics.js';
+import type { LiveFeedHistoryStore } from '../ports/live-feed-history-store.js';
 import type { OperationalActivity, RecentActivityReader } from './recent-activity-store.js';
 
 /**
@@ -31,6 +32,13 @@ export type LiveFeedDashboardSnapshot = {
     activeRooms: number;
   };
   recentActivity: readonly OperationalActivity[];
+  database: {
+    configured: boolean;
+    available: boolean;
+    totalCount: number;
+    idleCount: number;
+    waitingCount: number;
+  };
 };
 
 /**
@@ -39,6 +47,7 @@ export type LiveFeedDashboardSnapshot = {
 export type LiveFeedDashboardDependencies = {
   eventLoopMonitor: EventLoopMonitor;
   recentActivity: RecentActivityReader;
+  historyStore: LiveFeedHistoryStore;
   rabbitMqConnected: boolean;
   redisConnected: boolean;
   connectedClients: number;
@@ -74,5 +83,6 @@ export function getLiveFeedDashboard(dependencies: LiveFeedDashboardDependencies
       activeRooms: dependencies.activeRooms,
     },
     recentActivity: dependencies.recentActivity.snapshot(),
+    database: dependencies.historyStore.status(),
   };
 }

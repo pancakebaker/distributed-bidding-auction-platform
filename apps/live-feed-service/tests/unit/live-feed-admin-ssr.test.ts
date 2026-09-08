@@ -34,6 +34,7 @@ const snapshot = {
       outcome: 'applied' as const,
     },
   ],
+  database: { configured: false, available: false, totalCount: 0, idleCount: 0, waitingCount: 0 },
 };
 
 void test('SSR includes meaningful dashboard markup and safe initial state', () => {

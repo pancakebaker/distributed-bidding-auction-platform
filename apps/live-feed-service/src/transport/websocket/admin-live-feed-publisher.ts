@@ -3,6 +3,8 @@
  */
 import type { Server } from 'socket.io';
 import type { OperationalActivity } from '../../application/diagnostics/recent-activity-store.js';
+import type { LiveFeedHistoryRecord } from '../../application/history/live-feed-history-types.js';
+import type { LiveFeedHistoryStore } from '../../application/ports/live-feed-history-store.js';
 import type { ActivityRecorder } from '../../application/ports/activity-recorder.js';
 
 /** Socket.IO room reserved for authorized operational admin sockets. */
@@ -31,6 +33,7 @@ export class LiveFeedActivityObserver implements ActivityRecorder {
   public constructor(
     private readonly store: ActivityRecorder,
     private readonly publisher: SocketIoAdminLiveFeedPublisher,
+    private readonly historyStore?: LiveFeedHistoryStore,
   ) {}
 
   /**
@@ -40,6 +43,20 @@ export class LiveFeedActivityObserver implements ActivityRecorder {
     try {
       this.store.record(activity);
       this.publisher.publish(activity);
+      const historyRecord: LiveFeedHistoryRecord = {
+        eventId: activity.eventId,
+        auctionId: activity.auctionId,
+        eventType: activity.eventType,
+        aggregateVersion: activity.aggregateVersion,
+        correlationId: activity.correlationId,
+        processedAt: activity.receivedAt,
+        outcome: activity.outcome,
+      };
+      void Promise.resolve(this.historyStore?.record(historyRecord)).catch((error: unknown) => {
+        console.warn('Live-feed history persistence failed.', {
+          message: error instanceof Error ? error.message : 'unknown_error',
+        });
+      });
     } catch (error) {
       console.warn('Live-feed operational activity observation failed.', {
         message: error instanceof Error ? error.message : 'unknown_error',

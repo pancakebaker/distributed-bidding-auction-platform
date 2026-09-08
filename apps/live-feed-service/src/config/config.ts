@@ -2,7 +2,7 @@
  * Environment-backed configuration for the live-feed service runtime and integration dependencies.
  */
 /**
- * Runtime settings for HTTP, Redis, RabbitMQ, and live-feed idempotency behavior.
+ * Runtime settings for HTTP, Redis, RabbitMQ, PostgreSQL history, and live-feed idempotency behavior.
  */
 export type LiveFeedConfig = {
   port: number;
@@ -17,6 +17,10 @@ export type LiveFeedConfig = {
   rabbitMqDeadLetterExchange: string;
   rabbitMqDeadLetterQueue: string;
   idempotencyTtlSeconds: number;
+  liveFeedDatabaseUrl?: string;
+  liveFeedDbPoolMax: number;
+  liveFeedDbIdleTimeoutMs: number;
+  liveFeedDbConnectionTimeoutMs: number;
 };
 
 function numberFromEnv(name: string, fallback: number): number {
@@ -78,6 +82,10 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     rabbitMqDeadLetterExchange: process.env.LIVE_FEED_RABBITMQ_DLX ?? 'live-feed.dead-letter',
     rabbitMqDeadLetterQueue: process.env.LIVE_FEED_RABBITMQ_DLQ ?? 'live-feed.bid-events.dlq',
     idempotencyTtlSeconds: numberFromEnv('LIVE_FEED_IDEMPOTENCY_TTL_SECONDS', 86400),
+    liveFeedDatabaseUrl: process.env.LIVE_FEED_DATABASE_URL,
+    liveFeedDbPoolMax: numberFromEnv('LIVE_FEED_DB_POOL_MAX', 5),
+    liveFeedDbIdleTimeoutMs: numberFromEnv('LIVE_FEED_DB_IDLE_TIMEOUT_MS', 10000),
+    liveFeedDbConnectionTimeoutMs: numberFromEnv('LIVE_FEED_DB_CONNECTION_TIMEOUT_MS', 2000),
     ...overrides,
   };
 }

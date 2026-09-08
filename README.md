@@ -324,3 +324,13 @@ The Node live-feed service now includes a protected, read-only operations page a
 The page uses a small signed, HttpOnly, SameSite cookie session with credentials supplied through `LIVE_FEED_ADMIN_USERNAME`, `LIVE_FEED_ADMIN_PASSWORD`, and `LIVE_FEED_ADMIN_SESSION_SECRET`. It sets a restrictive Content Security Policy and related browser security headers. This is a portfolio/demo admin boundary, not a replacement for production identity, SSO, CSRF, rate limiting, or centralized authorization.
 
 Recent activity is kept in a fixed-size in-memory buffer for operational visibility only. It is not an event store, audit log, source of truth, or durable history. The Bidding Service remains authoritative, and the page cannot accept bids, change auction state, mutate Redis projections, publish RabbitMQ messages, or alter existing Socket.IO auction events.
+
+### Live Feed Node Phase 9 durable operational history
+
+Phase 9 adds an optional PostgreSQL-backed, read-only operational history for the protected admin page. The live-feed service records bounded event metadata such as event ID, auction ID, event type, aggregate version, correlation ID, processing time, and outcome. It never stores raw event payloads and it is not an authoritative auction log.
+
+The history store is best-effort. A configured pool is created with `LIVE_FEED_DATABASE_URL`; without that setting, the service remains available and reports history as unconfigured. Insert failures are isolated from event processing: Redis projection, Socket.IO emission, RabbitMQ ACK/NACK behavior, and stale-version handling continue exactly as before. Duplicate event IDs are idempotent through a database uniqueness constraint and `ON CONFLICT DO NOTHING`.
+
+Apply the idempotent migration with `npm run migrate:history` from `apps/live-feed-service`. The admin page queries `GET /admin/api/history` with bounded filters and can request `GET /admin/api/history.pdf` for a selected range. Dates are explicit UTC values at the API boundary, ranges are limited to 31 days, and results are bounded. PDF output contains safe summary columns only. The database pool is closed by the existing graceful shutdown coordinator.
+
+The Phase 8 in-memory recent-activity buffer remains a fast, bounded live snapshot; PostgreSQL history is a separate durable diagnostic read path. Neither is used to decide auction correctness. The Bidding Service remains authoritative, and the existing live-feed event contracts, RabbitMQ topology, Redis semantics, Socket.IO auction channel, and HTTP contracts remain unchanged.

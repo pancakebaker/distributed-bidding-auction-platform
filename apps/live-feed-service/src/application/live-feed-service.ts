@@ -28,6 +28,7 @@ import { createLiveFeedStreamRecords } from './streams/create-live-feed-stream.j
 import { WorkerActivityCalculator } from '../infrastructure/workers/worker-activity-calculator.js';
 import { registerLiveFeedActivityRoute } from '../transport/http/live-feed-activity-route.js';
 import { registerAdminRoutes } from '../transport/http/admin/admin-route.js';
+import { registerAdminHistoryRoutes } from '../transport/http/admin/admin-history-route.js';
 import { AdminAuth } from '../transport/http/admin/admin-auth.js';
 import { getLiveFeedDashboard } from './diagnostics/get-live-feed-dashboard.js';
 import { RecentActivityStore } from './diagnostics/recent-activity-store.js';
@@ -38,6 +39,7 @@ import {
 } from '../transport/websocket/admin-live-feed-publisher.js';
 import { registerRuntimeThreadPoolRoute } from '../transport/http/runtime-thread-pool-route.js';
 import { registerRuntimeChildProcessRoute } from '../transport/http/runtime-child-process-route.js';
+import { createLiveFeedHistoryStore } from '../infrastructure/database/live-feed-history-store-factory.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -78,7 +80,8 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const publisher = new SocketIoLiveFeedPublisher(io);
   const recentActivity = new RecentActivityStore(50);
   const adminPublisher = new SocketIoAdminLiveFeedPublisher(io);
-  const activityObserver = new LiveFeedActivityObserver(recentActivity, adminPublisher);
+  const historyStore = createLiveFeedHistoryStore(config);
+  const activityObserver = new LiveFeedActivityObserver(recentActivity, adminPublisher, historyStore);
   const processor = new LiveFeedEventProcessor(publisher, stateStore, activityObserver);
   const adminAuth = new AdminAuth();
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
@@ -133,6 +136,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   });
   registerRuntimeThreadPoolRoute(app);
   registerRuntimeChildProcessRoute(app);
+  registerAdminHistoryRoutes(app, { auth: adminAuth, store: historyStore });
   registerAdminRoutes(app, {
     auth: adminAuth,
     assetDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../ui'),
@@ -141,6 +145,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
       getLiveFeedDashboard({
         eventLoopMonitor,
         recentActivity,
+        historyStore,
         rabbitMqConnected: consumer.connected,
         redisConnected: redis.isOpen && redisPub.isOpen && redisSub.isOpen,
         connectedClients: io.sockets.sockets.size,
@@ -212,6 +217,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
         ]);
       },
     },
+    { name: 'PostgreSQL history pool', run: () => historyStore.close() },
     { name: 'event-loop monitor', run: () => eventLoopMonitor.stop() },
     { name: 'activity workers', run: () => activityCalculator.close() },
   ]);

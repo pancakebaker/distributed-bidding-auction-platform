@@ -350,3 +350,23 @@ The admin boundary is deliberately small. Credentials are read from `LIVE_FEED_A
 The Socket.IO admin channel uses a separate `admin:live-feed` room and `admin:activity` event. A socket must present a valid admin cookie when requesting `admin:subscribe`; unauthorized sockets do not join the room. Existing browser auction rooms, event names, payloads, subscription flow, RabbitMQ topology, Redis keys/version semantics, and Bidding Service authority are unaffected.
 
 Server-side rendering is used for a meaningful first response and hydration is used only for live admin updates. The page is intentionally small and uses `renderToString`; the service's Phase 5 NDJSON endpoint remains the separate demonstration of streaming and backpressure. React is a UI implementation detail of this transport boundary, not an application dependency. The dashboard is observational and must never be used to determine whether an auction event is valid or stale.
+
+## Node Phase 9 durable live-feed history
+
+The protected operations dashboard now has an optional durable history path:
+
+```text
+Live-feed event outcome
+        ↓ best-effort metadata write
+PostgreSQL live_feed_history
+        ↓ bounded parameterized query
+Admin history JSON or PDF response
+```
+
+The database adapter uses one `pg.Pool`, parameterized SQL, a unique `event_id`, and idempotent inserts. It stores operational metadata only; raw event payloads, credentials, and connection strings are never persisted or returned. Filters are bounded by a 31-day range, safe text lengths, and a maximum result count. The PDF export reuses the same filters and emits only safe summary columns.
+
+PostgreSQL is optional for local development. When `LIVE_FEED_DATABASE_URL` is absent, the service uses a no-op unavailable store and the rest of the live-feed path remains available. When a database write or query fails, the admin history operation reports a safe unavailable response, while normal Redis projection, Socket.IO publication, RabbitMQ acknowledgment, event ordering, and aggregate-version guards remain unchanged. History recording is fire-and-forget and best-effort; it never becomes a source of business truth.
+
+The migration is `apps/live-feed-service/migrations/001_create_live_feed_history.sql` and is applied with `npm run migrate:history`. The existing shutdown coordinator closes the PostgreSQL pool after the live-feed dependencies are stopped. The admin UI labels stored and returned timestamps as UTC and converts browser-local filter controls to explicit UTC query values.
+
+The Phase 8 in-memory activity ring remains separate from durable history. It is used for fast operational updates over the admin Socket.IO channel, while PostgreSQL provides bounded query/export capability. Neither path accepts bids, mutates auction state, writes Redis projections, publishes RabbitMQ messages, or affects client-facing auction events. The Bidding Service remains authoritative.
