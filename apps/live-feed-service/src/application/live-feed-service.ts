@@ -23,6 +23,8 @@ import { runWithStartupCleanup } from '../infrastructure/runtime/startup.js';
 import { createHttpErrorHandler } from '../transport/http/error-handler.js';
 import { registerLiveFeedStreamRoute } from '../transport/http/live-feed-stream-route.js';
 import { createLiveFeedStreamRecords } from './streams/create-live-feed-stream.js';
+import { WorkerActivityCalculator } from '../infrastructure/workers/worker-activity-calculator.js';
+import { registerLiveFeedActivityRoute } from '../transport/http/live-feed-activity-route.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -64,6 +66,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const processor = new LiveFeedEventProcessor(publisher, stateStore);
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
   const eventLoopMonitor = new EventLoopMonitor();
+  const activityCalculator = new WorkerActivityCalculator();
 
   app.use((request, _response, next) => {
     const requestId = request.get('x-request-id') ?? undefined;
@@ -103,6 +106,13 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
       memory: processMetrics.memory,
       eventLoop: eventLoopMonitor.snapshot(),
     });
+  });
+  registerLiveFeedActivityRoute(app, activityCalculator, () => {
+    const processMetrics = getProcessMetrics();
+    const eventLoop = eventLoopMonitor.snapshot();
+    return {
+      samples: [...Object.values(processMetrics.memory), eventLoop.utilization, ...Object.values(eventLoop.delayMs)],
+    };
   });
 
   io.on('connection', (socket) => {
@@ -161,6 +171,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
       },
     },
     { name: 'event-loop monitor', run: () => eventLoopMonitor.stop() },
+    { name: 'activity workers', run: () => activityCalculator.close() },
   ]);
 
   return {

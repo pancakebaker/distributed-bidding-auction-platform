@@ -129,7 +129,7 @@ apps/live-feed-service/
 
 `GET /diagnostics/runtime` is a read-only, observational endpoint. It reports Node version, process uptime, selected `process.memoryUsage()` categories (`rss`, `heapTotal`, `heapUsed`, `external`, and `arrayBuffers`, all in bytes), event-loop utilization, and event-loop delay percentiles normalized from nanoseconds to milliseconds. It does not read or modify auction state, Redis state, RabbitMQ messages, or Socket.IO rooms. `/health` remains unchanged.
 
-Node JavaScript runs primarily on the event-loop thread. Async I/O allows the process to await external work, but JavaScript execution itself is not automatically multithreaded. Event-loop delay indicates blocked or overloaded JavaScript execution; CPU-heavy work must not block that thread. Worker Threads are reserved for a later phase and are not implemented here. Cluster, Child Processes, streaming exports, SSR, PostgreSQL, and BFF behavior are also outside this phase.
+Node JavaScript runs primarily on the event-loop thread. Async I/O allows the process to await external work, but JavaScript execution itself is not automatically multithreaded. Event-loop delay indicates blocked or overloaded JavaScript execution; CPU-heavy work must not block that thread. Worker Threads are used only by the later Phase 6 bounded diagnostic activity calculation, not by the auction path. Cluster, Child Processes, streaming exports, SSR, PostgreSQL, and BFF behavior remain outside this phase.
 
 The runtime monitor starts and stops explicitly with the service, has no import-time side effects, and does not continuously log or poll. V8/process memory categories are diagnostic observations only. The Bidding Service remains authoritative for bid acceptance/rejection, auction state, lifecycle transitions, and aggregate-version assignment; the Node service remains a downstream RabbitMQ/Redis/Socket.IO projection and fan-out service.
 
@@ -232,6 +232,33 @@ The transform encodes each line with `Buffer.from(..., 'utf8')`. Node `Buffer` v
 If a client disconnects, the route aborts a request-local `AbortSignal`, which tears down the pipeline and its streams. This cancellation is local to the diagnostic response and cannot block RabbitMQ processing or change Redis, auction, or client state. AsyncLocalStorage request context remains observational and can flow through the streaming callback, but it is not included as auction data or used for correctness.
 
 The data source is intentionally a bounded runtime snapshot rather than a new event archive. Streaming here demonstrates incremental records, byte encoding, backpressure, cancellation, and error propagation without introducing persistence, reporting, PostgreSQL, Worker Threads, Cluster, Child Processes, SSR, or BFF behavior. The Bidding Service remains authoritative and all existing RabbitMQ, Redis, Socket.IO, lifecycle, and event contracts are unchanged.
+### Live Feed Node Phase 6 Worker Thread activity diagnostics
+
+`GET /diagnostics/live-feed/activity` runs a bounded, read-only histogram/percentile/checksum calculation over the existing runtime snapshot. It is diagnostic only and does not read or mutate Redis auction state, publish RabbitMQ messages, acknowledge deliveries, or emit Socket.IO updates.
+
+The boundary is:
+
+```text
+HTTP request
+    ↓
+ActivityCalculator port
+    ↓
+Worker Thread adapter
+    ↓
+Worker Thread
+    ↓
+Pure CPU calculation
+    ↓
+HTTP response
+```
+
+The main Node thread continues to own HTTP, RabbitMQ, Redis, Socket.IO, AsyncLocalStorage, and lifecycle coordination. Only the bounded numeric calculation runs in a Worker Thread. Worker Threads share the process but execute JavaScript on separate threads, so they are appropriate for CPU-bound JavaScript—not a replacement for ordinary asynchronous network I/O.
+
+The parent passes a small plain object as `workerData`; Node transfers it using structured cloning. No framework objects, clients, channels, sockets, functions, or request context are passed. AsyncLocalStorage is not automatically shared with the worker and remains observational on the main request path. A `transferList` is intentionally not used because this bounded input does not benefit from transferring ownership of a large `ArrayBuffer`.
+
+Each invocation has a timeout and request-local `AbortSignal`. Timeout, client cancellation, worker errors, and abnormal exits reject only that activity operation, terminate its Worker, and use the existing safe HTTP error handling. Active diagnostic Workers are also terminated during the existing idempotent shutdown sequence. A single worker failure does not make the process fatal.
+
+Worker Threads differ from Cluster and Child Processes: Workers provide separate JavaScript threads within one process and are suited to bounded CPU work; Cluster uses multiple processes for server scaling; Child Processes provide stronger process isolation. Cluster and Child Processes are not implemented here. The Bidding Service remains authoritative, and all existing event, Redis, RabbitMQ, Socket.IO, HTTP, streaming, and lifecycle contracts remain unchanged.
 ## RabbitMQ
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
