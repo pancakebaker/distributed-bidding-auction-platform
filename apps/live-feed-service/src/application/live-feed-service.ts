@@ -25,6 +25,8 @@ import { registerLiveFeedStreamRoute } from '../transport/http/live-feed-stream-
 import { createLiveFeedStreamRecords } from './streams/create-live-feed-stream.js';
 import { WorkerActivityCalculator } from '../infrastructure/workers/worker-activity-calculator.js';
 import { registerLiveFeedActivityRoute } from '../transport/http/live-feed-activity-route.js';
+import { registerRuntimeThreadPoolRoute } from '../transport/http/runtime-thread-pool-route.js';
+import { registerRuntimeChildProcessRoute } from '../transport/http/runtime-child-process-route.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -114,6 +116,8 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
       samples: [...Object.values(processMetrics.memory), eventLoop.utilization, ...Object.values(eventLoop.delayMs)],
     };
   });
+  registerRuntimeThreadPoolRoute(app);
+  registerRuntimeChildProcessRoute(app);
 
   io.on('connection', (socket) => {
     socket.emit('status', {

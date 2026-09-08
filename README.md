@@ -37,6 +37,7 @@ Auctions close using server-side UTC, with `AuctionClosed` and `WinnerSelected` 
 - narrow application ports for framework-agnostic live-feed processing
 - bounded read-only NDJSON diagnostics streaming with Node backpressure and cancellation
 - bounded Worker Thread activity diagnostics for isolated CPU-bound calculations
+- bounded libuv thread-pool and child-process runtime diagnostics
 - automatic server-authoritative auction closure
 - REST reconciliation when live projections are missed
 - failure/retry behavior across service boundaries

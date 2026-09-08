@@ -259,6 +259,48 @@ The parent passes a small plain object as `workerData`; Node transfers it using 
 Each invocation has a timeout and request-local `AbortSignal`. Timeout, client cancellation, worker errors, and abnormal exits reject only that activity operation, terminate its Worker, and use the existing safe HTTP error handling. Active diagnostic Workers are also terminated during the existing idempotent shutdown sequence. A single worker failure does not make the process fatal.
 
 Worker Threads differ from Cluster and Child Processes: Workers provide separate JavaScript threads within one process and are suited to bounded CPU work; Cluster uses multiple processes for server scaling; Child Processes provide stronger process isolation. Cluster and Child Processes are not implemented here. The Bidding Service remains authoritative, and all existing event, Redis, RabbitMQ, Socket.IO, HTTP, streaming, and lifecycle contracts remain unchanged.
+### Live Feed Node Phase 7 libuv and process-model diagnostics
+
+Phase 7 adds two read-only runtime endpoints:
+
+- `GET /diagnostics/runtime/thread-pool` runs a bounded asynchronous `crypto.pbkdf2()` operation. The cryptographic native work is backed by Node's internal libuv thread pool; its completion callback returns through the main event loop. It reports operation metadata and timing only, never the derived key, input, salt, secrets, or environment.
+- `GET /diagnostics/runtime/child-process` invokes the current Node executable with a fixed `-e` probe using `spawn()` with `shell: false`. It returns safe child identity metadata only: PID, Node version, platform, and architecture.
+
+The runtime model is:
+
+```text
+Main Node process
+├── Event loop
+│   ├── HTTP
+│   ├── RabbitMQ
+│   ├── Redis
+│   └── Socket.IO
+├── libuv thread pool
+│   └── native crypto/fs/zlib work selected by Node APIs
+├── Worker Thread
+│   └── Phase 6 bounded CPU-heavy JavaScript calculation
+└── Child Process
+    └── isolated Phase 7 runtime probe
+```
+
+These mechanisms are distinct. The libuv pool is an internal native worker pool used by selected Node APIs; it is not a JavaScript Worker Thread, Cluster worker, or child process. Worker Threads run JavaScript on separate threads in the same process and remain the choice for the bounded Phase 6 CPU calculation. Child Processes have separate OS processes and heaps, communicate through IPC/stdout, and are useful when process isolation or an external executable is needed. AsyncLocalStorage context does not automatically cross into a child process or Worker Thread; it remains observational on the main request path.
+
+The child probe uses no shell, no user-supplied executable or command, fixed arguments, bounded output, timeout handling, and request-local abort cleanup. A child failure affects only that diagnostic request. Cluster is intentionally not enabled: this service is container-friendly, RabbitMQ and the Redis adapter already support distributed coordination, and replica count belongs to deployment/orchestration rather than an additional in-container process-management layer.
+
+`UV_THREADPOOL_SIZE` is documented rather than mutated at runtime. It must be set before Node initializes the pool; increasing it is not universally better and can increase CPU contention and memory use. Live-feed HTTP, RabbitMQ, Redis, and Socket.IO I/O remain on the main event-loop model, while CPU-heavy JavaScript remains isolated in Worker Threads.
+
+The Phase 1 memory diagnostics expose `rss`, `heapTotal`, `heapUsed`, `external`, and `arrayBuffers` in bytes. V8 manages the JavaScript heap represented primarily by `heapTotal` and `heapUsed`; Buffer and other native allocations can contribute to `external` and `arrayBuffers`, and can increase RSS without a one-to-one increase in `heapUsed`. Worker Threads have separate JavaScript execution contexts/heaps within the process, while child processes have isolated process memory. No heap snapshots or GC tuning are introduced.
+
+For scaling, the intended model is multiple service instances:
+
+```text
+Horizontal scaling
+├── Container instance 1
+├── Container instance 2
+└── Container instance 3
+```
+
+rather than embedding Node Cluster workers inside one container. No Cluster mode or deployment-topology change is implemented. The Bidding Service remains authoritative, and all auction, event, Redis, RabbitMQ, Socket.IO, HTTP, streaming, Worker Thread, AsyncLocalStorage, and lifecycle contracts remain unchanged.
 ## RabbitMQ
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
