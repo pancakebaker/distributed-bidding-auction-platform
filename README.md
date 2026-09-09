@@ -272,10 +272,10 @@ dotnet ef database update --project apps/auction-operations-portal --startup-pro
 ./scripts/start-demo.ps1
 ```
 
-The existing `start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, and Vite/client in separate PowerShell windows. It does not start the portal; start it separately so its URL is explicit:
+The existing `start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, Vite/client, and Auction Operations Portal in separate PowerShell windows. The portal uses `dotnet run --no-restore`, checks its restored assets before launch, skips a duplicate when port `5099` is already listening, and waits for `/health` before printing the startup summary:
 
 ```powershell
-dotnet run --project apps/auction-operations-portal --urls http://localhost:5099
+dotnet run --no-restore --project apps/auction-operations-portal --urls http://localhost:5099
 ```
 
 Useful local URLs:

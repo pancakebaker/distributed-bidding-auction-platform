@@ -93,7 +93,7 @@ After the root infrastructure, Laravel, and Live Feed setup is complete, apply t
 
 ```powershell
 dotnet ef database update --project apps/auction-operations-portal --startup-project apps/auction-operations-portal
-dotnet run --project apps/auction-operations-portal --urls http://localhost:5099
+dotnet run --no-restore --project apps/auction-operations-portal --urls http://localhost:5099
 ```
 
-The existing `scripts/start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, and Vite/client. It intentionally does not start this portal process. Enter through Laravel at `http://localhost:8000/admin/auction-operations`; direct operational routes are `/activity/live`, `/activity/history`, and `/health` on port `5099`.
+The existing `scripts/start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, Vite/client, and this portal process. It launches the portal with `dotnet run --no-restore`, skips startup when port `5099` is already listening, and waits for `/health` to become ready. Enter through Laravel at `http://localhost:8000/admin`; direct operational routes are `/activity/live`, `/activity/history`, and `/health` on port `5099`.

@@ -47,7 +47,7 @@ Open two browser windows at `http://localhost:8000/auctions`.
     Explain that RabbitMQ can be down while bids or closures commit because the API/scheduler only depend on PostgreSQL. The publisher retries later. Duplicate delivery is expected, and consumers dedupe by `eventId`.
 
 11. **Optionally show operations.**
-    Start the portal separately with `dotnet run --project apps/auction-operations-portal --urls http://localhost:5099`, then enter through Laravel at `http://localhost:8000/admin/auction-operations`. Show `/activity/live` for authenticated SignalR activity, `/activity/history` for UTC-filtered PostgreSQL history, and the Download PDF action. Explain that the portal is a separate operational projection and does not mutate auction state.
+    Run `scripts\start-demo.ps1`, which starts the portal with `dotnet run --no-restore --project apps/auction-operations-portal --urls http://localhost:5099`, then enter through Laravel at `http://localhost:8000/admin`. Show `/activity/live` for authenticated SignalR activity, `/activity/history` for UTC-filtered PostgreSQL history, and the Download PDF action. Explain that the portal is a separate operational projection and does not mutate auction state.
 
 ## Useful URLs
 
