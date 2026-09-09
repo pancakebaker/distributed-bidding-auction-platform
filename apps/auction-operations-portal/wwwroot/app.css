@@ -1,0 +1,16 @@
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  color: #1f2937;
+  background: #f8fafc;
+}
+header {
+  padding: 1.25rem 2rem;
+  background: #0f172a;
+  color: white;
+}
+.content {
+  max-width: 70rem;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}

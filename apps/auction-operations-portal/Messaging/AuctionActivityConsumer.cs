@@ -1,0 +1,89 @@
+using System.Collections.Concurrent;
+using System.Text;
+using System.Text.Json;
+using AuctionOperationsPortal.Contracts;
+using AuctionOperationsPortal.Options;
+using AuctionOperationsPortal.Persistence;
+using Microsoft.Extensions.Options;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+
+namespace AuctionOperationsPortal.Messaging;
+
+public interface IDeliveryActions
+{
+    Task AckAsync(ulong deliveryTag, CancellationToken cancellationToken);
+    Task RejectAsync(ulong deliveryTag, bool requeue, CancellationToken cancellationToken);
+    Task RequeueAsync(ulong deliveryTag, CancellationToken cancellationToken);
+}
+
+public sealed class AuctionActivityConsumer(
+    IServiceScopeFactory scopeFactory,
+    RabbitMqTopology topology,
+    IOptions<RabbitMqOptions> options,
+    ILogger<AuctionActivityConsumer> logger) : BackgroundService
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private readonly ConcurrentDictionary<Guid, int> retryCounts = new();
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        var config = options.Value;
+        var factory = new ConnectionFactory { HostName = config.HostName, Port = config.Port, UserName = config.UserName, Password = config.Password, VirtualHost = config.VirtualHost, AutomaticRecoveryEnabled = true, ClientProvidedName = "dbap-auction-operations-portal" };
+        await using var connection = await factory.CreateConnectionAsync(stoppingToken);
+        await using var channel = await connection.CreateChannelAsync(cancellationToken: stoppingToken);
+        await topology.DeclareAsync(channel, stoppingToken);
+        await channel.BasicQosAsync(0, config.PrefetchCount, global: false, stoppingToken);
+        var consumer = new AsyncEventingBasicConsumer(channel);
+        consumer.ReceivedAsync += (_, args) => HandleAsync(channel, args, stoppingToken);
+        await channel.BasicConsumeAsync(config.Queue, autoAck: false, consumer, stoppingToken);
+        logger.LogInformation("Auction Operations activity consumer started on {Queue}.", config.Queue);
+        try
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, stoppingToken);
+        }
+        catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task HandleAsync(IChannel channel, BasicDeliverEventArgs args, CancellationToken cancellationToken)
+    {
+        IntegrationEventEnvelope? envelope = null;
+        try
+        {
+            envelope = JsonSerializer.Deserialize<IntegrationEventEnvelope>(Encoding.UTF8.GetString(args.Body.Span), JsonOptions);
+            if (envelope is null) throw new FormatException("Message body is empty.");
+            using var scope = scopeFactory.CreateScope();
+            var persistence = scope.ServiceProvider.GetRequiredService<IActivityPersistence>();
+            await persistence.PersistAsync(envelope, cancellationToken);
+            retryCounts.TryRemove(envelope.EventId, out _);
+            await channel.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken);
+            logger.LogInformation("Persisted auction activity {EventId} ({EventType}).", envelope.EventId, envelope.EventType);
+        }
+        catch (FormatException exception)
+        {
+            logger.LogWarning(exception, "Rejecting malformed auction activity message.");
+            await channel.BasicRejectAsync(args.DeliveryTag, requeue: false, cancellationToken);
+        }
+        catch (JsonException exception)
+        {
+            logger.LogWarning(exception, "Rejecting invalid auction activity JSON.");
+            await channel.BasicRejectAsync(args.DeliveryTag, requeue: false, cancellationToken);
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+        {
+            var attempts = envelope is null ? options.Value.MaxRequeueAttempts : retryCounts.AddOrUpdate(envelope.EventId, 1, (_, current) => current + 1);
+            logger.LogError(exception, "Transient failure processing auction activity; attempt {Attempt}.", attempts);
+            if (attempts >= options.Value.MaxRequeueAttempts)
+            {
+                if (envelope is not null) retryCounts.TryRemove(envelope.EventId, out _);
+                await channel.BasicRejectAsync(args.DeliveryTag, requeue: false, cancellationToken);
+            }
+            else
+            {
+                await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: true, cancellationToken);
+            }
+        }
+    }
+}
