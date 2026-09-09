@@ -16,7 +16,7 @@
     <label>Auction/Aggregate ID<input type="text" @bind="aggregateInput" placeholder="Optional GUID" /></label>
     <label>Event Type<select @bind="eventTypeInput"><option value="">All</option>@foreach (var eventType in ActivityHistoryQueryRules.KnownEventTypes){<option value="@eventType">@eventType</option>}</select></label>
     <label>Page size<select @bind="pageSizeInput"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
-    <div class="history-actions"><button type="submit">Search</button><button type="button" @onclick="ResetAsync">Reset</button></div>
+    <div class="history-actions"><button type="submit">Search</button><button type="button" @onclick="ResetAsync">Reset</button><button type="button" @onclick="DownloadPdfAsync">Download PDF</button></div>
 </form>
 
 @if (errors.Count > 0)
@@ -154,6 +154,33 @@ else
     private async Task ResetAsync()
     {
         Navigation.NavigateTo("/activity/history");
+        await Task.CompletedTask;
+    }
+
+    private async Task DownloadPdfAsync()
+    {
+        var parsed = ActivityHistoryQueryParser.Parse(
+            ToUtc(fromInput).ToString("O"),
+            ToUtc(toInput).ToString("O"),
+            aggregateInput,
+            eventTypeInput,
+            "1",
+            pageSizeInput.ToString(CultureInfo.InvariantCulture));
+        if (!parsed.IsValid)
+        {
+            errors = parsed.Errors.ToList();
+            return;
+        }
+
+        var query = parsed.Query!;
+        var parameters = new Dictionary<string, object?>
+        {
+            ["from"] = query.FromUtc?.ToString("O"),
+            ["to"] = query.ToUtc?.ToString("O"),
+            ["aggregateId"] = query.AggregateId,
+            ["eventType"] = query.EventType
+        };
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("/activity/report.pdf", parameters));
         await Task.CompletedTask;
     }
 

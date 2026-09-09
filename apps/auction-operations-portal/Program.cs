@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using System.Threading.RateLimiting;
 using AuctionOperationsPortal.Auth;
 using AuctionOperationsPortal.Components;
 using AuctionOperationsPortal.Data;
@@ -64,12 +66,25 @@ if (builder.Environment.IsEnvironment("Testing"))
 builder.Services.AddScoped<IActivityPersistence, ActivityPersistence>();
 builder.Services.AddScoped<IRecentActivityQuery, RecentActivityQuery>();
 builder.Services.AddScoped<IActivityHistoryQueryService, ActivityHistoryQueryService>();
+builder.Services.AddScoped<IActivityReportService, ActivityReportService>();
 builder.Services.AddSingleton<IActivityNotificationPublisher, SignalRActivityNotificationPublisher>();
 builder.Services.AddSingleton<IntegrationEventMapper>();
 builder.Services.AddSingleton<RabbitMqTopology>();
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<AuctionActivityConsumer>();
 builder.Services.AddSignalR();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("ActivityReport", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+});
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 var app = builder.Build();
@@ -83,6 +98,7 @@ if (!app.Environment.IsEnvironment("Testing"))
     app.UseHttpsRedirection();
 app.UseRouting();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.UseAntiforgery();
 app.MapPost("/auth/handoff", async (HttpContext context, LaravelTokenValidator validator, IOptions<LaravelAuthOptions> authOptions, ILogger<Program> logger) =>
@@ -118,6 +134,42 @@ app.MapPost("/auth/logout", async (HttpContext context, IOptions<LaravelAuthOpti
 }).RequireAuthorization("AuctionOperationsAdmin").DisableAntiforgery();
 app.MapGet("/auth/required", (IOptions<LaravelAuthOptions> authOptions) => Results.Redirect(authOptions.Value.LaravelAdminUrl));
 app.MapGet("/auth/denied", () => Results.Text("Access denied", statusCode: StatusCodes.Status403Forbidden));
+app.MapGet("/activity/report.pdf", async (
+    string? from,
+    string? to,
+    string? aggregateId,
+    string? eventType,
+    IActivityReportService reports,
+    HttpContext context,
+    ILogger<Program> logger) =>
+{
+    var parsed = ActivityHistoryQueryParser.Parse(from, to, aggregateId, eventType, "1", "25");
+    if (!parsed.IsValid)
+        return Results.BadRequest(new { errors = parsed.Errors });
+
+    var query = parsed.Query!;
+    var request = new ActivityReportRequest(query.FromUtc, query.ToUtc, query.AggregateId, query.EventType);
+    try
+    {
+        var report = await reports.BuildAsync(request, context.RequestAborted);
+        var pdf = await reports.GeneratePdfAsync(report, context.RequestAborted);
+        var filename = $"auction-activity-{request.FromUtc!.Value:yyyy-MM-dd}-to-{request.ToUtc!.Value:yyyy-MM-dd}.pdf";
+        return Results.File(pdf, "application/pdf", filename);
+    }
+    catch (ActivityReportValidationException exception)
+    {
+        return Results.BadRequest(new { errors = exception.Errors });
+    }
+    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+    {
+        return Results.Empty;
+    }
+    catch (Exception exception)
+    {
+        logger.LogError(exception, "Activity PDF report generation failed for user {UserId}.", context.User.FindFirstValue(ClaimTypes.NameIdentifier));
+        return Results.Problem("Unable to generate the activity report.", statusCode: StatusCodes.Status500InternalServerError);
+    }
+}).RequireAuthorization("AuctionOperationsAdmin").RequireRateLimiting("ActivityReport");
 app.MapHub<ActivityHub>("/hubs/activity").RequireAuthorization("AuctionOperationsAdmin");
 app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();

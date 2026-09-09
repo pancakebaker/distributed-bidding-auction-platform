@@ -58,6 +58,16 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
     }
 
     [Fact]
+    public async Task AnonymousReportRoute_IsRejected()
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var response = await client.GetAsync("/activity/report.pdf?from=2026-09-01T00:00:00Z&to=2026-09-01T01:00:00Z");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("auth/required", response.Headers.Location?.ToString());
+    }
+
+    [Fact]
     public async Task AuthenticatedPortalRoute_IsAccessibleAndLogoutClearsCookie()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
@@ -70,6 +80,32 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         var logout = await client.PostAsync("/auth/logout", new FormUrlEncodedContent(Array.Empty<KeyValuePair<string, string>>()));
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         Assert.Contains("Set-Cookie", logout.Headers.ToString());
+    }
+
+    [Fact]
+    public async Task AuthenticatedReport_ReturnsPdfAndRateLimitsAfterFiveRequests()
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        using var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("token", factory.CreateToken()) });
+        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync("/auth/handoff", content)).StatusCode);
+        const string url = "/activity/report.pdf?from=2026-09-01T00:00:00Z&to=2026-09-01T01:00:00Z";
+
+        HttpResponseMessage? first = null;
+        for (var index = 0; index < 5; index++)
+        {
+            var response = await client.GetAsync(url);
+            first ??= response;
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            if (index == 0)
+            {
+                Assert.Equal("application/pdf", response.Content.Headers.ContentType?.MediaType);
+                Assert.Equal("attachment", response.Content.Headers.ContentDisposition?.DispositionType);
+                Assert.EndsWith(".pdf", response.Content.Headers.ContentDisposition?.FileNameStar ?? response.Content.Headers.ContentDisposition?.FileName);
+            }
+        }
+
+        Assert.Equal(HttpStatusCode.OK, first!.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync(url)).StatusCode);
     }
 }
 
