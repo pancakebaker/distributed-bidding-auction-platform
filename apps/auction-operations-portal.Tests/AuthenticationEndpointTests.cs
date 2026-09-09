@@ -24,6 +24,7 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         var response = await client.PostAsync("/auth/handoff", content);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/activity/live", response.Headers.Location?.ToString());
         Assert.Contains("auction_operations_auth", response.Headers.GetValues("Set-Cookie").Single());
     }
 

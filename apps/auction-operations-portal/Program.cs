@@ -193,7 +193,7 @@ app.MapPost("/auth/handoff", async (HttpContext context, LaravelTokenValidator v
             IsPersistent = false,
             ExpiresUtc = identity.ExpiresAt
         });
-        return Results.Redirect("/");
+        return Results.Redirect("/activity/live");
     }
     catch (PortalTokenValidationException exception)
     {

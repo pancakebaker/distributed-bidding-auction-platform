@@ -11,6 +11,8 @@ type AdminNavigationItem = {
     label: string;
     href: string;
     active: boolean;
+    target?: string;
+    rel?: string;
 };
 
 type DashboardMetric = {
@@ -456,7 +458,13 @@ function AdminSidebar({ navigation }: { navigation: AdminNavigationItem[] }) {
             </a>
             <nav>
                 {navigation.map((item) => (
-                    <a className={item.active ? 'active' : undefined} href={item.href} key={item.href}>
+                    <a
+                        className={item.active ? 'active' : undefined}
+                        href={item.href}
+                        key={item.href}
+                        rel={item.rel}
+                        target={item.target}
+                    >
                         {item.label}
                     </a>
                 ))}
