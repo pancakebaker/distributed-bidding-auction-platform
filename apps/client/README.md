@@ -148,10 +148,11 @@ The client is part of a larger distributed auction platform that includes:
 
 - **Bidding Service** — validates and accepts bids and owns bid state transitions
 - **Live Feed Service** — consumes auction events and broadcasts live updates to connected clients
+- **Auction Operations Portal** — authenticated Blazor operations UI for live activity, history, and PDF reports; see [portal documentation](../auction-operations-portal/README.md)
 - **Auction Scheduler** — handles time-based auction lifecycle actions
 - **Outbox Publisher** — publishes persisted domain events to the messaging infrastructure
 
-See the repository-level README for the full architecture, local infrastructure setup, and end-to-end demo instructions.
+Laravel remains the identity authority. The protected `/admin/auction-operations` route performs the short-lived RS256 handoff to the portal; the client does not store the portal JWT. See the [repository README](../../README.md) for the final architecture, local infrastructure setup, and end-to-end demo instructions.
 
 ## License
 

@@ -26,7 +26,7 @@ Open two browser windows at `http://localhost:8000/auctions`.
    Point to the second browser updating through `bid:accepted`: "The bid was committed atomically with an outbox event, published through RabbitMQ, consumed by the Live Feed Service, then fanned out through Redis and Socket.IO."
 
 4. **Briefly show the architecture.**
-   Connect the visible UI behavior to the Laravel/React client, .NET Bidding Service, PostgreSQL, transactional outbox, Outbox Publisher, RabbitMQ, Live Feed Service, Redis, Socket.IO, and Auction Scheduler.
+   Connect the visible UI behavior to the Laravel/React client, .NET Bidding Service, PostgreSQL, transactional outbox, Outbox Publisher, RabbitMQ, Live Feed Service, Redis, Socket.IO, Auction Scheduler, and the separate Auction Operations Portal projection.
 
 5. **Place Bob's higher bid.**
    Show the current bid, highest bidder, auction version, and bid history updating. Mention that simultaneous bid races are handled by PostgreSQL optimistic concurrency on `Auction.Version`.
@@ -46,11 +46,18 @@ Open two browser windows at `http://localhost:8000/auctions`.
 10. **Briefly show failure resilience.**
     Explain that RabbitMQ can be down while bids or closures commit because the API/scheduler only depend on PostgreSQL. The publisher retries later. Duplicate delivery is expected, and consumers dedupe by `eventId`.
 
+11. **Optionally show operations.**
+    Start the portal separately with `dotnet run --project apps/auction-operations-portal --urls http://localhost:5099`, then enter through Laravel at `http://localhost:8000/admin/auction-operations`. Show `/activity/live` for authenticated SignalR activity, `/activity/history` for UTC-filtered PostgreSQL history, and the Download PDF action. Explain that the portal is a separate operational projection and does not mutate auction state.
+
 ## Useful URLs
 
 - Client: `http://localhost:8000/auctions`
 - Bidding API Swagger: `http://localhost:5000/swagger`
 - Live Feed health: `http://localhost:3001/health`
+- Operations Portal handoff: `http://localhost:8000/admin/auction-operations`
+- Operations Portal live activity: `http://localhost:5099/activity/live`
+- Operations Portal history: `http://localhost:5099/activity/history`
+- Operations Portal health: `http://localhost:5099/health`
 - RabbitMQ management: `http://localhost:15672`
 
 ## Closing Talking Points

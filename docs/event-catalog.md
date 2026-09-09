@@ -1,6 +1,6 @@
 # Event Catalog
 
-This catalog documents planned integration event contracts. Phase 4 publishes outbox rows to RabbitMQ, Phase 5 consumes bid messages in the Live Feed Service, Phase 7 adds persisted lifecycle events for auction closure, and Phase 8 projects those lifecycle events to clients. No shared event package is introduced yet.
+This catalog documents the integration event contracts currently published by the Bidding Service and Auction Scheduler. The Outbox Publisher sends them to RabbitMQ, where the Node Live Feed and .NET Auction Operations Portal consume them through separate queues. No shared event package is introduced.
 
 ## Event Envelope
 
@@ -20,7 +20,7 @@ This catalog documents planned integration event contracts. Phase 4 publishes ou
 
 `aggregateVersion` supports ordering and stale-event detection by identifying the resulting version of the aggregate that produced the event. It is not a unique per-event sequence. `AuctionClosed` and `WinnerSelected` from one closure transaction can share the same aggregate version; `eventId` distinguishes the events.
 
-`correlationId` supports tracing flows across HTTP requests, outbox persistence, future RabbitMQ delivery, workers, and live fan-out. The Bidding API accepts `X-Correlation-ID`; if it is absent, the API generates a GUID.
+`correlationId` supports tracing flows across HTTP requests, outbox persistence, RabbitMQ delivery, workers, and live fan-out. The Bidding API accepts `X-Correlation-ID`; if it is absent, the API generates a GUID.
 
 ## Persisted and Published
 
@@ -105,23 +105,23 @@ Stored in the same close transaction only when the auction has a winning accepte
 
 `AuctionClosed` and `WinnerSelected` from one closure workflow share the same resulting `Auction.Version` and correlation ID. The version is incremented once for the closure, not once per event.
 
-## Planned Events
+## Current and Deferred Events
 
 | Event | Producer | Initial Purpose | Status |
 | --- | --- | --- | --- |
-| AuctionCreated | Bidding Service | Announces a new auction exists | Planned |
-| AuctionUpdated | Bidding Service | Announces changed auction metadata or state | Planned |
+| AuctionCreated | Bidding Service | Announces a new auction exists | Deferred |
+| AuctionUpdated | Bidding Service | Announces changed auction metadata or state | Deferred |
 | BidAccepted | Bidding Service / Outbox Publisher | Announces a bid passed authoritative validation | Persisted and published to RabbitMQ |
-| BidRejected | Bidding Service | Announces a rejected bid attempt when useful for workflows or audit | Planned |
+| BidRejected | Bidding Service | Announces a rejected bid attempt when useful for workflows or audit | Deferred |
 | AuctionClosed | Auction Scheduler | Announces bidding has closed | Persisted and published to RabbitMQ |
 | WinnerSelected | Auction Scheduler | Announces the selected winning bid | Persisted and published to RabbitMQ |
-| PaymentRequested | Billing Worker | Announces that payment collection has started | Planned |
-| PaymentSucceeded | Billing Worker | Announces successful payment | Planned |
-| PaymentFailed | Billing Worker | Announces failed payment | Planned |
+| PaymentRequested | Billing Worker | Announces that payment collection has started | Deferred |
+| PaymentSucceeded | Billing Worker | Announces successful payment | Deferred |
+| PaymentFailed | Billing Worker | Announces failed payment | Deferred |
 
 ## RabbitMQ Transport
 
-Phase 4 publishes UTF-8 JSON envelopes to the durable topic exchange `auction.events`.
+The Outbox Publisher publishes UTF-8 JSON envelopes to the durable topic exchange `auction.events`.
 
 | Event | Routing key | Delivery |
 | --- | --- | --- |
@@ -136,7 +136,7 @@ A local debug queue named `auction.events.debug` may be declared and bound with 
 Delivery semantics are at-least-once. Duplicate messages are possible if the publisher crashes after RabbitMQ confirms but before PostgreSQL records `PublishedAtUtc`; consumers must be idempotent using `eventId`.
 ## Live Feed Consumer
 
-Phase 8 consumes `BidAccepted`, `AuctionClosed`, and `WinnerSelected` from the durable queue `live-feed.bid-events`, bound to `auction.events` with routing keys `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`.
+The Live Feed Service consumes `BidAccepted`, `AuctionClosed`, and `WinnerSelected` from the durable queue `live-feed.bid-events`, bound to `auction.events` with routing keys `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. The Auction Operations Portal consumes the same event types from its separate durable `auction-operations.activity` queue.
 
 The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale lower-version observations cannot move clients backward. New same-version lifecycle sibling events are accepted when their `eventId` has not been processed.
 

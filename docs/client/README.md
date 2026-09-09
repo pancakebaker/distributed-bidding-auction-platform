@@ -1,6 +1,6 @@
-# Laravel/React Client Expansion
+# Laravel/React Client
 
-This directory collects the architecture notes for the expanded Laravel/React client work from Phases 13 through 18.
+This directory collects architecture notes for the Laravel/React client and its surrounding web concerns. The repository [README](../../README.md) is the canonical overview of the complete platform.
 
 ## Purpose
 

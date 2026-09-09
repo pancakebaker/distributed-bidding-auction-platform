@@ -1,98 +1,240 @@
 # Distributed Bidding Auction Platform
 
-A functional distributed-system demo for concurrency-safe auction bidding, transactional event delivery, and real-time browser updates.
+An end-to-end distributed auction platform demonstrating concurrency-safe bidding, transactional event publication, independent event consumers, real-time delivery, historical operations reporting, and measured .NET runtime behavior.
 
-This repository is a functional architecture demonstration and is not currently intended to be a production-ready auction platform.
+The repository is a portfolio and engineering demonstration. It is not a production deployment blueprint: TLS, secret management, capacity planning, compliance controls, and multi-instance operational hardening still need to be designed for a real deployment.
 
-## Demo
+## Overview
 
-### Live auction
-
-![Live auction](docs/assets/auction-live.png)
-
-### Real-time multi-client bidding
-
-Two independent clients stay synchronized through RabbitMQ, Redis, and Socket.IO while the .NET Bidding Service remains authoritative.
-
-![Two synchronized clients](docs/assets/auction-two-clients.png)
-
-### Automatic auction close and winner selection
-
-Auctions close using server-side UTC, with `AuctionClosed` and `WinnerSelected` propagated through the same transactional outbox and messaging pipeline.
-
-![Closed auction with winner](docs/assets/auction-closed.png)
-
-## What This Demonstrates
-
-- concurrency-safe bid placement with PostgreSQL-backed optimistic concurrency
-- authoritative .NET bidding API and server-side UTC validation
-- transactional outbox persistence for committed domain changes
-- RabbitMQ at-least-once event delivery with publisher confirms
-- idempotent consumers using `eventId`
-- `aggregateVersion` ordering and stale-event protection
-- same-version lifecycle sibling events, such as `AuctionClosed` and `WinnerSelected`
-- Redis-backed Socket.IO fan-out for multiple live-feed instances
-- AsyncLocalStorage request/event context for observational correlation tracking
-- centralized HTTP errors and idempotent graceful shutdown for the live-feed runtime
-- narrow application ports for framework-agnostic live-feed processing
-- bounded read-only NDJSON diagnostics streaming with Node backpressure and cancellation
-- bounded Worker Thread activity diagnostics for isolated CPU-bound calculations
-- bounded libuv thread-pool and child-process runtime diagnostics
-- automatic server-authoritative auction closure
-- REST reconciliation when live projections are missed
-- failure/retry behavior across service boundaries
-- Laravel-owned admin, CMS, audit, cache, queue, scheduler, notification preference, and export workflows without taking bidding authority
+The platform separates command handling from event-driven projections. Bidding Service decides whether a bid is accepted; Live Feed serves public real-time browser updates; the Auction Operations Portal independently persists operational activity for authenticated Blazor users, history, and reports.
 
 ## Architecture
 
 ```mermaid
-flowchart TD
-    Client[Laravel + React Client]
-    Api[.NET Bidding Service]
-    Db[(PostgreSQL)]
-    Outbox[Transactional Outbox]
-    Publisher[Outbox Publisher]
-    Rabbit[(RabbitMQ auction.events)]
-    Live[Live Feed Service]
-    Redis[(Redis)]
-    Socket[Socket.IO Clients]
-    Scheduler[Auction Scheduler]
+flowchart LR
+    U[Bidder / Admin User] --> C[Laravel + React Client]
 
-    Client -->|REST commands/queries| Api
-    Api -->|Bid + Auction + Outbox transaction| Db
-    Db --> Outbox
-    Outbox --> Publisher
-    Publisher -->|publisher confirms| Rabbit
-    Rabbit -->|BidAccepted / AuctionClosed / WinnerSelected| Live
-    Live -->|idempotency + version state| Redis
-    Live -->|auction rooms| Socket
-    Scheduler -->|Close + lifecycle outbox transaction| Db
+    C --> B[Bidding Service<br/>ASP.NET Core]
+    C --> L[Live Feed Service<br/>Node.js + TypeScript]
+    C -. Laravel RS256 handoff .-> AOP
+
+    B --> PG1[(Bidding PostgreSQL)]
+    B --> O[Transactional Outbox]
+    O --> P[Outbox Publisher]
+    P --> RMQ[(RabbitMQ<br/>auction.events)]
+
+    RMQ -->|live-feed.bid-events| L
+    RMQ -->|auction-operations.activity| AOP[Auction Operations Portal<br/>ASP.NET Core + Blazor]
+
+    L --> R[(Redis)]
+    L --> SIO[Socket.IO]
+    SIO --> C
+
+    AOP --> PG2[(Operations PostgreSQL<br/>auction_operations)]
+    AOP --> SIG[SignalR]
+    SIG --> BO[Blazor Operations UI]
+
+    SCH[Auction Scheduler] --> PG1
+    SCH --> O
 ```
 
-The Bidding Service owns auction and bid state. PostgreSQL is the source of truth. RabbitMQ, Redis, Socket.IO, and the browser are projections/transport layers, not bidding authorities.
+The two consumers are intentionally independent. The Node Live Feed queue and the portal activity queue have separate bindings, retry/DLQ behavior, and storage boundaries. Portal activity is an operational projection; it never becomes authoritative auction state.
 
-## Key Design Decisions
+The platform contains:
 
-- **Bidding Service is authoritative:** only the .NET API accepts or rejects bids.
-- **Concurrency is database-arbitrated:** `Auction.Version` is an EF Core concurrency token and advances once per accepted bid or closure transition.
-- **Outbox prevents lost committed events:** bid/closure state and event intent commit in the same PostgreSQL transaction.
-- **RabbitMQ is at-least-once:** publisher confirms reduce false success, but duplicates remain possible after broker confirm and before `PublishedAtUtc` is stored.
-- **Consumers dedupe by `eventId`:** Live Feed records processed event IDs in Redis with a demo TTL.
-- **`aggregateVersion` protects ordering:** lower versions are stale; newer versions advance the Redis auction version atomically.
-- **Same-version sibling events are valid:** `AuctionClosed v16` and `WinnerSelected v16` are distinct events for one aggregate transition.
-- **Browser time is UX-only:** server UTC decides bidding and closure validity.
-- **REST reconciles missed live events:** Socket.IO keeps clients fresh, but REST remains the authoritative refresh path.
+- a Laravel + React bidder/admin client;
+- an ASP.NET Core Bidding Service with optimistic concurrency around `Auction.Version`;
+- an Auction Scheduler and transactional Outbox Publisher;
+- RabbitMQ fan-out on the `auction.events` exchange;
+- a Node.js/TypeScript Live Feed using Redis and Socket.IO;
+- an authenticated ASP.NET Core + Blazor Auction Operations Portal;
+- PostgreSQL-backed operational history, PDF reporting, SignalR delivery, and focused observability;
+- an isolated BenchmarkDotNet project for runtime and allocation experiments.
 
-## Quick Start
+See the [system architecture notes](docs/architecture.md), [event catalog](docs/event-catalog.md), and [demo walkthrough](docs/demo-walkthrough.md) for deeper subsystem detail.
 
-Prerequisites:
+## Demo Screenshots
 
-- Git
-- Docker Desktop with Docker Compose
-- .NET 10 SDK
-- PHP 8.3+ and Composer
-- Node.js current/LTS and npm
-- OpenSSL
+![Live auction](docs/assets/auction-live.png)
+
+![Two synchronized clients](docs/assets/auction-two-clients.png)
+
+![Closed auction with winner](docs/assets/auction-closed.png)
+
+## Core Components
+
+| Component | Responsibility |
+| --- | --- |
+| Laravel + React Client | Bidder/admin web experience, Laravel identity authority, and portal handoff entry point |
+| Bidding Service | Validates and accepts bids; owns authoritative auction state and concurrency |
+| Auction Scheduler | Applies scheduled auction lifecycle transitions in the bidding database and writes lifecycle outbox events |
+| Outbox Publisher | Publishes committed outbox events to RabbitMQ |
+| RabbitMQ | Durable event exchange and independent consumer queues |
+| Live Feed Service | Consumes live bid events, applies Redis idempotency/version checks, and emits Socket.IO updates |
+| Auction Operations Portal | Consumes activity events, stores an independent projection, serves authenticated live/history/reporting views |
+| PostgreSQL | Separate bidding and operations databases; the portal owns `auction_activity` |
+| Redis | Live Feed idempotency and version state; not a portal source of truth |
+
+Subsystem documentation:
+
+- [Auction Operations Portal](apps/auction-operations-portal/README.md)
+- [Client](apps/client/README.md)
+- [Architecture reference](docs/architecture.md)
+- [Failure scenarios](docs/failure-scenarios.md)
+
+## Event Flow
+
+Accepted bid command flow:
+
+```text
+Laravel/React Client
+  ->
+Bidding Service
+  -> validate auction and current state
+  -> PostgreSQL transaction
+       - insert bid
+       - update auction/version
+       - insert outbox event
+  -> commit
+  -> Outbox Publisher
+  -> RabbitMQ auction.events
+```
+
+The Bidding Service owns the bid decision. Optimistic concurrency conflicts are retried according to the service’s existing policy; a successfully accepted bid increments the aggregate version exactly once, while a rejected bid does not mutate the aggregate version. The outbox record is committed atomically with the authoritative state change. The publisher later delivers the committed event; RabbitMQ is not on the synchronous bid-acceptance path.
+
+RabbitMQ fans out to separate durable queues:
+
+```text
+auction.events
+   |
+   +--> live-feed.bid-events
+   |      -> Node Live Feed
+   |
+   +--> auction-operations.activity
+          -> .NET Auction Operations Portal
+```
+
+One consumer cannot steal messages from the other because the queues and bindings are separate. Delivery is at least once. The portal uses database-enforced EventId idempotency; `AuctionClosed` and `WinnerSelected` can share an `AggregateVersion` while remaining distinct events because their EventIds differ.
+
+The two real-time paths are deliberately different:
+
+```text
+RabbitMQ -> Node Live Feed -> Redis ordering/idempotency -> Socket.IO -> Laravel/React browser
+RabbitMQ -> Portal consumer -> PostgreSQL -> SignalR -> Blazor Operations UI
+```
+
+The Node path is optimized for public live-feed delivery. The portal path persists before SignalR publication; SignalR is best-effort, and reconnect reconciliation reloads recent persisted activity. PostgreSQL is the operations source of truth. Portal history and PDF reports query PostgreSQL, not Bidding Service tables or Redis.
+
+Delivery is at least once. `EventId` is the idempotency key. `AggregateVersion` is observational metadata and is not globally unique: `AuctionClosed` and `WinnerSelected` can legitimately share a version while remaining distinct events.
+
+## Authentication Flow
+
+Laravel remains the username/password and admin identity authority:
+
+```text
+User
+  -> Laravel login
+  -> access-admin gate
+  -> short-lived RS256 handoff token
+  -> Auction Operations Portal
+  -> validate issuer/audience/permission/JTI
+  -> short-lived HttpOnly portal cookie
+```
+
+1. An authenticated user passes Laravel’s existing admin gate.
+2. Laravel issues a short-lived RS256 handoff token with the existing issuer, audience `auction-operations-portal`, permission `access-auction-operations`, role, subject, expiry, and JTI.
+3. The browser submits the token to the portal’s `POST /auth/handoff` endpoint.
+4. The portal validates the signature using only Laravel’s public key, exact issuer/audience, expiry, subject, role, permission, and single-use JTI.
+5. The portal creates a short-lived HttpOnly authentication cookie and never stores the JWT in browser storage.
+
+Portal pages and the SignalR hub require the `AuctionOperationsAdmin` policy. Portal logout clears only the portal cookie and redirects to a configured safe Laravel destination. The existing Node Live Feed authentication flow remains separate and unchanged.
+
+Laravel holds the private signing key. Node Live Feed and the Operations Portal receive public-key copies only. The portal uses the dedicated audience `auction-operations-portal` and permission `access-auction-operations`; it does not reuse the Node audience. Portal JTI replay protection is currently in-memory and single-instance, so distributed replay storage is required before horizontally scaling portal authentication.
+
+## Operations Portal
+
+The portal is an independent consumer and projection:
+
+- `/activity/live`: bounded recent activity plus authenticated SignalR updates;
+- `/activity/history`: UTC date-range, aggregate ID, event-type, and server-side pagination filters;
+- `GET /activity/report.pdf`: authenticated, rate-limited PDF reports using the same validated filters;
+- `/health`: anonymous aggregate health status for PostgreSQL and RabbitMQ.
+
+History uses inclusive UTC boundaries, a maximum 31-day range, exact aggregate filtering, known event-type filtering, page sizes of 25/50/100, and deterministic ordering by `OccurredAtUtc` then `Id`. Reports reuse those filters, use chronological ordering, compute server-side summary counts, and reject results over 5,000 rows rather than silently truncating them. QuestPDF 2026.8.0 renders the bounded report; the response is an `application/pdf` attachment, limited to five requests per authenticated user per minute, and contains no raw payload JSON. Deployment must verify QuestPDF Community License eligibility.
+
+The portal consumer persists before publishing SignalR. SignalR is best-effort: a push failure is logged and measured, the durable row remains authoritative, and reconnecting clients reconcile from PostgreSQL by EventId.
+
+Completed portal capabilities are the authenticated Blazor shell, real-time activity, recent reconciliation, historical search and filters, server-side pagination, PDF reports, report rate limiting, the anonymous aggregate health endpoint, OpenTelemetry instrumentation, and the BenchmarkDotNet project.
+
+## Observability
+
+The portal uses OpenTelemetry with:
+
+- ActivitySource: `AuctionOperationsPortal`;
+- ASP.NET Core, HttpClient, and EF Core instrumentation;
+- custom spans for message processing, persistence, SignalR publication, history, reports, and handoff validation;
+- bounded metrics for processed/duplicate/rejected/transient events, SignalR publication, reports, and operation durations;
+- PostgreSQL and RabbitMQ health checks at `/health`.
+
+OTLP and console exporters are opt-in/configurable; normal local startup does not require a collector. Correlation IDs from the existing RabbitMQ message properties remain structured log/trace metadata. The publisher does not currently emit W3C trace context, so end-to-end trace continuity begins at the portal consumer boundary without changing event payloads or routing.
+
+Portal metrics use bounded dimensions only; EventId, CorrelationId, AggregateId, user identifiers, JTI, and arbitrary filter text are excluded from metric labels:
+
+| Metric | Type / unit |
+| --- | --- |
+| `portal.events.processed` | counter / events |
+| `portal.events.duplicate` | counter / events |
+| `portal.events.rejected` | counter / events |
+| `portal.events.transient_failures` | counter / failures |
+| `portal.signalr.publications` | counter / notifications |
+| `portal.signalr.publish_failures` | counter / failures |
+| `portal.reports.generated` | counter / reports |
+| `portal.reports.rejected` | counter / reports |
+| `portal.event.processing.duration`, `portal.history.query.duration`, `portal.report.generation.duration` | histogram / milliseconds |
+| `portal.report.row_count` | histogram / rows |
+
+## Security Highlights
+
+- Laravel is the identity authority; the portal accepts only the dedicated RS256 audience and permission.
+- Portal sessions use short-lived HttpOnly cookies that are Secure outside Development/Testing.
+- Authorization is enforced server-side for pages, the SignalR hub, and report endpoints.
+- JTI replay protection is required for handoff tokens; the current in-memory guard is single-instance.
+- PDF generation is bounded and rate-limited.
+- No secrets are committed, and reporting exposes safe projected fields rather than raw event payloads.
+
+## Runtime / Performance
+
+The isolated [BenchmarkDotNet project](apps/auction-operations-portal.Benchmarks/) measures realistic in-process paths:
+
+- event envelope deserialization;
+- envelope-to-activity and activity-to-notification mapping;
+- bounded live-state merge/deduplication;
+- report-row preparation at 100, 1,000, and 5,000 rows.
+
+Run benchmarks manually:
+
+```powershell
+dotnet run -c Release --project apps/auction-operations-portal.Benchmarks
+```
+
+The project uses BenchmarkDotNet 0.15.8 and `MemoryDiagnoser`. Results are observational and machine-dependent; benchmark timings are not CI gates. Runtime notes in the [portal README](apps/auction-operations-portal/README.md) cover Gen0/1/2, Server GC, the LOH, async plumbing, DI validation, and diagnostic tools such as `dotnet-counters`, `dotnet-trace`, and `dotnet-gcdump`. Span/Memory/ArrayPool and ValueTask were evaluated but not introduced without a measured production hotspot.
+
+## Key Engineering Decisions
+
+- **Authoritative state:** only the Bidding Service owns auction state and bid acceptance.
+- **Concurrency:** `Auction.Version` protects state transitions; it is not an event identity.
+- **Transactional outbox:** state changes and event publication intent commit together.
+- **At-least-once delivery:** consumers acknowledge only after their durable work succeeds.
+- **Independent projections:** Live Feed and the portal have separate queues and storage.
+- **Portal idempotency:** the portal database uniquely constrains EventId.
+- **Lifecycle events:** same-version sibling events remain distinct by EventId.
+- **Real-time delivery:** SignalR is transient best-effort delivery; PostgreSQL supports reconciliation.
+- **Identity:** Laravel is the identity authority; the portal establishes a short-lived local session after signed handoff.
+- **Reporting:** history and PDF reports use only the portal-owned projection.
+
+## Local Development
+
+Prerequisites: .NET SDK, Node.js/npm, PHP/Composer, Docker Desktop, and a local PostgreSQL/RabbitMQ/Redis environment.
 
 From the repository root:
 
@@ -105,260 +247,132 @@ npm ci --prefix apps/live-feed-service
 npm ci --prefix apps/client
 composer install --working-dir=apps/client
 php apps/client/artisan key:generate
-```
-
-Set `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD`, and optionally `LOCAL_ADMIN_NAME` in
-`apps/client/.env`. These are local-only demo credentials and must not be committed.
-
-Generate a fresh RSA key pair for the Laravel-to-Live Feed handoff:
-
-```powershell
-scripts\generate-live-feed-admin-keys.ps1
-```
-
-The private key is generated at `apps/client/storage/keys/live-feed-admin-private.pem`;
-the public key is generated at `apps/live-feed-service/config/live-feed-admin-public.pem`.
-Both paths are ignored by Git.
-
-Start local infrastructure. PostgreSQL uses host port `55432` and container port `5432`.
-
-```powershell
-scripts\start-infrastructure.ps1
-```
-
-Prepare Laravel and Live Feed history:
-
-```powershell
+$env:LOCAL_ADMIN_NAME="Local Admin"
+$env:LOCAL_ADMIN_EMAIL="local-admin@example.test"
+$env:LOCAL_ADMIN_PASSWORD="choose-a-local-only-password"
+./scripts/generate-live-feed-admin-keys.ps1
+./scripts/start-infrastructure.ps1
 php apps/client/artisan migrate
 php apps/client/artisan db:seed --class=Database\\Seeders\\LocalAdminSeeder
 npm run migrate:history --prefix apps/live-feed-service
+dotnet ef database update --project apps/auction-operations-portal --startup-project apps/auction-operations-portal
+./scripts/start-demo.ps1
 ```
 
-This prepares the Laravel database and local administrator. Run `php apps/client/artisan db:seed` for the full demo admin and CMS data. The full client notes are in [docs/client/README.md](docs/client/README.md).
-Start the development demo stack in separate PowerShell windows:
+The existing `start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, and Vite/client in separate PowerShell windows. It does not start the portal; start it separately so its URL is explicit:
 
 ```powershell
-scripts\start-demo.ps1
+dotnet run --project apps/auction-operations-portal --urls http://localhost:5099
 ```
 
-Open:
+Useful local URLs:
 
-- Client: http://localhost:8000/auctions
-- Bidding API Swagger: http://localhost:5000/swagger
-- Live Feed health: http://localhost:3001/health
-- Live Feed runtime diagnostics: http://localhost:3001/diagnostics/runtime
-- RabbitMQ management: http://localhost:15672
+- Laravel/React client: `http://localhost:8000`
+- portal handoff: `http://localhost:8000/admin/auction-operations`
+- portal live activity: `http://localhost:5099/activity/live`
+- portal history: `http://localhost:5099/activity/history`
+- portal health: `http://localhost:5099/health`
+- Bidding Service Swagger: `http://localhost:5000/swagger`
+- Live Feed health: `http://localhost:3001/health`
 
-The committed `.env.example` files are templates only. The root `.env`,
-`apps/client/.env`, Laravel `APP_KEY`, RSA keys, dependency directories, and build output
-are developer-local or generated files and must not be committed.
+The PostgreSQL initialization creates `auction_operations` on a fresh volume. For an existing volume created before the portal was added, create that database idempotently with the documented PostgreSQL setup; do not destroy the volume to rerun initialization.
 
-Stop local app/worker processes:
+## Testing and Validation
+
+The current repository validation includes:
+
+| Area | Current result |
+| --- | --- |
+| .NET portal | 51 tests |
+| Bidding Service | 24 tests |
+| Auction Scheduler | 6 tests |
+| Outbox Publisher | 7 tests |
+| .NET total | 88 tests |
+| Laravel | 79 tests, 362 assertions |
+| Live Feed | 79 passed, 1 skipped |
+| Client | 40 Vitest tests |
+
+These are current repository counts and can change as the codebase evolves.
+
+Typical commands:
 
 ```powershell
-scripts\stop-demo.ps1
+dotnet test
+php apps/client/artisan test
+npm test --prefix apps/live-feed-service
+npm test --prefix apps/client
+npm test
+npm run lint
+npm run typecheck
+npm run build
 ```
 
-## Demo Reset
+Targeted portal-authored formatting checks pass. The repository still has a documented pre-existing root Prettier baseline outside the portal scope; no broad formatting rewrite is part of this project.
 
-For a predictable local demo database:
+### CI coverage
 
-```powershell
-scripts\reset-demo.ps1
-```
+The current GitHub Actions workflow, `.github/workflows/dotnet-static-analysis.yml`, restores and builds the .NET solution, then installs JavaScript dependencies and runs the repository formatting check, ESLint, TypeScript checks, JavaScript/TypeScript builds, Live Feed tests, and client tests. It does not currently run `dotnet test`, Laravel tests, or the portal’s PostgreSQL-backed integration tests; those remain part of the local validation sequence below. The root Prettier baseline is documented separately and is not represented as a green repository-wide claim here.
 
-This deletes and recreates local demo auctions, bids, and outbox rows in the configured development PostgreSQL database. It is not production tooling.
-
-The reset includes:
-
-- Open MacBook Pro auction with current bid 1900, Bob winning, and Alice/Bob bid history for screenshots
-- Scheduled Camera auction
-- Closed Gaming Console auction with historical bids
-- Short Demo Auction for automatic close demonstrations
-
-For a deterministic closed screenshot state with final bid 2100 and Bob as winner:
-
-```powershell
-scripts\reset-demo.ps1 -ClosedScreenshot
-```
-
-## Quick Demo
-
-1. Run `scripts\start-demo.ps1`.
-2. Open `http://localhost:8000/auctions` in two browser windows.
-3. Open the MacBook Pro auction in both windows.
-4. Choose Alice in one window and Bob in the other.
-5. Place a valid Alice bid and watch both clients update through `bid:accepted`.
-6. Place a higher Bob bid and watch bid history/current price converge.
-7. Open the Short Demo Auction in both windows and wait for expiry.
-8. Watch both clients transition to Closed through `auction:closed` and, when a winning bid exists, `winner:selected`.
-9. Refresh the page to see REST return the same authoritative closed state.
-
-A more interview-friendly walkthrough lives in [docs/demo-walkthrough.md](docs/demo-walkthrough.md).
-
-Client-side admin, CMS, queue, notification, export, and React/Vite architecture notes start at [docs/client/README.md](docs/client/README.md).
-
-## Failure Scenarios
-
-Tested and documented scenarios include concurrent bids, stale bids, RabbitMQ outages, duplicate events, stale aggregate versions, live-feed outage, competing scheduler instances, and bid-after-close rejection.
-
-See [docs/failure-scenarios.md](docs/failure-scenarios.md).
-
-## Tests
-
-Current automated test coverage by component:
-
-| Component | Tests | Coverage focus |
-| --- | ---: | --- |
-| Bidding Service | 24 | auction queries, bid rules, concurrency, outbox persistence |
-| Outbox Publisher | 7 | PostgreSQL claiming, RabbitMQ publishing, confirms, failure/recovery |
-| Auction Scheduler | 6 | closure, winner selection, locking, rollback, duplicate-pass prevention |
-| Live Feed Service | 7 | RabbitMQ consumption, Redis dedupe/versioning, lifecycle events, DLQ behavior |
-| Client | 60 Laravel tests + 32 Vitest tests | admin authorization, CMS, audit/cache/events, queues/scheduled publishing/exports/notifications, React auction/admin/CMS UI |
-
-Run all .NET tests from the root solution:
+For a local validation pass, use the canonical commands below. From the repository root:
 
 ```powershell
 dotnet restore
 dotnet build
 dotnet test
-```
-
-Run JavaScript tests:
-
-```powershell
-npm test --prefix apps/live-feed-service
-npm test --prefix apps/client
-```
-## Static Analysis
-
-.NET analyzer configuration is centralized in `Directory.Build.props`, `.editorconfig`, and `stylecop.json`. The repository enables built-in .NET/Roslyn analyzers and `StyleCop.Analyzers` for the C# solution.
-
-JavaScript and TypeScript quality gates are centralized through `eslint.config.mjs`, `.prettierrc`, and `.prettierignore`. ESLint uses type-aware TypeScript rules, React and React Hooks rules, JSX accessibility checks, Node.js checks for the live-feed service, import hygiene, and JSDoc documentation enforcement. Production JS/TS modules require a short responsibility block, and exported/public JS/TS APIs should have useful JSDoc summaries without duplicating TypeScript type annotations. Tests and generated declaration files are excluded from documentation-only rules. Prettier owns formatting, while `tsc` remains the dedicated type checker.
-
-Production C# files are expected to have the project MIT source header and useful XML summaries for public API surface, domain types, endpoint groups, message contracts, and background services. Test projects keep correctness analyzers enabled, but XML/header documentation noise is relaxed so descriptive test names remain the primary behavior documentation.
-
-Run validation locally with:
-
-```powershell
-dotnet build
-dotnet test
 npm ci
-npm run format:check
 npm run lint
 npm run typecheck
 npm run build
 npm test
+npm test --prefix apps/live-feed-service
+npm test --prefix apps/client
+composer install --working-dir=apps/client
+Push-Location apps/client
+php artisan test
+Pop-Location
 ```
 
 ## Repository Structure
 
-```text
+```
 apps/
-  bidding-service/          ASP.NET Core bidding API
-  bidding-service.Tests/    PostgreSQL-backed API/domain tests
-  client/                   Laravel + React + Vite demo UI
-  live-feed-service/        Node.js/TypeScript RabbitMQ + Redis + Socket.IO service
-    src/application/       composition and event processing
-    src/domain/            event contracts and validation
-    src/infrastructure/    Redis, RabbitMQ, and runtime integrations
-    src/transport/         Socket.IO transport helpers
-    scripts/               development-only utilities
-    tests/                 integration and runtime unit tests
+  auction-operations-portal/          ASP.NET Core + Blazor portal
+  auction-operations-portal.Tests/    portal integration/unit tests
+  auction-operations-portal.Benchmarks/ BenchmarkDotNet project
+  bidding-service/                    authoritative auction API
+  live-feed-service/                  Node.js/TypeScript live feed
+  client/                             Laravel + React application
 workers/
-  auction-scheduler/        .NET worker that closes expired auctions
-  auction-scheduler.Tests/  PostgreSQL-backed scheduler tests
-  outbox-publisher/         .NET worker that publishes outbox rows to RabbitMQ
-  outbox-publisher.Tests/   PostgreSQL/RabbitMQ publisher tests
-  billing-worker/           planned placeholder only
-  notification-worker/      planned placeholder only
-docs/
-  architecture.md
-  event-catalog.md
-  development-plan.md
-  demo-walkthrough.md
-  failure-scenarios.md
-scripts/
-  start-infrastructure.ps1
-  start-demo.ps1
-  stop-demo.ps1
-  reset-demo.ps1
+  auction-scheduler/                  scheduled auction transitions
+  outbox-publisher/                   transactional outbox publisher
+docs/                                  architecture, event, demo, and failure docs
+infrastructure/                       Docker Compose and database initialization
+scripts/                              local setup and demo helpers
 ```
 
-## Technologies
+## Design Tradeoffs and Deferred Features
 
-- .NET 10, ASP.NET Core, EF Core, Npgsql
-- PostgreSQL 17
-- RabbitMQ 4 management image
-- Redis 8 Alpine
-- Node.js, TypeScript, Express, Socket.IO, amqplib
-- Laravel 13, React 19, Vite, Vitest
-- Docker Compose for local infrastructure
+The completed platform intentionally does not include:
 
-## Current Scope
+- **Auction CRUD or an API gateway:** deferred because current service routing does not justify another operational layer; the Bidding Service remains the command boundary.
+- **Portal Redis caching:** deferred because bounded PostgreSQL history/report queries do not justify cache invalidation and staleness complexity.
+- **End-to-end W3C trace continuity:** deferred until the publisher emits `traceparent`/`tracestate`; the portal preserves existing correlation IDs without changing producer contracts.
+- **Distributed portal handoff replay storage:** required before horizontally scaling portal authentication because the current consumed-JTI guard is in-memory and single-instance.
+- **Background report jobs, scheduling, email delivery, or report persistence:** deferred because current reports are bounded synchronous requests.
+- **Full bidder account administration, payment workflows, and notification workflows:** outside the completed platform scope.
+- **A mandatory OpenTelemetry collector/Grafana/Prometheus/Jaeger stack:** deferred because local development remains usable with exporters disabled.
+- **Multi-instance SignalR backplane and distributed live-session coordination:** deferred until deployment scale requires it.
+- **Production deployment hardening, load testing, and compliance controls:** intentionally outside this functional demonstration.
 
-Implemented through the final Laravel/React client expansion audit:
+These are explicit follow-up design areas, not silently implemented features. The portal’s in-memory single-use handoff replay cache is suitable only for the current single-instance demonstration; a distributed deployment would need a shared replay store.
 
-- functional infrastructure and monorepo foundation
-- authoritative bidding API with optimistic concurrency
-- transactional outbox for `BidAccepted`, `AuctionClosed`, and `WinnerSelected`
-- RabbitMQ outbox publisher with confirms and dev debug queue
-- Redis/Socket.IO live feed for bid and lifecycle events
-- Laravel/React demo UI with live updates and closed/winner state
-- scheduler-driven auction closure
-- reviewer-oriented scripts and documentation
+## License and Third-Party Notes
 
-Not implemented yet:
+The project is MIT licensed. Third-party/runtime notes:
 
-- billing worker
-- notification worker
-- real payment flow
-- authentication/account management
-- admin auction CRUD
-- production deployment/operations hardening
+- QuestPDF 2026.8.0 is configured for Community licensing; production users must independently verify eligibility and licensing requirements.
+- BenchmarkDotNet 0.15.8 is used only by the benchmark project and is MIT licensed.
+- The SignalR browser client is a vendored Microsoft runtime asset under its applicable license.
+- PostgreSQL, RabbitMQ, and Redis are used through local infrastructure images; their respective licenses apply.
 
-## Production Considerations
-
-This project intentionally leaves production concerns visible rather than pretending they are solved:
-
-- real authentication and authorization
-- bidder identity/account integrity
-- rate limiting and anti-abuse controls
-- payment processing and settlement
-- notification delivery
-- production secret management
-- TLS and service-to-service authentication
-- observability, metrics, tracing, and alerting
-- persistent Redis strategy and memory policies
-- mature retry/backoff policy with `NextAttemptAtUtc`
-- schema/event versioning and compatibility policy
-- dead-letter review/replay workflows
-- deployment orchestration and migrations strategy
-- load testing and capacity planning
-- security review, audit logging, and compliance requirements
-
-The development outbox publisher currently allows many one-second retry attempts (`MaxPublishAttempts=1000`) so local RabbitMQ outage demos can recover without manual database repair. A production publisher should use backoff and next-attempt scheduling rather than repeated one-second retries.
-
-### Live Feed Node Phase 8 Operations Admin Page
-
-The Node live-feed service now includes a protected, read-only operations page at `GET /admin/live-feed`. It renders a small server-side React shell, hydrates it in the browser, and subscribes to a dedicated Socket.IO admin channel for bounded operational activity updates. The page reuses the existing runtime diagnostics, process metrics, health/status information, and Phase 6/7 diagnostics without creating a second auction or reporting system.
-
-Laravel owns admin users and password hashing. An authenticated Laravel administrator receives a short-lived RS256 token, and the Node live-feed service verifies it with a public key before establishing a short-lived signed, HttpOnly, SameSite cookie session. The token is exchanged in a form handoff or Authorization header; it is not stored in localStorage or a URL. Node does not maintain admin usernames/passwords. The cookie uses `Path=/` so the authenticated `/socket.io` handshake receives it, while HTTP routes and admin Socket.IO access remain server-side authorized. This is a portfolio/demo admin boundary, not a replacement for production SSO, CSRF, rate limiting, centralized secret management, or immediate token revocation.
-
-Recent activity is kept in a fixed-size in-memory buffer for operational visibility only. It is not an event store, audit log, source of truth, or durable history. The Bidding Service remains authoritative, and the page cannot accept bids, change auction state, mutate Redis projections, publish RabbitMQ messages, or alter existing Socket.IO auction events.
-
-### Live Feed Node Phase 9 durable operational history
-
-Phase 9 adds an optional PostgreSQL-backed, read-only operational history for the protected admin page. The live-feed service records bounded event metadata such as event ID, auction ID, event type, aggregate version, correlation ID, processing time, and outcome. It never stores raw event payloads and it is not an authoritative auction log.
-
-The history store is best-effort. A configured pool is created with `LIVE_FEED_DATABASE_URL`; without that setting, the service remains available and reports history as unconfigured. Insert failures are isolated from event processing: Redis projection, Socket.IO emission, RabbitMQ ACK/NACK behavior, and stale-version handling continue exactly as before. Duplicate event IDs are idempotent through a database uniqueness constraint and `ON CONFLICT DO NOTHING`.
-
-Apply the idempotent migration with `npm run migrate:history` from `apps/live-feed-service`. The admin page queries `GET /admin/api/history` with bounded filters and can request `GET /admin/api/history.pdf` for a selected range. Dates are explicit UTC values at the API boundary, ranges are limited to 31 days, and results are bounded. PDF output contains safe summary columns only. The database pool is closed by the existing graceful shutdown coordinator.
-
-The Phase 8 in-memory recent-activity buffer remains a fast, bounded live snapshot; PostgreSQL history is a separate durable diagnostic read path. Neither is used to decide auction correctness. The Bidding Service remains authoritative, and the existing live-feed event contracts, RabbitMQ topology, Redis semantics, Socket.IO auction channel, and HTTP contracts remain unchanged.
-
-### Laravel-owned Live Feed administrator authentication
-
-The Laravel client is the identity authority: its `users` table, standard password hashing, and `access-admin` gate determine who may open Live Feed Operations. Laravel signs a short-lived RS256 token with a private key kept outside Git. Node receives only the public verification key, validates issuer, audience, expiry, signature, and admin permission, then creates its bounded HttpOnly session for `/admin/live-feed`, history, PDF, and the `admin:live-feed` Socket.IO room. The token is not kept in localStorage or a URL. Generate local keys with `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out apps/client/storage/keys/live-feed-admin-private.pem` and `openssl rsa -pubout -in apps/client/storage/keys/live-feed-admin-private.pem -out apps/live-feed-service/config/live-feed-admin-public.pem`; both paths are ignored. The Node session is local and short-lived, so this phase does not claim immediate centralized revocation.
-
-The Auction Operations Portal uses the same Laravel-held private key and public-key distribution, but a distinct audience (`auction-operations-portal`) and permission (`access-auction-operations`). Laravel’s `/admin/auction-operations` route is independently protected by `auth` and `access-admin`, then POSTs a short-lived, JTI-bearing token to the portal. The portal validates RS256, issuer, audience, lifetime, role, permission, and JTI before creating its own short-lived HttpOnly cookie. It never stores the JWT in browser storage, and its current in-memory replay guard is intentionally single-instance until a distributed deployment justifies shared storage. This does not change Node’s existing audience, queue, cookie, or admin-authentication behavior.
+See the [portal README](apps/auction-operations-portal/README.md) for the detailed portal, reporting, observability, and runtime notes.

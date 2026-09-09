@@ -2,6 +2,43 @@
 
 This project demonstrates a distributed bidding architecture with clear service boundaries. It is intentionally functional and educational before it is production hardened.
 
+## Final integrated topology
+
+The repository-level [README](../README.md) is the concise overview. The completed platform has two independent event consumers and two PostgreSQL ownership boundaries:
+
+```mermaid
+flowchart LR
+    U[Bidder / Admin User] --> C[Laravel + React Client]
+    C --> B[Bidding Service<br/>ASP.NET Core]
+    C --> L[Live Feed Service<br/>Node.js + TypeScript]
+    C -. Laravel RS256 handoff .-> AOP
+
+    B --> PG1[(Bidding PostgreSQL)]
+    B --> O[Transactional Outbox]
+    O --> P[Outbox Publisher]
+    P --> RMQ[(RabbitMQ<br/>auction.events)]
+
+    RMQ -->|live-feed.bid-events| L
+    RMQ -->|auction-operations.activity| AOP[Auction Operations Portal<br/>ASP.NET Core + Blazor]
+    L --> R[(Redis)]
+    L --> SIO[Socket.IO]
+    SIO --> C
+    AOP --> PG2[(Operations PostgreSQL<br/>auction_operations)]
+    AOP --> SIG[SignalR]
+    SIG --> BO[Blazor Operations UI]
+    SCH[Auction Scheduler] --> PG1
+    SCH --> O
+```
+
+The Bidding Service remains authoritative for bids, auctions, and `Auction.Version`. The portal records a safe activity projection in `auction_activity`; it never updates bidding tables. Its `/activity/live`, `/activity/history`, and `/activity/report.pdf` features use PostgreSQL, while SignalR is only best-effort delivery. Laravel remains the identity authority for both the existing Node admin handoff and the portal’s dedicated `auction-operations-portal` audience.
+
+
+## Completed operations portal boundary
+
+The portal consumes the existing `auction.events` exchange through its own durable `auction-operations.activity` queue, with bindings for `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. Its database has an EventId uniqueness constraint, so duplicate delivery is acknowledged without duplicating rows or live notifications. `AuctionClosed` and `WinnerSelected` can share an aggregate version because EventId, not version, identifies an event.
+
+The portal’s history query is UTC-based, bounded to a 31-day range, filtered by exact aggregate ID and known event type, and paginated in PostgreSQL. Reports use the same filters and reject more than 5,000 rows. OpenTelemetry, bounded metrics, PostgreSQL/RabbitMQ health checks, and an isolated BenchmarkDotNet project are documented in the [portal README](../apps/auction-operations-portal/README.md).
+
 
 ## Client Application
 
@@ -319,7 +356,9 @@ The bidding database is not shared directly with billing, catalog, notification,
 
 The Bidding Service owns Auction, Bid, and OutboxMessage state in PostgreSQL through EF Core and Npgsql. Money is represented with `decimal` and mapped with fixed precision. Auction validity is evaluated with server-side UTC through .NET `TimeProvider`; browser/client time is not trusted.
 
-RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid and lifecycle broadcasts, the Laravel/React auction UI, automatic auction closing, and real-time closed/winner UI projection are implemented through Phase 8. Billing workflows, notification workflows, production authentication, payment flows, and admin auction management remain future work.
+RabbitMQ live-feed consumption, Redis idempotency/version tracking, Socket.IO bid and lifecycle broadcasts, the Laravel/React auction UI, automatic auction closing, the authenticated operations portal, SignalR activity delivery, historical activity, PDF reporting, and focused observability/runtime diagnostics are implemented. Billing workflows, notification workflows, payment flows, bidder account administration, and full auction CRUD remain outside this repository’s completed scope.
+
+The following sections retain their phase labels because they describe the implementation history of the Node Live Feed subsystem. The current ownership and end-state topology are defined above and in the repository README.
 
 ## Node Phase 8 Operations Admin Page
 

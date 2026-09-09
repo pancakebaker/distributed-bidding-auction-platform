@@ -1,12 +1,14 @@
 # Auction Operations Portal
 
+This is the operations-facing .NET subsystem of the [Distributed Bidding Auction Platform](../../README.md). It is a separate event consumer and projection, not an administrative write API for auction state.
+
 The portal is an independent ASP.NET Core Blazor consumer of the existing `auction.events` exchange. It owns the `auction_activity` projection in the separate `auction_operations` PostgreSQL database and does not update authoritative auction state.
 
 It consumes through the dedicated durable `auction-operations.activity` queue, bound to `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. Invalid messages are dead-lettered through `auction-operations.dead-letter` / `auction-operations.activity.dlq`; transient failures are requeued up to the configured limit.
 
 `event_id` is the database-enforced idempotency key. Aggregate versions are observational metadata only: `AuctionClosed` and `WinnerSelected` may both persist at version 16 when their event IDs differ.
 
-Create the local database once if needed:
+On a fresh PostgreSQL volume, the repository initialization creates `auction_operations`. If using an existing volume created before the portal was added, confirm it does not already exist and create it once with an idempotent administrative setup; do not destroy the volume just to rerun initialization:
 
 ```sql
 CREATE DATABASE auction_operations;
@@ -22,7 +24,7 @@ After validation, the portal stores only minimized identity claims in its own sh
 
 The protected `/activity/live` page uses the authenticated `/hubs/activity` ASP.NET Core SignalR hub for best-effort server-to-browser notifications. The RabbitMQ consumer validates and persists an event before publishing a safe `ActivityNotification` projection; only then is the RabbitMQ message acknowledged. A transient SignalR failure is logged and does not undo the durable `auction_activity` row or requeue an already-persisted event. The browser client runtime is vendored at `wwwroot/lib/signalr.min.js` from `@microsoft/signalr` 10.0.0 so local development does not depend on a CDN.
 
-The page loads at most 100 recent rows from PostgreSQL on startup and after SignalR reconnect. Client state is bounded and deduplicated by `EventId`, so reconnect reconciliation does not duplicate rows. `AggregateVersion` is not a deduplication key: `AuctionClosed` and `WinnerSelected` at the same version remain separate when their event IDs differ. The current live fan-out uses the existing single portal instance; distributed live fan-out is a later deployment concern.
+The page loads at most 100 recent rows from PostgreSQL on startup and after SignalR reconnect. Client state is bounded and deduplicated by `EventId`, so reconnect reconciliation does not duplicate rows. `AggregateVersion` is not a deduplication key: `AuctionClosed` and `WinnerSelected` at the same version remain separate when their event IDs differ. The current live fan-out assumes a single portal instance; distributed live fan-out is outside the current deployment design.
 
 ## Activity history
 
@@ -66,7 +68,7 @@ The portal is predominantly I/O-bound: EF Core, RabbitMQ, and SignalR use asynch
 
 The managed heap is collected in generations: short-lived ephemeral allocations normally die in Gen0, survivors move through Gen1 toward Gen2, and large objects use the Large Object Heap (LOH). A PDF byte buffer can enter the LOH when its runtime size reaches the platform's large-object threshold (commonly about 85 KB; the actual boundary is an implementation detail), but the repository does not invent a size claim without measuring representative reports. The 5,000-row bound limits allocation pressure; the current synchronous renderer uses a bounded render stream plus the final response byte array, without Base64 or additional application-level full-document copies. Repeated concurrent large reports could still increase GC and LOH pressure. Avoiding duplicate buffers is more valuable here than speculative pooling.
 
-Server GC is a deployment/runtime choice and is not forced by this phase; the short benchmark run used concurrent Workstation GC on the development machine. Server GC may be appropriate for a dedicated high-throughput server process, but it should be selected and measured with the deployment profile rather than assumed to improve every bounded portal workload.
+Server GC is a deployment/runtime choice and is not forced by the current demo; the short benchmark run used concurrent Workstation GC on the development machine. Server GC may be appropriate for a dedicated high-throughput server process, but it should be selected and measured with the deployment profile rather than assumed to improve every bounded portal workload.
 
 `Span<T>`, `Memory<T>`, and `ArrayPool<T>` were reviewed and deferred. The consumer uses the message span only at the UTF-8 decode boundary, report rows are bounded, and no repeated large temporary-array allocation has been measured that would justify lifetime complexity or pooling. `Span<T>` cannot cross the async persistence boundaries; `Memory<T>` is unnecessary because no buffer must survive such a boundary. If profiling later shows sustained large temporary buffers, the benchmark project should precede any production pooling change.
 
@@ -82,3 +84,16 @@ dotnet-gcdump collect --process-id <pid> -o portal.gcdump
 ```
 
 These are development procedures only. Useful signals include GC heap size, allocation rate, Gen0/1/2 collections, thread-pool queue length, and CPU. Do not commit diagnostic dumps or benchmark artifacts.
+
+## Configuration and local run
+
+The checked-in `appsettings.json` files contain safe local development values only. The normal local configuration uses PostgreSQL at `127.0.0.1:55432`, RabbitMQ at `localhost:5672`, exchange `auction.events`, queue `auction-operations.activity`, dead-letter exchange `auction-operations.dead-letter`, and dead-letter queue `auction-operations.activity.dlq`. Laravel authentication uses issuer `auction-client`, audience `auction-operations-portal`, permission `access-auction-operations`, and the public key copied to `apps/live-feed-service/config/live-feed-admin-public.pem`; Laravel retains the private key under its storage directory.
+
+After the root infrastructure, Laravel, and Live Feed setup is complete, apply the portal migration and run it separately:
+
+```powershell
+dotnet ef database update --project apps/auction-operations-portal --startup-project apps/auction-operations-portal
+dotnet run --project apps/auction-operations-portal --urls http://localhost:5099
+```
+
+The existing `scripts/start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, and Vite/client. It intentionally does not start this portal process. Enter through Laravel at `http://localhost:8000/admin/auction-operations`; direct operational routes are `/activity/live`, `/activity/history`, and `/health` on port `5099`.
