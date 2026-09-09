@@ -11,6 +11,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace bidding_service.Tests;
 
@@ -469,6 +470,11 @@ public sealed class AuctionApiFactory : WebApplicationFactory<Program>
 
         builder.ConfigureServices(services =>
         {
+            services.AddLogging(logging =>
+            {
+                logging.ClearProviders();
+                logging.AddConsole();
+            });
             services.RemoveAll<TimeProvider>();
             services.AddSingleton<TimeProvider>(_timeProvider);
         });
@@ -478,7 +484,7 @@ public sealed class AuctionApiFactory : WebApplicationFactory<Program>
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
-        await db.Database.EnsureDeletedAsync();
+        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");
         await db.Database.MigrateAsync();
         await TestAuctionData.SeedAsync(db);
     }

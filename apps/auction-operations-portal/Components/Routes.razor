@@ -1,2 +1,17 @@
 @using AuctionOperationsPortal.Components.Layout
-<Router AppAssembly="@typeof(Program).Assembly"><Found Context="routeData"><RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" /></Found><NotFound><p>Sorry, there is nothing at this address.</p></NotFound></Router>
+<CascadingAuthenticationState>
+    <Router AppAssembly="@typeof(Program).Assembly">
+        <Found Context="routeData">
+            <AuthorizeRouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)">
+                <NotAuthorized>
+                    <LayoutView Layout="@typeof(MainLayout)">
+                        <h2>Authentication required</h2>
+                        <p>Sign in through the Laravel administration portal to continue.</p>
+                        <a href="/auth/required">Open Laravel Admin</a>
+                    </LayoutView>
+                </NotAuthorized>
+            </AuthorizeRouteView>
+        </Found>
+        <NotFound><p>Sorry, there is nothing at this address.</p></NotFound>
+    </Router>
+</CascadingAuthenticationState>
