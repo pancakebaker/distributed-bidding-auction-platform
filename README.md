@@ -14,28 +14,48 @@ The platform separates command handling from event-driven projections. Bidding S
 flowchart LR
     U[Bidder / Admin User] --> C[Laravel + React Client]
 
-    C --> B[Bidding Service<br/>ASP.NET Core]
-    C --> L[Live Feed Service<br/>Node.js + TypeScript]
-    C -. Laravel RS256 handoff .-> AOP
+    subgraph Core[Core auction services]
+        direction LR
+        B[Bidding Service<br/>ASP.NET Core]
+        S[Auction Scheduler]
+        PG1[(Bidding PostgreSQL)]
+        O[Transactional Outbox]
+        P[Outbox Publisher]
+        B --> PG1
+        B --> O
+        S --> PG1
+        S --> O
+        O --> P
+    end
 
-    B --> PG1[(Bidding PostgreSQL)]
-    B --> O[Transactional Outbox]
-    O --> P[Outbox Publisher]
-    P --> RMQ[(RabbitMQ<br/>auction.events)]
+    subgraph Messaging[Messaging]
+        RMQ[(RabbitMQ<br/>auction.events)]
+    end
 
-    RMQ -->|live-feed.bid-events| L
-    RMQ -->|auction-operations.activity| AOP[Auction Operations Portal<br/>ASP.NET Core + Blazor]
+    subgraph LiveFeed[Bidder-facing live feed]
+        direction LR
+        LF[Live Feed Service<br/>Node.js + TypeScript]
+        R[(Redis)]
+        SIO[Socket.IO]
+        UI1[Browser Live Feed UI]
+        LF --> R
+        LF --> SIO --> UI1
+    end
 
-    L --> R[(Redis)]
-    L --> SIO[Socket.IO]
-    SIO --> C
+    subgraph Operations[Operations portal]
+        direction LR
+        AOP[Auction Operations Portal<br/>ASP.NET Core + Blazor]
+        PG2[(Operations PostgreSQL<br/>auction_operations)]
+        SIG[SignalR]
+        UI2[Blazor Operations UI]
+        AOP --> PG2
+        AOP --> SIG --> UI2
+    end
 
-    AOP --> PG2[(Operations PostgreSQL<br/>auction_operations)]
-    AOP --> SIG[SignalR]
-    SIG --> BO[Blazor Operations UI]
-
-    SCH[Auction Scheduler] --> PG1
-    SCH --> O
+    C --> B
+    P --> RMQ
+    RMQ --> LF
+    RMQ --> AOP
 ```
 
 The two consumers are intentionally independent. The Node Live Feed queue and the portal activity queue have separate bindings, retry/DLQ behavior, and storage boundaries. Portal activity is an operational projection; it never becomes authoritative auction state.
@@ -86,32 +106,26 @@ Subsystem documentation:
 
 Accepted bid command flow:
 
-```text
-Laravel/React Client
-  ->
-Bidding Service
-  -> validate auction and current state
-  -> PostgreSQL transaction
-       - insert bid
-       - update auction/version
-       - insert outbox event
-  -> commit
-  -> Outbox Publisher
-  -> RabbitMQ auction.events
+```mermaid
+flowchart LR
+    C[Laravel / React Client] --> B[Bidding Service]
+    B --> V[Validate auction<br/>and current state]
+    V --> TX[(PostgreSQL transaction<br/>insert bid<br/>update auction/version<br/>insert outbox event)]
+    TX -->|commit| P[Outbox Publisher]
+    P --> RMQ[(RabbitMQ<br/>auction.events)]
 ```
 
 The Bidding Service owns the bid decision. Optimistic concurrency conflicts are retried according to the service’s existing policy; a successfully accepted bid increments the aggregate version exactly once, while a rejected bid does not mutate the aggregate version. The outbox record is committed atomically with the authoritative state change. The publisher later delivers the committed event; RabbitMQ is not on the synchronous bid-acceptance path.
 
 RabbitMQ fans out to separate durable queues:
 
-```text
-auction.events
-   |
-   +--> live-feed.bid-events
-   |      -> Node Live Feed
-   |
-   +--> auction-operations.activity
-          -> .NET Auction Operations Portal
+```mermaid
+flowchart LR
+    RMQ[(auction.events)]
+    RMQ --> Q1[Durable queue<br/>live-feed.bid-events]
+    Q1 --> LF[Node Live Feed]
+    RMQ --> Q2[Durable queue<br/>auction-operations.activity]
+    Q2 --> AOP[.NET Auction Operations Portal]
 ```
 
 One consumer cannot steal messages from the other because the queues and bindings are separate. Delivery is at least once. The portal uses database-enforced EventId idempotency; `AuctionClosed` and `WinnerSelected` can share an `AggregateVersion` while remaining distinct events because their EventIds differ.
@@ -131,14 +145,13 @@ Delivery is at least once. `EventId` is the idempotency key. `AggregateVersion` 
 
 Laravel remains the username/password and admin identity authority:
 
-```text
-User
-  -> Laravel login
-  -> access-admin gate
-  -> short-lived RS256 handoff token
-  -> Auction Operations Portal
-  -> validate issuer/audience/permission/JTI
-  -> short-lived HttpOnly portal cookie
+```mermaid
+flowchart LR
+    L[Laravel login<br/>access-admin gate] --> T[Short-lived RS256<br/>handoff token]
+    T --> N[Node Live Feed<br/>POST /admin/auth/token]
+    N --> NC[HttpOnly Live Feed<br/>session cookie]
+    T --> A[Operations Portal<br/>POST /auth/handoff]
+    A --> AC[HttpOnly portal<br/>session cookie]
 ```
 
 1. An authenticated user passes Laravel’s existing admin gate.

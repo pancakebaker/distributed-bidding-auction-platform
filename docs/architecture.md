@@ -2,35 +2,98 @@
 
 This project demonstrates a distributed bidding architecture with clear service boundaries. It is intentionally functional and educational before it is production hardened.
 
-## Final integrated topology
+## System overview
 
 The repository-level [README](../README.md) is the concise overview. The completed platform has two independent event consumers and two PostgreSQL ownership boundaries:
 
 ```mermaid
 flowchart LR
     U[Bidder / Admin User] --> C[Laravel + React Client]
-    C --> B[Bidding Service<br/>ASP.NET Core]
-    C --> L[Live Feed Service<br/>Node.js + TypeScript]
-    C -. Laravel RS256 handoff .-> AOP
 
-    B --> PG1[(Bidding PostgreSQL)]
-    B --> O[Transactional Outbox]
-    O --> P[Outbox Publisher]
-    P --> RMQ[(RabbitMQ<br/>auction.events)]
+    subgraph Core[Core auction services]
+        direction LR
+        B[Bidding Service<br/>ASP.NET Core]
+        S[Auction Scheduler]
+        PG1[(Bidding PostgreSQL)]
+        O[Transactional Outbox]
+        P[Outbox Publisher]
+        B --> PG1
+        B --> O
+        S --> PG1
+        S --> O
+        O --> P
+    end
 
-    RMQ -->|live-feed.bid-events| L
-    RMQ -->|auction-operations.activity| AOP[Auction Operations Portal<br/>ASP.NET Core + Blazor]
-    L --> R[(Redis)]
-    L --> SIO[Socket.IO]
-    SIO --> C
-    AOP --> PG2[(Operations PostgreSQL<br/>auction_operations)]
-    AOP --> SIG[SignalR]
-    SIG --> BO[Blazor Operations UI]
-    SCH[Auction Scheduler] --> PG1
-    SCH --> O
+    subgraph Messaging[Messaging]
+        RMQ[(RabbitMQ<br/>auction.events)]
+    end
+
+    subgraph LiveFeed[Bidder-facing live feed]
+        direction LR
+        LF[Live Feed Service<br/>Node.js + TypeScript]
+        R[(Redis)]
+        SIO[Socket.IO]
+        UI1[Browser Live Feed UI]
+        LF --> R
+        LF --> SIO --> UI1
+    end
+
+    subgraph Operations[Operations portal]
+        direction LR
+        AOP[Auction Operations Portal<br/>ASP.NET Core + Blazor]
+        PG2[(Operations PostgreSQL<br/>auction_operations)]
+        SIG[SignalR]
+        UI2[Blazor Operations UI]
+        AOP --> PG2
+        AOP --> SIG --> UI2
+    end
+
+    C --> B
+    P --> RMQ
+    RMQ --> LF
+    RMQ --> AOP
 ```
 
 The Bidding Service remains authoritative for bids, auctions, and `Auction.Version`. The portal records a safe activity projection in `auction_activity`; it never updates bidding tables. Its `/activity/live`, `/activity/history`, and `/activity/report.pdf` features use PostgreSQL, while SignalR is only best-effort delivery. Laravel remains the identity authority for both the existing Node admin handoff and the portal’s dedicated `auction-operations-portal` audience.
+
+## Accepted-bid transaction flow
+
+```mermaid
+flowchart LR
+    C[Laravel / React Client] --> B[Bidding Service]
+    B --> V[Validate auction<br/>and current state]
+    V --> TX[(PostgreSQL transaction<br/>insert bid<br/>update auction/version<br/>insert outbox event)]
+    TX -->|commit| P[Outbox Publisher]
+    P --> RMQ[(RabbitMQ<br/>auction.events)]
+```
+
+Optimistic concurrency retry remains inside the Bidding Service. An accepted bid advances the aggregate version exactly once; a rejected bid does not mutate it. The outbox event is committed atomically with the authoritative state change.
+
+## RabbitMQ fan-out
+
+```mermaid
+flowchart LR
+    RMQ[(auction.events)]
+    RMQ --> Q1[Durable queue<br/>live-feed.bid-events]
+    Q1 --> LF[Node Live Feed]
+    RMQ --> Q2[Durable queue<br/>auction-operations.activity]
+    Q2 --> AOP[.NET Auction Operations Portal]
+```
+
+The queues are independent, so one consumer cannot steal messages from the other. Delivery is at least once and the portal deduplicates by `EventId`; `AggregateVersion` is observational metadata, so `AuctionClosed` and `WinnerSelected` may share a version.
+
+## Authentication handoff
+
+```mermaid
+flowchart LR
+    L[Laravel login<br/>access-admin gate] --> T[Short-lived RS256<br/>handoff token]
+    T --> N[Node Live Feed<br/>POST /admin/auth/token]
+    N --> NC[HttpOnly Live Feed<br/>session cookie]
+    T --> A[Operations Portal<br/>POST /auth/handoff]
+    A --> AC[HttpOnly portal<br/>session cookie]
+```
+
+Laravel retains the private key. Node and .NET validate with public-key copies and use separate audiences and permissions. The portal validates the issuer, audience, permission, role, expiry, and single-use JTI before redirecting to `/activity/live`.
 
 
 ## Completed operations portal boundary
