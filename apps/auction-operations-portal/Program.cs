@@ -63,6 +63,7 @@ if (builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
 builder.Services.AddScoped<IActivityPersistence, ActivityPersistence>();
 builder.Services.AddScoped<IRecentActivityQuery, RecentActivityQuery>();
+builder.Services.AddScoped<IActivityHistoryQueryService, ActivityHistoryQueryService>();
 builder.Services.AddSingleton<IActivityNotificationPublisher, SignalRActivityNotificationPublisher>();
 builder.Services.AddSingleton<IntegrationEventMapper>();
 builder.Services.AddSingleton<RabbitMqTopology>();

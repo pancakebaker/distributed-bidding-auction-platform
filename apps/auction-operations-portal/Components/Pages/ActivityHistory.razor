@@ -1,0 +1,234 @@
+@page "/activity/history"
+@attribute [Authorize(Policy = "AuctionOperationsAdmin")]
+@implements IAsyncDisposable
+@inject IActivityHistoryQueryService HistoryQuery
+@inject NavigationManager Navigation
+@inject ILogger<ActivityHistory> Logger
+
+<PageTitle>Activity History | Auction Operations Portal</PageTitle>
+
+<h2>Activity History</h2>
+<p class="muted">Search the durable operational activity projection. All filters and displayed timestamps use UTC.</p>
+
+<form class="history-filters" @onsubmit="SearchAsync" @onsubmit:preventDefault>
+    <label>From (UTC)<input type="datetime-local" @bind="fromInput" /></label>
+    <label>To (UTC)<input type="datetime-local" @bind="toInput" /></label>
+    <label>Auction/Aggregate ID<input type="text" @bind="aggregateInput" placeholder="Optional GUID" /></label>
+    <label>Event Type<select @bind="eventTypeInput"><option value="">All</option>@foreach (var eventType in ActivityHistoryQueryRules.KnownEventTypes){<option value="@eventType">@eventType</option>}</select></label>
+    <label>Page size<select @bind="pageSizeInput"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
+    <div class="history-actions"><button type="submit">Search</button><button type="button" @onclick="ResetAsync">Reset</button></div>
+</form>
+
+@if (errors.Count > 0)
+{
+    <div class="validation-message" role="alert">@foreach (var error in errors){<p>@error</p>}</div>
+}
+
+@if (loading)
+{
+    <p>Loading history…</p>
+}
+else if (queryError is not null)
+{
+    <p class="error-message" role="alert">Unable to load activity history. Please try again.</p>
+}
+else if (result is null || result.Items.Count == 0)
+{
+    <p>No activity matches the selected filters.</p>
+}
+else
+{
+    <table class="activity-table">
+        <thead><tr><th>Time (UTC)</th><th>Event</th><th>Auction</th><th>Amount</th><th>Version</th><th>Correlation</th></tr></thead>
+        <tbody>
+            @foreach (var activity in result.Items)
+            {
+                <tr @key="activity.EventId">
+                    <td>@activity.OccurredAtUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</td>
+                    <td>@activity.EventType</td>
+                    <td>@activity.AggregateId</td>
+                    <td>@(activity.Amount?.ToString("0.00") ?? "—")</td>
+                    <td>@activity.AggregateVersion</td>
+                    <td>@(activity.CorrelationId ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (result is not null && result.TotalPages > 0)
+{
+    <div class="pagination" aria-label="History pagination">
+        <span>Page @result.Page of @result.TotalPages (@result.TotalCount total)</span>
+        <button type="button" @onclick="() => GoToPageAsync(result.Page - 1)" disabled="@(result.Page <= 1)">Previous</button>
+        <button type="button" @onclick="() => GoToPageAsync(result.Page + 1)" disabled="@(result.Page >= result.TotalPages)">Next</button>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "from")]
+    public string? FromQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "to")]
+    public string? ToQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "aggregateId")]
+    public string? AggregateQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "eventType")]
+    public string? EventTypeQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "page")]
+    public string? PageQuery { get; set; }
+
+    [SupplyParameterFromQuery(Name = "pageSize")]
+    public string? PageSizeQuery { get; set; }
+
+    private DateTime fromInput;
+    private DateTime toInput;
+    private string aggregateInput = string.Empty;
+    private string eventTypeInput = string.Empty;
+    private int pageSizeInput = ActivityHistoryQueryRules.DefaultPageSize;
+    private ActivityHistoryPage? result;
+    private readonly CancellationTokenSource lifetime = new();
+    private List<string> errors = [];
+    private Exception? queryError;
+    private bool loading = true;
+    private string? lastQueryKey;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var queryKey = string.Join('|', FromQuery, ToQuery, AggregateQuery, EventTypeQuery, PageQuery, PageSizeQuery);
+        if (queryKey == lastQueryKey)
+            return;
+
+        lastQueryKey = queryKey;
+        if (FromQuery is null && ToQuery is null && PageQuery is null && PageSizeQuery is null)
+        {
+            var now = DateTime.UtcNow;
+            fromInput = now.AddDays(-1);
+            toInput = now;
+            aggregateInput = string.Empty;
+            eventTypeInput = string.Empty;
+            pageSizeInput = ActivityHistoryQueryRules.DefaultPageSize;
+            await ExecuteSearchAsync(new ActivityHistoryQuery(ToUtc(fromInput), ToUtc(toInput), null, null));
+            return;
+        }
+
+        var parsed = ActivityHistoryQueryParser.Parse(FromQuery, ToQuery, AggregateQuery, EventTypeQuery, PageQuery, PageSizeQuery);
+        SetInputs(parsed.Query);
+        if (!parsed.IsValid)
+        {
+            errors = parsed.Errors.ToList();
+            result = null;
+            loading = false;
+            return;
+        }
+
+        errors = [];
+        await ExecuteSearchAsync(parsed.Query!);
+    }
+
+    private async Task SearchAsync()
+    {
+        var parsed = ActivityHistoryQueryParser.Parse(
+            ToUtc(fromInput).ToString("O"),
+            ToUtc(toInput).ToString("O"),
+            aggregateInput,
+            eventTypeInput,
+            "1",
+            pageSizeInput.ToString(CultureInfo.InvariantCulture));
+        if (!parsed.IsValid)
+        {
+            errors = parsed.Errors.ToList();
+            queryError = null;
+            result = null;
+            loading = false;
+            return;
+        }
+
+        NavigateToQuery(parsed.Query!);
+        await Task.CompletedTask;
+    }
+
+    private async Task ResetAsync()
+    {
+        Navigation.NavigateTo("/activity/history");
+        await Task.CompletedTask;
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        if (result is null || page < 1 || page > result.TotalPages)
+            return;
+
+        var query = new ActivityHistoryQuery(ToUtc(fromInput), ToUtc(toInput), ParseAggregateForUrl(), string.IsNullOrWhiteSpace(eventTypeInput) ? null : eventTypeInput, page, pageSizeInput);
+        NavigateToQuery(query);
+        await Task.CompletedTask;
+    }
+
+    private async Task ExecuteSearchAsync(ActivityHistoryQuery query)
+    {
+        loading = true;
+        queryError = null;
+        try
+        {
+            result = await HistoryQuery.SearchAsync(query, lifetime.Token);
+        }
+        catch (ActivityHistoryQueryValidationException exception)
+        {
+            errors = exception.Errors.ToList();
+            result = null;
+        }
+        catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Historical activity query failed for page {Page}, page size {PageSize}, event type {EventType}, aggregate {AggregateId}.", query.Page, query.PageSize, query.EventType, query.AggregateId);
+            queryError = exception;
+            result = null;
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void SetInputs(ActivityHistoryQuery? query)
+    {
+        if (query?.FromUtc is not null)
+            fromInput = query.FromUtc.Value.UtcDateTime;
+        if (query?.ToUtc is not null)
+            toInput = query.ToUtc.Value.UtcDateTime;
+        aggregateInput = AggregateQuery ?? string.Empty;
+        eventTypeInput = EventTypeQuery ?? string.Empty;
+        if (query is not null)
+            pageSizeInput = query.PageSize;
+    }
+
+    private Guid? ParseAggregateForUrl() => Guid.TryParse(aggregateInput, out var aggregateId) ? aggregateId : null;
+
+    private void NavigateToQuery(ActivityHistoryQuery query)
+    {
+        var parameters = new Dictionary<string, object?>
+        {
+            ["from"] = query.FromUtc?.ToString("O"),
+            ["to"] = query.ToUtc?.ToString("O"),
+            ["aggregateId"] = query.AggregateId,
+            ["eventType"] = query.EventType,
+            ["page"] = query.Page,
+            ["pageSize"] = query.PageSize
+        };
+        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(parameters));
+    }
+
+    private static DateTimeOffset ToUtc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+
+    public ValueTask DisposeAsync()
+    {
+        lifetime.Cancel();
+        lifetime.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}

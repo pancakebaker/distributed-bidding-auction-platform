@@ -48,6 +48,16 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
     }
 
     [Fact]
+    public async Task AnonymousHistoryRoute_IsRejected()
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        var response = await client.GetAsync("/activity/history");
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("auth/required", response.Headers.Location?.ToString());
+    }
+
+    [Fact]
     public async Task AuthenticatedPortalRoute_IsAccessibleAndLogoutClearsCookie()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
@@ -56,6 +66,7 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         Assert.Equal(HttpStatusCode.Redirect, handoff.StatusCode);
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/activity/history")).StatusCode);
         var logout = await client.PostAsync("/auth/logout", new FormUrlEncodedContent(Array.Empty<KeyValuePair<string, string>>()));
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         Assert.Contains("Set-Cookie", logout.Headers.ToString());

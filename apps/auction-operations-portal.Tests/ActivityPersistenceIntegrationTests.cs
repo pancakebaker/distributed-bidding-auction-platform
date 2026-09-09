@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AuctionOperationsPortal.Tests;
 
+[Collection("PortalDatabase")]
 public sealed class ActivityPersistenceIntegrationTests : IAsyncLifetime
 {
     private const string ConnectionString = "Host=127.0.0.1;Port=55432;Database=auction_operations;Username=auction_app;Password=change_me_in_local_env";
