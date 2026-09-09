@@ -51,3 +51,34 @@ Custom spans cover RabbitMQ event processing, activity persistence, SignalR publ
 The bounded metrics are `portal.events.processed`, `portal.events.duplicate`, `portal.events.rejected`, `portal.events.transient_failures`, `portal.signalr.publications`, `portal.signalr.publish_failures`, `portal.reports.generated`, `portal.reports.rejected`, plus duration histograms for event processing, history queries, and report generation and a report row-count histogram. Metric labels are restricted to bounded values such as known event type or rejection reason; event IDs, correlation IDs, auction IDs, user IDs, cookies, JWTs, and report contents are not metric dimensions.
 
 `/health` anonymously returns only aggregate status for PostgreSQL and RabbitMQ; it does not return connection strings or dependency exception details. Redis was deliberately deferred: history and report workloads are bounded, PostgreSQL is authoritative, and a cache would add invalidation/staleness complexity without a demonstrated need. Structured logs include relevant event, correlation, trace, and span context without secrets or raw payloads.
+
+## Runtime and performance engineering
+
+The isolated `apps/auction-operations-portal.Benchmarks` project uses BenchmarkDotNet `0.15.8` (MIT) with `[MemoryDiagnoser]`. Run representative benchmarks manually with:
+
+```powershell
+dotnet run -c Release --project apps/auction-operations-portal.Benchmarks
+```
+
+The benchmark cases cover real in-process boundaries: `IntegrationEventEnvelope` JSON deserialization for `BidAccepted`, `AuctionClosed`, and `WinnerSelected`; envelope-to-`AuctionActivity` and activity-to-`ActivityNotification` mapping; bounded `LiveActivityState` merge with duplicate-heavy input; and report-row preparation for 100, 1,000, and 5,000 rows. Network, PostgreSQL, RabbitMQ, and browser rendering latency are intentionally not represented as microbenchmark results. BenchmarkDotNet output is machine-dependent and observational; it is not a CI pass/fail threshold.
+
+The portal is predominantly I/O-bound: EF Core, RabbitMQ, and SignalR use asynchronous APIs and cancellation tokens. QuestPDF rendering is synchronous and CPU-bound, but reports are bounded at 5,000 rows; it is not moved to `Task.Run` because that would consume a thread-pool worker without improving the underlying renderer. No `.Result`, `.Wait()`, fire-and-forget task, or unbounded `Task.WhenAll` path was found. `Task` remains preferable to broad `ValueTask` adoption because these operations are asynchronous I/O or genuinely asynchronous work rather than a measured synchronous-completion hot path.
+
+The managed heap is collected in generations: short-lived ephemeral allocations normally die in Gen0, survivors move through Gen1 toward Gen2, and large objects use the Large Object Heap (LOH). A PDF byte buffer can enter the LOH when its runtime size reaches the platform's large-object threshold (commonly about 85 KB; the actual boundary is an implementation detail), but the repository does not invent a size claim without measuring representative reports. The 5,000-row bound limits allocation pressure; the current synchronous renderer uses a bounded render stream plus the final response byte array, without Base64 or additional application-level full-document copies. Repeated concurrent large reports could still increase GC and LOH pressure. Avoiding duplicate buffers is more valuable here than speculative pooling.
+
+Server GC is a deployment/runtime choice and is not forced by this phase; the short benchmark run used concurrent Workstation GC on the development machine. Server GC may be appropriate for a dedicated high-throughput server process, but it should be selected and measured with the deployment profile rather than assumed to improve every bounded portal workload.
+
+`Span<T>`, `Memory<T>`, and `ArrayPool<T>` were reviewed and deferred. The consumer uses the message span only at the UTF-8 decode boundary, report rows are bounded, and no repeated large temporary-array allocation has been measured that would justify lifetime complexity or pooling. `Span<T>` cannot cross the async persistence boundaries; `Memory<T>` is unnecessary because no buffer must survive such a boundary. If profiling later shows sustained large temporary buffers, the benchmark project should precede any production pooling change.
+
+The current explicit DI map is intentional: singleton `AuctionActivityConsumer`, `PortalReplayProtection`, `LaravelTokenValidator`, `IActivityNotificationPublisher`, `IntegrationEventMapper`, and `RabbitMqTopology`; scoped `AuctionOperationsDbContext`, `IActivityPersistence`, `IRecentActivityQuery`, `IActivityHistoryQueryService`, and `IActivityReportService`; framework-managed transient hub/component instances. The consumer resolves scoped persistence through `IServiceScopeFactory`, so it has no captive `DbContext`. Assembly scanning/Scrutor was not added because the explicit registrations make lifetime and security boundaries visible.
+
+For local runtime diagnostics, install the .NET diagnostic tools if needed and inspect a running process with:
+
+```powershell
+dotnet-counters monitor --process-id <pid> System.Runtime
+dotnet-counters monitor --process-id <pid> --counters System.Runtime,Microsoft.AspNetCore.Hosting
+dotnet-trace collect --process-id <pid> --providers Microsoft-DotNETCore-SampleProfiler
+dotnet-gcdump collect --process-id <pid> -o portal.gcdump
+```
+
+These are development procedures only. Useful signals include GC heap size, allocation rate, Gen0/1/2 collections, thread-pool queue length, and CPU. Do not commit diagnostic dumps or benchmark artifacts.

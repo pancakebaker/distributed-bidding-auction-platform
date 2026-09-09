@@ -2,6 +2,7 @@
   <Folder Name="/apps/">
     <Project Path="apps/auction-operations-portal/AuctionOperationsPortal.csproj" />
     <Project Path="apps/auction-operations-portal.Tests/AuctionOperationsPortal.Tests.csproj" />
+    <Project Path="apps/auction-operations-portal.Benchmarks/AuctionOperationsPortal.Benchmarks.csproj" />
     <Project Path="apps/bidding-service.Tests/bidding-service.Tests.csproj" />
     <Project Path="apps/bidding-service/bidding-service.csproj" />
   </Folder>

@@ -23,6 +23,13 @@ using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Host.UseDefaultServiceProvider((context, options) =>
+{
+    var validate = context.HostingEnvironment.IsDevelopment() || context.HostingEnvironment.IsEnvironment("Testing");
+    options.ValidateScopes = validate;
+    options.ValidateOnBuild = validate;
+});
+
 if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"))
 {
     builder.Logging.ClearProviders();
