@@ -160,6 +160,7 @@ export default tseslint.config(
       '**/coverage/**',
       'apps/client/public/build/**',
       'apps/client/vendor/**',
+      'apps/auction-operations-portal/wwwroot/lib/**',
       'apps/client/storage/**',
       'apps/client/bootstrap/cache/**',
       '**/*.d.ts',

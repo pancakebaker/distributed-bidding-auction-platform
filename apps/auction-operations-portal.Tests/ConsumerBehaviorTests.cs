@@ -43,7 +43,12 @@ public sealed class ConsumerBehaviorTests
     private sealed class FakePersistence : IActivityPersistence
     {
         public bool Result { get; init; } = true; public Exception? Error { get; init; } public int Calls { get; private set; }
-        public Task<bool> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken) { Calls++; if (Error is not null) throw Error; return Task.FromResult(Result); }
+        public Task<ActivityPersistenceResult> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken)
+        {
+            Calls++;
+            if (Error is not null) throw Error;
+            return Task.FromResult(new ActivityPersistenceResult(Result, Result ? new AuctionOperationsPortal.Data.AuctionActivity { EventId = envelope.EventId, EventType = envelope.EventType, AggregateType = envelope.AggregateType } : null));
+        }
     }
     private sealed class FakeActions : IDeliveryActions
     {

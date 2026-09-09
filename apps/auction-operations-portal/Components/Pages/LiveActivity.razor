@@ -1,0 +1,129 @@
+@page "/activity/live"
+@attribute [Authorize(Policy = "AuctionOperationsAdmin")]
+@implements IAsyncDisposable
+@inject IRecentActivityQuery RecentActivity
+@inject IJSRuntime JS
+
+<PageTitle>Live Activity | Auction Operations Portal</PageTitle>
+
+<h2>Live Activity</h2>
+<p class="muted">Persisted activity is the source of truth. The live connection fills in new events and reconciles after reconnect.</p>
+
+@if (loading)
+{
+    <p>Loading recent activity…</p>
+}
+else if (activities.Count == 0)
+{
+    <p>No activity has been recorded yet.</p>
+}
+else
+{
+    <table class="activity-table">
+        <thead>
+            <tr><th>Time</th><th>Event</th><th>Auction</th><th>Amount</th><th>Version</th><th>Correlation</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var activity in activities)
+            {
+                <tr @key="activity.EventId">
+                    <td>@activity.OccurredAtUtc.ToLocalTime().ToString("HH:mm:ss")</td>
+                    <td>@activity.EventType</td>
+                    <td>@activity.AggregateId</td>
+                    <td>@(activity.Amount?.ToString("0.00") ?? "—")</td>
+                    <td>@activity.AggregateVersion</td>
+                    <td>@(activity.CorrelationId ?? "—")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (!string.IsNullOrWhiteSpace(connectionStatus))
+{
+    <p class="muted">@connectionStatus</p>
+}
+
+@code {
+    private const int RecentLimit = 100;
+    private readonly LiveActivityState state = new(RecentLimit);
+    private readonly CancellationTokenSource lifetime = new();
+    private IJSObjectReference? module;
+    private DotNetObjectReference<LiveActivity>? dotNetReference;
+    private bool loading = true;
+    private bool started;
+    private string? connectionStatus;
+    private IReadOnlyList<ActivityNotification> activities => state.Items;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || started)
+            return;
+
+        started = true;
+        module = await JS.InvokeAsync<IJSObjectReference>("import", "./js/activityHub.js");
+        dotNetReference = DotNetObjectReference.Create(this);
+        try
+        {
+            await module.InvokeVoidAsync("start", dotNetReference, "/hubs/activity");
+            connectionStatus = "Live connection established.";
+        }
+        catch (JSException)
+        {
+            connectionStatus = "Live connection is unavailable; persisted activity remains available.";
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    [JSInvokable]
+    public async Task ReceiveActivity(ActivityNotification activity)
+    {
+        await InvokeAsync(() =>
+        {
+            state.Merge([activity]);
+            StateHasChanged();
+        });
+    }
+
+    [JSInvokable]
+    public async Task Reconnected()
+    {
+        connectionStatus = "Reconnected; reconciling persisted activity…";
+        await RefreshAsync();
+        connectionStatus = "Live connection re-established.";
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task RefreshAsync()
+    {
+        var snapshot = await RecentActivity.GetRecentAsync(RecentLimit, lifetime.Token);
+        state.Merge(snapshot);
+        loading = false;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        lifetime.Cancel();
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("stop");
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+
+        dotNetReference?.Dispose();
+        if (module is not null)
+            await module.DisposeAsync();
+        lifetime.Dispose();
+    }
+}

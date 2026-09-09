@@ -8,12 +8,14 @@ namespace AuctionOperationsPortal.Persistence;
 
 public interface IActivityPersistence
 {
-    Task<bool> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken);
+    Task<ActivityPersistenceResult> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken);
 }
+
+public sealed record ActivityPersistenceResult(bool Inserted, AuctionActivity? Activity);
 
 public sealed class ActivityPersistence(AuctionOperationsDbContext db, TimeProvider timeProvider) : IActivityPersistence
 {
-    public async Task<bool> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken)
+    public async Task<ActivityPersistenceResult> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken)
     {
         var activity = IntegrationEventMapper.ToActivity(envelope, timeProvider.GetUtcNow());
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
@@ -22,13 +24,13 @@ public sealed class ActivityPersistence(AuctionOperationsDbContext db, TimeProvi
         {
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return true;
+            return new ActivityPersistenceResult(true, activity);
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } postgres && postgres.ConstraintName == "ux_auction_activity_event_id")
         {
             await transaction.RollbackAsync(cancellationToken);
             db.Entry(activity).State = EntityState.Detached;
-            return false;
+            return new ActivityPersistenceResult(false, null);
         }
     }
 }

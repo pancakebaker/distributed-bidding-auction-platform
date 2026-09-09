@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using AuctionOperationsPortal.Contracts;
+using AuctionOperationsPortal.Notifications;
 using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
 using Microsoft.Extensions.Options;
@@ -21,6 +22,7 @@ public sealed class AuctionActivityConsumer(
     IServiceScopeFactory scopeFactory,
     RabbitMqTopology topology,
     IOptions<RabbitMqOptions> options,
+    IActivityNotificationPublisher notificationPublisher,
     ILogger<AuctionActivityConsumer> logger) : BackgroundService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -56,7 +58,18 @@ public sealed class AuctionActivityConsumer(
             if (envelope is null) throw new FormatException("Message body is empty.");
             using var scope = scopeFactory.CreateScope();
             var persistence = scope.ServiceProvider.GetRequiredService<IActivityPersistence>();
-            await persistence.PersistAsync(envelope, cancellationToken);
+            var result = await persistence.PersistAsync(envelope, cancellationToken);
+            if (result.Inserted && result.Activity is not null)
+            {
+                try
+                {
+                    await notificationPublisher.PublishAsync(result.Activity, cancellationToken);
+                }
+                catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+                {
+                    logger.LogError(exception, "SignalR publication failed after activity {EventId} was persisted; acknowledging the message for client reconciliation.", envelope.EventId);
+                }
+            }
             retryCounts.TryRemove(envelope.EventId, out _);
             await channel.BasicAckAsync(args.DeliveryTag, multiple: false, cancellationToken);
             logger.LogInformation("Persisted auction activity {EventId} ({EventType}).", envelope.EventId, envelope.EventType);

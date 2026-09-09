@@ -1,7 +1,9 @@
 using AuctionOperationsPortal.Auth;
 using AuctionOperationsPortal.Components;
 using AuctionOperationsPortal.Data;
+using AuctionOperationsPortal.Hubs;
 using AuctionOperationsPortal.Messaging;
+using AuctionOperationsPortal.Notifications;
 using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
 using Microsoft.AspNetCore.Authentication;
@@ -60,10 +62,13 @@ builder.Services.AddCascadingAuthenticationState();
 if (builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
 builder.Services.AddScoped<IActivityPersistence, ActivityPersistence>();
+builder.Services.AddScoped<IRecentActivityQuery, RecentActivityQuery>();
+builder.Services.AddSingleton<IActivityNotificationPublisher, SignalRActivityNotificationPublisher>();
 builder.Services.AddSingleton<IntegrationEventMapper>();
 builder.Services.AddSingleton<RabbitMqTopology>();
 if (!builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddHostedService<AuctionActivityConsumer>();
+builder.Services.AddSignalR();
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 var app = builder.Build();
@@ -112,6 +117,7 @@ app.MapPost("/auth/logout", async (HttpContext context, IOptions<LaravelAuthOpti
 }).RequireAuthorization("AuctionOperationsAdmin").DisableAntiforgery();
 app.MapGet("/auth/required", (IOptions<LaravelAuthOptions> authOptions) => Results.Redirect(authOptions.Value.LaravelAdminUrl));
 app.MapGet("/auth/denied", () => Results.Text("Access denied", statusCode: StatusCodes.Status403Forbidden));
+app.MapHub<ActivityHub>("/hubs/activity").RequireAuthorization("AuctionOperationsAdmin");
 app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.Run();
