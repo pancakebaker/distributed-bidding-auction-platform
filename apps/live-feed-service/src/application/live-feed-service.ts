@@ -2,6 +2,7 @@
  * Express, Socket.IO, Redis, and RabbitMQ composition root for the live-feed service.
  */
 import express from 'express';
+import { existsSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +63,12 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const config = loadConfig(overrides);
   const app = express();
   const httpServer = createServer(app);
+  const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+  const sourceAdminDirectory = resolve(moduleDirectory, '../ui');
+  const builtAdminDirectory = resolve(moduleDirectory, '../../dist/ui');
+  const adminAssetDirectory = existsSync(resolve(builtAdminDirectory, 'live-feed-admin.js'))
+    ? builtAdminDirectory
+    : sourceAdminDirectory;
   const io = new Server(httpServer, {
     cors: {
       origin: config.clientOrigin,
@@ -147,7 +154,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     auth: adminAuth,
     tokenVerifier: adminTokenVerifier,
     clientOrigin: config.clientOrigin,
-    assetDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../ui'),
+    assetDirectory: adminAssetDirectory,
     publicAdminDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../../public/admin'),
     getSnapshot: () =>
       getLiveFeedDashboard({

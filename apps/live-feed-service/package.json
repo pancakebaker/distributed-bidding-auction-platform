@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "tsc && node scripts/build-admin-client.mjs",
-    "dev": "tsx watch src/index.ts",
+    "dev": "npm run build:admin && tsx watch src/index.ts",
+    "build:admin": "node scripts/build-admin-client.mjs",
     "start": "node dist/index.js",
     "test": "node --import tsx --test tests/**/*.test.ts",
     "watch:auction": "tsx scripts/dev-socket-client.ts",
