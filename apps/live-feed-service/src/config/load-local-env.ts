@@ -1,11 +1,11 @@
 /**
- * Loads the optional service-local environment file at the composition root without changing deployment configuration semantics.
+ * Loads the optional repository-root environment file without changing deployment configuration semantics.
  */
 import { loadEnvFile } from 'node:process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const defaultEnvFilePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../.env');
+const defaultEnvFilePath = resolve(dirname(fileURLToPath(import.meta.url)), '../../../..', '.env');
 
 /**
  * Loads a local environment file when present; existing process variables remain authoritative.

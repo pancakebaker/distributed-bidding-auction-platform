@@ -64,8 +64,10 @@ function rabbitMqUrlFromEnv(): string {
 
   const host = process.env.RABBITMQ_HOST ?? 'localhost';
   const port = process.env.RABBITMQ_AMQP_PORT ?? '5672';
-  const username = encodeURIComponent(process.env.RABBITMQ_USERNAME ?? 'auction');
-  const password = encodeURIComponent(process.env.RABBITMQ_PASSWORD ?? 'change_me_in_local_env');
+  const username = encodeURIComponent(process.env.RABBITMQ_USERNAME ?? process.env.RABBITMQ_DEFAULT_USER ?? 'auction');
+  const password = encodeURIComponent(
+    process.env.RABBITMQ_PASSWORD ?? process.env.RABBITMQ_DEFAULT_PASS ?? 'change_me_in_local_env',
+  );
   const virtualHost = process.env.RABBITMQ_VHOST ? `/${encodeURIComponent(process.env.RABBITMQ_VHOST)}` : '';
 
   return `amqp://${username}:${password}@${host}:${port}${virtualHost}`;

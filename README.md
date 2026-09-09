@@ -92,32 +92,50 @@ Prerequisites:
 - .NET 10 SDK
 - PHP 8.3+ and Composer
 - Node.js current/LTS and npm
+- OpenSSL
 
 From the repository root:
 
 ```powershell
-copy .env.example .env
-scripts\start-infrastructure.ps1
-```
-
-Install/build application dependencies when needed:
-
-```powershell
+Copy-Item .env.example .env
+Copy-Item apps/client/.env.example apps/client/.env
+dotnet restore
+npm ci
 npm ci --prefix apps/live-feed-service
 npm ci --prefix apps/client
 composer install --working-dir=apps/client
+php apps/client/artisan key:generate
 ```
 
+Set `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD`, and optionally `LOCAL_ADMIN_NAME` in
+`apps/client/.env`. These are local-only demo credentials and must not be committed.
 
-For local admin/CMS demo data, prepare the Laravel client database from `apps/client`:
+Generate a fresh RSA key pair for the Laravel-to-Live Feed handoff:
 
 ```powershell
-php artisan migrate
-php artisan db:seed
+scripts\generate-live-feed-admin-keys.ps1
 ```
 
-This creates a demo admin and published CMS Pages/FAQs for local manual testing. The full client notes are in [docs/client/README.md](docs/client/README.md).
-Start the full demo stack in separate PowerShell windows:
+The private key is generated at `apps/client/storage/keys/live-feed-admin-private.pem`;
+the public key is generated at `apps/live-feed-service/config/live-feed-admin-public.pem`.
+Both paths are ignored by Git.
+
+Start local infrastructure. PostgreSQL uses host port `55432` and container port `5432`.
+
+```powershell
+scripts\start-infrastructure.ps1
+```
+
+Prepare Laravel and Live Feed history:
+
+```powershell
+php apps/client/artisan migrate
+php apps/client/artisan db:seed --class=Database\\Seeders\\LocalAdminSeeder
+npm run migrate:history --prefix apps/live-feed-service
+```
+
+This prepares the Laravel database and local administrator. Run `php apps/client/artisan db:seed` for the full demo admin and CMS data. The full client notes are in [docs/client/README.md](docs/client/README.md).
+Start the development demo stack in separate PowerShell windows:
 
 ```powershell
 scripts\start-demo.ps1
@@ -130,6 +148,10 @@ Open:
 - Live Feed health: http://localhost:3001/health
 - Live Feed runtime diagnostics: http://localhost:3001/diagnostics/runtime
 - RabbitMQ management: http://localhost:15672
+
+The committed `.env.example` files are templates only. The root `.env`,
+`apps/client/.env`, Laravel `APP_KEY`, RSA keys, dependency directories, and build output
+are developer-local or generated files and must not be committed.
 
 Stop local app/worker processes:
 

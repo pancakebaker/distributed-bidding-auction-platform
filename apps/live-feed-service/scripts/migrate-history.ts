@@ -5,7 +5,9 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { PostgresPool } from '../src/infrastructure/database/postgres-pool.js';
 import { loadConfig } from '../src/config/config.js';
+import { loadLocalEnvironment } from '../src/config/load-local-env.js';
 
+loadLocalEnvironment();
 const config = loadConfig();
 if (!config.liveFeedDatabaseUrl) {
   throw new Error('LIVE_FEED_DATABASE_URL must be configured to apply the history migration.');
