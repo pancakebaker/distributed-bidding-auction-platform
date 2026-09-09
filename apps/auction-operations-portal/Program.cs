@@ -1,19 +1,25 @@
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using AuctionOperationsPortal.Auth;
 using AuctionOperationsPortal.Components;
 using AuctionOperationsPortal.Data;
+using AuctionOperationsPortal.Health;
 using AuctionOperationsPortal.Hubs;
 using AuctionOperationsPortal.Messaging;
 using AuctionOperationsPortal.Notifications;
 using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
+using AuctionOperationsPortal.Telemetry;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using OpenTelemetry.Metrics;
+using OpenTelemetry.Resources;
+using OpenTelemetry.Trace;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -24,6 +30,8 @@ if (builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Te
 }
 
 builder.Configuration.AddJsonFile(Path.Combine(builder.Environment.ContentRootPath, "appsettings.Development.local.json"), optional: true, reloadOnChange: true);
+builder.Services.Configure<ObservabilityOptions>(builder.Configuration.GetSection(ObservabilityOptions.SectionName));
+var observabilityOptions = builder.Configuration.GetSection(ObservabilityOptions.SectionName).Get<ObservabilityOptions>() ?? new();
 builder.Services.Configure<LaravelAuthOptions>(options =>
 {
     builder.Configuration.GetSection(LaravelAuthOptions.SectionName).Bind(options);
@@ -37,6 +45,35 @@ builder.Services.AddDbContext<AuctionOperationsDbContext>(options =>
         ?? throw new InvalidOperationException("Connection string 'AuctionOperationsDb' is not configured.");
     options.UseNpgsql(connectionString);
 });
+builder.Services.AddHealthChecks()
+    .AddCheck<PortalDatabaseHealthCheck>("postgresql")
+    .AddCheck<RabbitMqHealthCheck>("rabbitmq");
+if (observabilityOptions.Enabled)
+{
+    var openTelemetry = builder.Services.AddOpenTelemetry()
+        .ConfigureResource(resource => resource.AddService(observabilityOptions.ServiceName, serviceVersion: observabilityOptions.ServiceVersion));
+    openTelemetry.WithTracing(tracing =>
+    {
+        tracing.AddSource(PortalTelemetry.ActivitySourceName)
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation()
+            .AddEntityFrameworkCoreInstrumentation();
+        if (observabilityOptions.UseConsoleExporter)
+            tracing.AddConsoleExporter();
+        if (Uri.TryCreate(observabilityOptions.OtlpEndpoint, UriKind.Absolute, out var tracingEndpoint))
+            tracing.AddOtlpExporter(exporter => exporter.Endpoint = tracingEndpoint);
+    });
+    openTelemetry.WithMetrics(metrics =>
+    {
+        metrics.AddMeter(PortalTelemetry.MeterName)
+            .AddAspNetCoreInstrumentation()
+            .AddHttpClientInstrumentation();
+        if (observabilityOptions.UseConsoleExporter)
+            metrics.AddConsoleExporter();
+        if (Uri.TryCreate(observabilityOptions.OtlpEndpoint, UriKind.Absolute, out var metricsEndpoint))
+            metrics.AddOtlpExporter(exporter => exporter.Endpoint = metricsEndpoint);
+    });
+}
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PortalReplayProtection>();
 builder.Services.AddSingleton<LaravelTokenValidator>();
@@ -76,6 +113,11 @@ builder.Services.AddSignalR();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.OnRejected = (_, _) =>
+    {
+        PortalTelemetry.ReportsRejected.Add(1, new KeyValuePair<string, object?>("reason", "rate_limit"));
+        return ValueTask.CompletedTask;
+    };
     options.AddPolicy("ActivityReport", context => RateLimitPartition.GetFixedWindowLimiter(
         context.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
         _ => new FixedWindowRateLimiterOptions
@@ -97,17 +139,42 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"
 if (!app.Environment.IsEnvironment("Testing"))
     app.UseHttpsRedirection();
 app.UseRouting();
+app.Use(async (context, next) =>
+{
+    var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("PortalRequest");
+    using var scope = logger.BeginScope(new Dictionary<string, object?>
+    {
+        ["CorrelationId"] = context.Request.Headers["X-Correlation-ID"].FirstOrDefault(),
+        ["TraceId"] = Activity.Current?.TraceId.ToString(),
+        ["SpanId"] = Activity.Current?.SpanId.ToString()
+    });
+    await next();
+});
 app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.UseAntiforgery();
+app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    ResponseWriter = async (context, report) =>
+    {
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            status = report.Status.ToString(),
+            checks = report.Entries.ToDictionary(entry => entry.Key, entry => entry.Value.Status.ToString())
+        });
+    }
+});
 app.MapPost("/auth/handoff", async (HttpContext context, LaravelTokenValidator validator, IOptions<LaravelAuthOptions> authOptions, ILogger<Program> logger) =>
 {
+    using var activity = PortalTelemetry.StartActivity("portal.auth.handoff");
     var form = await context.Request.ReadFormAsync(context.RequestAborted);
     var token = form["token"].ToString();
     try
     {
         var identity = validator.Validate(token);
+        activity?.SetTag("auth.outcome", "accepted");
         var claims = new System.Security.Claims.ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
         claims.AddClaim(new(System.Security.Claims.ClaimTypes.NameIdentifier, identity.Subject));
         if (!string.IsNullOrWhiteSpace(identity.Email))
@@ -123,6 +190,8 @@ app.MapPost("/auth/handoff", async (HttpContext context, LaravelTokenValidator v
     }
     catch (PortalTokenValidationException exception)
     {
+        activity?.SetTag("auth.outcome", "rejected");
+        activity?.SetTag("auth.failure_category", exception.Category);
         logger.LogWarning("Portal handoff rejected: {Category}", exception.Category);
         return Results.Text("Unauthorized", statusCode: StatusCodes.Status401Unauthorized);
     }
@@ -143,9 +212,13 @@ app.MapGet("/activity/report.pdf", async (
     HttpContext context,
     ILogger<Program> logger) =>
 {
+    using var activity = PortalTelemetry.StartActivity("portal.report.request");
     var parsed = ActivityHistoryQueryParser.Parse(from, to, aggregateId, eventType, "1", "25");
     if (!parsed.IsValid)
+    {
+        PortalTelemetry.ReportsRejected.Add(1, new KeyValuePair<string, object?>("reason", "validation"));
         return Results.BadRequest(new { errors = parsed.Errors });
+    }
 
     var query = parsed.Query!;
     var request = new ActivityReportRequest(query.FromUtc, query.ToUtc, query.AggregateId, query.EventType);

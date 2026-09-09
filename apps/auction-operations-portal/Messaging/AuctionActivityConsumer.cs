@@ -1,10 +1,12 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
 using AuctionOperationsPortal.Contracts;
 using AuctionOperationsPortal.Notifications;
 using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
+using AuctionOperationsPortal.Telemetry;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
@@ -52,13 +54,30 @@ public sealed class AuctionActivityConsumer(
     private async Task HandleAsync(IChannel channel, BasicDeliverEventArgs args, CancellationToken cancellationToken)
     {
         IntegrationEventEnvelope? envelope = null;
+        var started = Stopwatch.GetTimestamp();
+        using var activity = PortalTelemetry.StartActivity("portal.rabbitmq.process", ActivityKind.Consumer);
         try
         {
             envelope = JsonSerializer.Deserialize<IntegrationEventEnvelope>(Encoding.UTF8.GetString(args.Body.Span), JsonOptions);
             if (envelope is null) throw new FormatException("Message body is empty.");
-            using var scope = scopeFactory.CreateScope();
-            var persistence = scope.ServiceProvider.GetRequiredService<IActivityPersistence>();
+            PortalTelemetry.AddEventTags(activity, envelope.EventId, envelope.EventType, envelope.AggregateId, envelope.AggregateVersion, envelope.CorrelationId);
+            using var logScope = logger.BeginScope(new Dictionary<string, object?>
+            {
+                ["EventId"] = envelope.EventId,
+                ["EventType"] = envelope.EventType,
+                ["AggregateId"] = envelope.AggregateId,
+                ["AggregateVersion"] = envelope.AggregateVersion,
+                ["CorrelationId"] = envelope.CorrelationId,
+                ["TraceId"] = activity?.TraceId.ToString(),
+                ["SpanId"] = activity?.SpanId.ToString()
+            });
+            using var serviceScope = scopeFactory.CreateScope();
+            var persistence = serviceScope.ServiceProvider.GetRequiredService<IActivityPersistence>();
             var result = await persistence.PersistAsync(envelope, cancellationToken);
+            if (result.Inserted)
+                PortalTelemetry.EventsProcessed.Add(1, new KeyValuePair<string, object?>("event_type", envelope.EventType));
+            else
+                PortalTelemetry.EventsDuplicate.Add(1, new KeyValuePair<string, object?>("event_type", envelope.EventType));
             if (result.Inserted && result.Activity is not null)
             {
                 try
@@ -76,16 +95,19 @@ public sealed class AuctionActivityConsumer(
         }
         catch (FormatException exception)
         {
+            PortalTelemetry.EventsRejected.Add(1, new KeyValuePair<string, object?>("reason", "invalid_event"));
             logger.LogWarning(exception, "Rejecting malformed auction activity message.");
             await channel.BasicRejectAsync(args.DeliveryTag, requeue: false, cancellationToken);
         }
         catch (JsonException exception)
         {
+            PortalTelemetry.EventsRejected.Add(1, new KeyValuePair<string, object?>("reason", "invalid_json"));
             logger.LogWarning(exception, "Rejecting invalid auction activity JSON.");
             await channel.BasicRejectAsync(args.DeliveryTag, requeue: false, cancellationToken);
         }
         catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
         {
+            PortalTelemetry.EventsTransientFailures.Add(1);
             var attempts = envelope is null ? options.Value.MaxRequeueAttempts : retryCounts.AddOrUpdate(envelope.EventId, 1, (_, current) => current + 1);
             logger.LogError(exception, "Transient failure processing auction activity; attempt {Attempt}.", attempts);
             if (attempts >= options.Value.MaxRequeueAttempts)
@@ -97,6 +119,10 @@ public sealed class AuctionActivityConsumer(
             {
                 await channel.BasicNackAsync(args.DeliveryTag, multiple: false, requeue: true, cancellationToken);
             }
+        }
+        finally
+        {
+            PortalTelemetry.EventProcessingDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }
 }

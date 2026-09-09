@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Persistence;
+using AuctionOperationsPortal.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
 namespace AuctionOperationsPortal.Tests;
@@ -71,6 +73,18 @@ public sealed class ActivityHistoryQueryIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task Search_AppliesDateAggregateAndEventFiltersIncludingBoundaries()
     {
+        Activity? historyActivity = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == PortalTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == "portal.history.query")
+                    historyActivity = activity;
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
         var from = DateTimeOffset.UtcNow.AddHours(-2);
         var to = DateTimeOffset.UtcNow;
         await AddAsync("BidAccepted", AuctionId, 10, from, "inside");
@@ -82,6 +96,7 @@ public sealed class ActivityHistoryQueryIntegrationTests : IAsyncLifetime
         var activity = Assert.Single(page.Items);
         Assert.Equal("inside", activity.CorrelationId);
         Assert.Equal(1, page.TotalCount);
+        Assert.NotNull(historyActivity);
     }
 
     [Fact]

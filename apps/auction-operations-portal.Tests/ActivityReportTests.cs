@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Persistence;
+using AuctionOperationsPortal.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
 namespace AuctionOperationsPortal.Tests;
@@ -59,6 +61,18 @@ public sealed class ActivityReportIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task GeneratePdf_ReturnsPdfSignatureAndSupportsCancellation()
     {
+        Activity? reportActivity = null;
+        using var listener = new ActivityListener
+        {
+            ShouldListenTo = source => source.Name == PortalTelemetry.ActivitySourceName,
+            Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+            ActivityStopped = activity =>
+            {
+                if (activity.OperationName == "portal.report.render")
+                    reportActivity = activity;
+            }
+        };
+        ActivitySource.AddActivityListener(listener);
         var occurred = DateTimeOffset.UtcNow;
         await AddAsync("AuctionClosed", occurred, 16, "closed");
         var report = await reports.BuildAsync(new ActivityReportRequest(occurred.AddMinutes(-1), occurred.AddMinutes(1), AuctionId, null), CancellationToken.None);
@@ -67,6 +81,7 @@ public sealed class ActivityReportIntegrationTests : IAsyncLifetime
 
         Assert.True(pdf.Length > 4);
         Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(pdf, 0, 4));
+        Assert.NotNull(reportActivity);
         await Assert.ThrowsAsync<OperationCanceledException>(() => reports.GeneratePdfAsync(report, new CancellationToken(canceled: true)));
     }
 

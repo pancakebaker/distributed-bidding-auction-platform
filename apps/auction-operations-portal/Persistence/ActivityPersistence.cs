@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AuctionOperationsPortal.Contracts;
 using AuctionOperationsPortal.Data;
+using AuctionOperationsPortal.Telemetry;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -17,6 +18,8 @@ public sealed class ActivityPersistence(AuctionOperationsDbContext db, TimeProvi
 {
     public async Task<ActivityPersistenceResult> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken)
     {
+        using var activitySpan = PortalTelemetry.StartActivity("portal.activity.persist");
+        PortalTelemetry.AddEventTags(activitySpan, envelope.EventId, envelope.EventType, envelope.AggregateId, envelope.AggregateVersion, envelope.CorrelationId);
         var activity = IntegrationEventMapper.ToActivity(envelope, timeProvider.GetUtcNow());
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.AuctionActivities.Add(activity);
@@ -24,12 +27,14 @@ public sealed class ActivityPersistence(AuctionOperationsDbContext db, TimeProvi
         {
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            activitySpan?.SetTag("persistence.outcome", "inserted");
             return new ActivityPersistenceResult(true, activity);
         }
         catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } postgres && postgres.ConstraintName == "ux_auction_activity_event_id")
         {
             await transaction.RollbackAsync(cancellationToken);
             db.Entry(activity).State = EntityState.Detached;
+            activitySpan?.SetTag("persistence.outcome", "duplicate");
             return new ActivityPersistenceResult(false, null);
         }
     }

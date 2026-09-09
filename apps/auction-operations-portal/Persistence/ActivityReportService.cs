@@ -1,5 +1,7 @@
+using System.Diagnostics;
 using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Notifications;
+using AuctionOperationsPortal.Telemetry;
 using Microsoft.EntityFrameworkCore;
 
 namespace AuctionOperationsPortal.Persistence;
@@ -16,14 +18,25 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
 
     public async Task<ActivityReport> BuildAsync(ActivityReportRequest request, CancellationToken cancellationToken)
     {
+        using var activity = PortalTelemetry.StartActivity("portal.report.query");
+        activity?.SetTag("report.has_aggregate_filter", request.AggregateId is not null);
+        activity?.SetTag("report.event_type", request.EventType);
         var errors = request.Validate();
         if (errors.Count > 0)
+        {
+            PortalTelemetry.ReportsRejected.Add(1, new KeyValuePair<string, object?>("reason", "validation"));
             throw new ActivityReportValidationException(errors);
+        }
 
         var activities = ApplyFilters(request);
         var totalCount = await activities.CountAsync(cancellationToken);
+        activity?.SetTag("report.row_count", totalCount);
+        PortalTelemetry.ReportRowCount.Record(totalCount);
         if (totalCount > MaximumRows)
+        {
+            PortalTelemetry.ReportsRejected.Add(1, new KeyValuePair<string, object?>("reason", "row_limit"));
             throw new ActivityReportValidationException([$"The report cannot contain more than {MaximumRows:N0} activity rows."]);
+        }
 
         var groupedCounts = await activities
             .GroupBy(activity => activity.EventType)
@@ -55,8 +68,20 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
 
     public Task<byte[]> GeneratePdfAsync(ActivityReport report, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(ActivityReportPdfRenderer.Render(report, cancellationToken));
+        var started = Stopwatch.GetTimestamp();
+        using var activity = PortalTelemetry.StartActivity("portal.report.render");
+        activity?.SetTag("report.row_count", report.Items.Count);
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var pdf = ActivityReportPdfRenderer.Render(report, cancellationToken);
+            PortalTelemetry.ReportsGenerated.Add(1);
+            return Task.FromResult(pdf);
+        }
+        finally
+        {
+            PortalTelemetry.ReportGenerationDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+        }
     }
 
     private IQueryable<AuctionActivity> ApplyFilters(ActivityReportRequest request)

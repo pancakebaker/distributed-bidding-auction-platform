@@ -107,6 +107,19 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         Assert.Equal(HttpStatusCode.OK, first!.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, (await client.GetAsync(url)).StatusCode);
     }
+
+    [Fact]
+    public async Task HealthEndpoint_ReturnsDependencyStatusWithoutSecrets()
+    {
+        using var client = factory.CreateClient();
+        var response = await client.GetAsync("/health");
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("postgresql", body, StringComparison.Ordinal);
+        Assert.Contains("rabbitmq", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("change_me_in_local_env", body, StringComparison.Ordinal);
+    }
 }
 
 public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Program>
