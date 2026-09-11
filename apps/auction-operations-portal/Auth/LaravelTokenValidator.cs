@@ -1,3 +1,6 @@
+// <copyright file="LaravelTokenValidator.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -8,8 +11,10 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace AuctionOperationsPortal.Auth;
 
+/// <summary>Describes the validated Laravel administrator identity used by the portal.</summary>
 public sealed record PortalTokenIdentity(string Subject, string? Email, string Role, DateTimeOffset ExpiresAt);
 
+/// <summary>Validates Laravel-issued administrator handoff tokens.</summary>
 public sealed class LaravelTokenValidator
 {
     private readonly LaravelAuthOptions options;
@@ -18,6 +23,7 @@ public sealed class LaravelTokenValidator
     private readonly TokenValidationParameters validationParameters;
     private readonly JwtSecurityTokenHandler tokenHandler = new();
 
+    /// <summary>Initializes a new instance of the <see cref="LaravelTokenValidator"/> class using portal authentication settings and replay protection.</summary>
     public LaravelTokenValidator(
         IOptions<LaravelAuthOptions> options,
         PortalReplayProtection replayProtection,
@@ -53,6 +59,7 @@ public sealed class LaravelTokenValidator
         };
     }
 
+    /// <summary>Validates a signed token and consumes its single-use identifier.</summary>
     public PortalTokenIdentity Validate(string token)
     {
         if (string.IsNullOrWhiteSpace(token))
@@ -110,7 +117,9 @@ public sealed class LaravelTokenValidator
     }
 }
 
+/// <summary>Reports why a portal token could not be accepted.</summary>
 public sealed class PortalTokenValidationException(string category, Exception? inner = null) : Exception(category, inner)
 {
+    /// <summary>Gets the stable validation failure category.</summary>
     public string Category { get; } = category;
 }

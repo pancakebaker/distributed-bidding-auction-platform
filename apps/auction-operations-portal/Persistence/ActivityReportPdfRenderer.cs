@@ -1,13 +1,18 @@
+// <copyright file="ActivityReportPdfRenderer.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
 
 namespace AuctionOperationsPortal.Persistence;
 
+/// <summary>Renders validated activity reports in the portal's PDF layout.</summary>
 internal static class ActivityReportPdfRenderer
 {
     static ActivityReportPdfRenderer() => QuestPDF.Settings.License = LicenseType.Community;
 
+    /// <summary>Renders an activity report as a PDF document.</summary>
     public static byte[] Render(ActivityReport report, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

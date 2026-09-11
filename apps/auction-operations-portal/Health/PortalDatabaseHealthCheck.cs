@@ -1,10 +1,15 @@
+// <copyright file="PortalDatabaseHealthCheck.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using Microsoft.Extensions.Diagnostics.HealthChecks;
 using Npgsql;
 
 namespace AuctionOperationsPortal.Health;
 
+/// <summary>Checks reachability of the portal PostgreSQL database.</summary>
 public sealed class PortalDatabaseHealthCheck(IConfiguration configuration) : IHealthCheck
 {
+    /// <summary>Runs a bounded database connectivity check.</summary>
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
     {
         var connectionString = configuration.GetConnectionString("AuctionOperationsDb");

@@ -11,17 +11,51 @@
 <p class="muted">Search the durable operational activity projection. All filters and displayed timestamps use UTC.</p>
 
 <form class="history-filters" @onsubmit="SearchAsync" @onsubmit:preventDefault>
-    <label>From (UTC)<input type="datetime-local" @bind="fromInput" /></label>
-    <label>To (UTC)<input type="datetime-local" @bind="toInput" /></label>
-    <label>Auction/Aggregate ID<input type="text" @bind="aggregateInput" placeholder="Optional GUID" /></label>
-    <label>Event Type<select @bind="eventTypeInput"><option value="">All</option>@foreach (var eventType in ActivityHistoryQueryRules.KnownEventTypes){<option value="@eventType">@eventType</option>}</select></label>
-    <label>Page size<select @bind="pageSizeInput"><option value="25">25</option><option value="50">50</option><option value="100">100</option></select></label>
-    <div class="history-actions"><button type="submit">Search</button><button type="button" @onclick="ResetAsync">Reset</button><button type="button" @onclick="DownloadPdfAsync">Download PDF</button></div>
+    <label>
+        From (UTC)
+        <input type="datetime-local" @bind="fromInput" />
+    </label>
+    <label>
+        To (UTC)
+        <input type="datetime-local" @bind="toInput" />
+    </label>
+    <label>
+        Auction/Aggregate ID
+        <input type="text" @bind="aggregateInput" placeholder="Optional GUID" />
+    </label>
+    <label>
+        Event Type
+        <select @bind="eventTypeInput">
+            <option value="">All</option>
+            @foreach (var eventType in ActivityHistoryQueryRules.KnownEventTypes)
+            {
+                <option value="@eventType">@eventType</option>
+            }
+        </select>
+    </label>
+    <label>
+        Page size
+        <select @bind="pageSizeInput">
+            <option value="25">25</option>
+            <option value="50">50</option>
+            <option value="100">100</option>
+        </select>
+    </label>
+    <div class="history-actions">
+        <button type="submit">Search</button>
+        <button type="button" @onclick="ResetAsync">Reset</button>
+        <button type="button" @onclick="DownloadPdfAsync">Download PDF</button>
+    </div>
 </form>
 
 @if (errors.Count > 0)
 {
-    <div class="validation-message" role="alert">@foreach (var error in errors){<p>@error</p>}</div>
+    <div class="validation-message" role="alert">
+        @foreach (var error in errors)
+        {
+            <p>@error</p>
+        }
+    </div>
 }
 
 @if (loading)
@@ -39,7 +73,16 @@ else if (result is null || result.Items.Count == 0)
 else
 {
     <table class="activity-table">
-        <thead><tr><th>Time (UTC)</th><th>Event</th><th>Auction</th><th>Amount</th><th>Version</th><th>Correlation</th></tr></thead>
+        <thead>
+            <tr>
+                <th>Time (UTC)</th>
+                <th>Event</th>
+                <th>Auction</th>
+                <th>Amount</th>
+                <th>Version</th>
+                <th>Correlation</th>
+            </tr>
+        </thead>
         <tbody>
             @foreach (var activity in result.Items)
             {

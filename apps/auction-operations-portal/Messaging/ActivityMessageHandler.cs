@@ -1,3 +1,6 @@
+// <copyright file="ActivityMessageHandler.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
@@ -9,6 +12,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AuctionOperationsPortal.Messaging;
 
+/// <summary>Processes one activity message for persistence and client publication.</summary>
 public sealed class ActivityMessageHandler(
     IActivityPersistence persistence,
     IActivityNotificationPublisher? notificationPublisher = null,
@@ -17,6 +21,7 @@ public sealed class ActivityMessageHandler(
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ILogger<ActivityMessageHandler> logger = logger ?? NullLogger<ActivityMessageHandler>.Instance;
 
+    /// <summary>Validates, persists, publishes, and acknowledges one broker delivery.</summary>
     public async Task HandleAsync(ReadOnlyMemory<byte> body, IDeliveryActions actions, ulong deliveryTag, CancellationToken cancellationToken)
     {
         var started = Stopwatch.GetTimestamp();

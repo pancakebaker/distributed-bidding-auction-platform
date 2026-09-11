@@ -1,3 +1,6 @@
+// <copyright file="AuctionActivityConsumer.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
@@ -13,13 +16,18 @@ using RabbitMQ.Client.Events;
 
 namespace AuctionOperationsPortal.Messaging;
 
+/// <summary>Abstracts broker acknowledgement operations for message handling.</summary>
 public interface IDeliveryActions
 {
+    /// <summary>Acknowledges a successfully handled delivery.</summary>
     Task AckAsync(ulong deliveryTag, CancellationToken cancellationToken);
+    /// <summary>Rejects a delivery and optionally requeues it.</summary>
     Task RejectAsync(ulong deliveryTag, bool requeue, CancellationToken cancellationToken);
+    /// <summary>Requeues a transiently failed delivery.</summary>
     Task RequeueAsync(ulong deliveryTag, CancellationToken cancellationToken);
 }
 
+/// <summary>Consumes auction activity events and coordinates projection processing.</summary>
 public sealed class AuctionActivityConsumer(
     IServiceScopeFactory scopeFactory,
     RabbitMqTopology topology,
@@ -30,6 +38,7 @@ public sealed class AuctionActivityConsumer(
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly ConcurrentDictionary<Guid, int> retryCounts = new();
 
+    /// <summary>Runs the durable auction activity consumer until shutdown.</summary>
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var config = options.Value;

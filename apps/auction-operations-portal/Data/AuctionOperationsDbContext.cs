@@ -1,11 +1,17 @@
+// <copyright file="AuctionOperationsDbContext.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using Microsoft.EntityFrameworkCore;
 
 namespace AuctionOperationsPortal.Data;
 
+/// <summary>Configures persistence for the portal's auction activity projection.</summary>
 public sealed class AuctionOperationsDbContext(DbContextOptions<AuctionOperationsDbContext> options) : DbContext(options)
 {
+    /// <summary>Gets the persisted auction activities.</summary>
     public DbSet<AuctionActivity> AuctionActivities => Set<AuctionActivity>();
 
+    /// <summary>Configures the activity projection schema and indexes.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         var entity = modelBuilder.Entity<AuctionActivity>();

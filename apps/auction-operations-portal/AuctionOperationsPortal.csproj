@@ -4,7 +4,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>AuctionOperationsPortal</RootNamespace>
-    <NoWarn>$(NoWarn);SA1600;SA1633</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

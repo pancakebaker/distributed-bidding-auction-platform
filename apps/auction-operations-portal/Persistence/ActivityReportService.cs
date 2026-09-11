@@ -1,3 +1,6 @@
+// <copyright file="ActivityReportService.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Diagnostics;
 using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Notifications;
@@ -6,16 +9,22 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AuctionOperationsPortal.Persistence;
 
+/// <summary>Builds activity reports and renders them for download.</summary>
 public interface IActivityReportService
 {
+    /// <summary>Queries and validates the activity rows for a report request.</summary>
     Task<ActivityReport> BuildAsync(ActivityReportRequest request, CancellationToken cancellationToken);
+    /// <summary>Renders a previously built report as a PDF document.</summary>
     Task<byte[]> GeneratePdfAsync(ActivityReport report, CancellationToken cancellationToken);
 }
 
+/// <summary>Coordinates report validation, database queries, and PDF generation.</summary>
 public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActivityReportService
 {
+    /// <summary>Maximum number of activity rows allowed in a generated report.</summary>
     public const int MaximumRows = 5_000;
 
+    /// <inheritdoc />
     public async Task<ActivityReport> BuildAsync(ActivityReportRequest request, CancellationToken cancellationToken)
     {
         using var activity = PortalTelemetry.StartActivity("portal.report.query");
@@ -66,6 +75,7 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
         return new ActivityReport(request, DateTimeOffset.UtcNow, new ActivityReportSummary(counts, totalCount), items);
     }
 
+    /// <inheritdoc />
     public Task<byte[]> GeneratePdfAsync(ActivityReport report, CancellationToken cancellationToken)
     {
         var started = Stopwatch.GetTimestamp();

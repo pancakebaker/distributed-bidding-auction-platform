@@ -1,3 +1,6 @@
+// <copyright file="ActivityHistoryQueryService.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Diagnostics;
 using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Notifications;
@@ -6,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AuctionOperationsPortal.Persistence;
 
+/// <summary>Contains one page of persisted activity results.</summary>
 public sealed record ActivityHistoryPage(
     IReadOnlyList<ActivityNotification> Items,
     int Page,
@@ -13,13 +17,17 @@ public sealed record ActivityHistoryPage(
     int TotalCount,
     int TotalPages);
 
+/// <summary>Queries the durable activity projection for history views.</summary>
 public interface IActivityHistoryQueryService
 {
+    /// <summary>Executes a bounded activity-history query.</summary>
     Task<ActivityHistoryPage> SearchAsync(ActivityHistoryQuery query, CancellationToken cancellationToken);
 }
 
+/// <summary>Implements activity-history queries against PostgreSQL.</summary>
 public sealed class ActivityHistoryQueryService(AuctionOperationsDbContext db) : IActivityHistoryQueryService
 {
+    /// <summary>Searches persisted activity using the supplied filters and page.</summary>
     public async Task<ActivityHistoryPage> SearchAsync(ActivityHistoryQuery query, CancellationToken cancellationToken)
     {
         var started = Stopwatch.GetTimestamp();
@@ -76,7 +84,9 @@ public sealed class ActivityHistoryQueryService(AuctionOperationsDbContext db) :
     }
 }
 
+/// <summary>Reports invalid activity-history query parameters.</summary>
 public sealed class ActivityHistoryQueryValidationException(IReadOnlyList<string> errors) : Exception(string.Join(" ", errors))
 {
+    /// <summary>Gets the validation messages returned to the caller.</summary>
     public IReadOnlyList<string> Errors { get; } = errors;
 }

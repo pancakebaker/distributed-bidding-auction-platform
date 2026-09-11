@@ -1,7 +1,11 @@
+// <copyright file="ActivityHistoryQuery.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
 using System.Globalization;
 
 namespace AuctionOperationsPortal.Persistence;
 
+/// <summary>Describes the bounded filters and page requested for activity history.</summary>
 public sealed record ActivityHistoryQuery(
     DateTimeOffset? FromUtc,
     DateTimeOffset? ToUtc,
@@ -10,6 +14,7 @@ public sealed record ActivityHistoryQuery(
     int Page = 1,
     int PageSize = ActivityHistoryQueryRules.DefaultPageSize)
 {
+    /// <summary>Validates date range, event type, and pagination constraints.</summary>
     public IReadOnlyList<string> Validate()
     {
         var errors = new List<string>();
@@ -38,27 +43,37 @@ public sealed record ActivityHistoryQuery(
     }
 }
 
+/// <summary>Defines the supported activity-history bounds and event types.</summary>
 public static class ActivityHistoryQueryRules
 {
+    /// <summary>Gets the default history page size.</summary>
     public const int DefaultPageSize = 25;
+    /// <summary>Gets the maximum history page size.</summary>
     public const int MaximumPageSize = 100;
+    /// <summary>Gets the maximum query range.</summary>
     public static readonly TimeSpan MaximumRange = TimeSpan.FromDays(31);
+    /// <summary>Gets the event types accepted by history filters.</summary>
     public static readonly IReadOnlySet<string> KnownEventTypes = new HashSet<string>(StringComparer.Ordinal)
     {
         "BidAccepted",
         "AuctionClosed",
         "WinnerSelected"
     };
+    /// <summary>Gets the page sizes accepted by history filters.</summary>
     public static readonly IReadOnlySet<int> AllowedPageSizes = new HashSet<int> { 25, 50, MaximumPageSize };
 }
 
+/// <summary>Contains a parsed history query and any validation errors.</summary>
 public sealed record ActivityHistoryQueryParseResult(ActivityHistoryQuery? Query, IReadOnlyList<string> Errors)
 {
+    /// <summary>Gets whether parsing produced a valid query without errors.</summary>
     public bool IsValid => Query is not null && Errors.Count == 0;
 }
 
+/// <summary>Parses HTTP history-filter values into a validated query model.</summary>
 public static class ActivityHistoryQueryParser
 {
+    /// <summary>Parses optional query-string values and returns normalized errors.</summary>
     public static ActivityHistoryQueryParseResult Parse(
         string? from,
         string? to,
