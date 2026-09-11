@@ -2,6 +2,7 @@
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
 using AuctionOperationsPortal.Options;
+using DistributedBidding.IntegrationContracts;
 using Microsoft.Extensions.Options;
 using RabbitMQ.Client;
 
@@ -12,9 +13,9 @@ public sealed class RabbitMqTopology(IOptions<RabbitMqOptions> options)
 {
     private static readonly string[] RoutingKeys =
     [
-        "auction.bid.accepted",
-        "auction.closed",
-        "auction.winner.selected"
+        IntegrationEventRoutingKeys.BidAccepted,
+        IntegrationEventRoutingKeys.AuctionClosed,
+        IntegrationEventRoutingKeys.WinnerSelected
     ];
 
     /// <summary>Declares exchanges, queues, and event bindings.</summary>

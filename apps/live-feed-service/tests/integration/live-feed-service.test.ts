@@ -17,6 +17,7 @@ import type {
   WinnerSelectedSocketPayload,
 } from '../../src/domain/events.js';
 import type { LiveFeedConfig } from '../../src/config/config.js';
+import { integrationEventRoutingKeys } from '../../src/domain/transport.js';
 
 const rabbitMqUrl =
   process.env.RABBITMQ_URL ?? 'amqp://auction:change_me_in_local_env@localhost:5672';
@@ -24,9 +25,9 @@ const redisUrl = process.env.LIVE_FEED_TEST_REDIS_URL ?? 'redis://localhost:6379
 const exchange = process.env.RABBITMQ_EXCHANGE ?? 'auction.events';
 
 const routingKeys = {
-  BidAccepted: 'auction.bid.accepted',
-  AuctionClosed: 'auction.closed',
-  WinnerSelected: 'auction.winner.selected',
+  BidAccepted: integrationEventRoutingKeys.bidAccepted,
+  AuctionClosed: integrationEventRoutingKeys.auctionClosed,
+  WinnerSelected: integrationEventRoutingKeys.winnerSelected,
 } as const;
 
 type TestContext = {

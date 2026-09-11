@@ -17,10 +17,6 @@ public sealed class RabbitMqEventPublisher(
     IOptions<RabbitMqOptions> options,
     ILogger<RabbitMqEventPublisher> logger)
 {
-    private const string BidAcceptedRoutingKey = "auction.bid.accepted";
-    private const string AuctionClosedRoutingKey = "auction.closed";
-    private const string WinnerSelectedRoutingKey = "auction.winner.selected";
-
     /// <summary>
     /// Gets the RabbitMQ exchange used for auction events.
     /// </summary>
@@ -30,9 +26,9 @@ public sealed class RabbitMqEventPublisher(
     /// </summary>
     public string RoutingKeyFor(OutboxMessage message) => message.EventType switch
     {
-        IntegrationEventTypes.BidAccepted => BidAcceptedRoutingKey,
-        IntegrationEventTypes.AuctionClosed => AuctionClosedRoutingKey,
-        IntegrationEventTypes.WinnerSelected => WinnerSelectedRoutingKey,
+        IntegrationEventTypes.BidAccepted => IntegrationEventRoutingKeys.BidAccepted,
+        IntegrationEventTypes.AuctionClosed => IntegrationEventRoutingKeys.AuctionClosed,
+        IntegrationEventTypes.WinnerSelected => IntegrationEventRoutingKeys.WinnerSelected,
         _ => $"auction.{message.EventType.ToLowerInvariant()}"
     };
 

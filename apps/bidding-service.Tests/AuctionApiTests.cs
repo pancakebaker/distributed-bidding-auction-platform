@@ -1,11 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using DistributedBidding.IntegrationContracts;
 using bidding_service.Contracts;
 using bidding_service.Data;
 using bidding_service.Domain;
 using bidding_service.Services;
+using DistributedBidding.IntegrationContracts;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;

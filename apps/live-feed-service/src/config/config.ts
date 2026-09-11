@@ -3,6 +3,7 @@
  */
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { integrationEventRoutingKeys } from '../domain/transport.js';
 
 /**
  * Runtime settings for HTTP, Redis, RabbitMQ, PostgreSQL history, and live-feed
@@ -50,7 +51,7 @@ function routingKeysFromEnv(): string[] {
   const raw =
     process.env.LIVE_FEED_RABBITMQ_ROUTING_KEYS ?? process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY;
   if (!raw) {
-    return ['auction.bid.accepted', 'auction.closed', 'auction.winner.selected'];
+    return Object.values(integrationEventRoutingKeys);
   }
 
   return raw
@@ -93,7 +94,8 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     rabbitMqUrl: rabbitMqUrlFromEnv(),
     rabbitMqExchange: process.env.RABBITMQ_EXCHANGE ?? 'auction.events',
     rabbitMqQueue: process.env.LIVE_FEED_RABBITMQ_QUEUE ?? 'live-feed.bid-events',
-    rabbitMqRoutingKey: process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY ?? 'auction.bid.accepted',
+    rabbitMqRoutingKey:
+      process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY ?? integrationEventRoutingKeys.bidAccepted,
     rabbitMqRoutingKeys: routingKeysFromEnv(),
     rabbitMqPrefetch: numberFromEnv('LIVE_FEED_RABBITMQ_PREFETCH', 10),
     rabbitMqDeadLetterExchange: process.env.LIVE_FEED_RABBITMQ_DLX ?? 'live-feed.dead-letter',
