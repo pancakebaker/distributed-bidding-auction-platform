@@ -4,7 +4,13 @@
 <h2>Operations</h2>
 <AuthorizeView>
     <Authorized Context="authState">
-        <p>Signed in as: <strong>@(authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name)</strong></p>
+        <p>
+            Signed in as:
+            <strong>
+                @(authState.User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value
+                    ?? authState.User.Identity?.Name)
+            </strong>
+        </p>
         <p>The portal foundation is ready to receive and persist auction activity events.</p>
         <form method="post" action="/auth/logout"><button type="submit">Sign out</button></form>
     </Authorized>

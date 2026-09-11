@@ -27,7 +27,9 @@ internal static class ActivityReportPdfRenderer
             {
                 column.Spacing(6);
                 column.Item().Text($"Generated: {report.GeneratedAtUtc:yyyy-MM-dd HH:mm:ss} UTC");
-                column.Item().Text($"Reporting period: {report.Request.FromUtc!.Value:yyyy-MM-dd HH:mm:ss} UTC to {report.Request.ToUtc!.Value:yyyy-MM-dd HH:mm:ss} UTC");
+                column.Item().Text(
+                    $"Reporting period: {report.Request.FromUtc!.Value:yyyy-MM-dd HH:mm:ss} UTC "
+                    + $"to {report.Request.ToUtc!.Value:yyyy-MM-dd HH:mm:ss} UTC");
                 column.Item().Text($"Auction: {report.Request.AggregateId?.ToString() ?? "All"}");
                 column.Item().Text($"Event type: {report.Request.EventType ?? "All"}");
                 column.Item().PaddingTop(8).Text("Summary").Bold();
@@ -61,7 +63,11 @@ internal static class ActivityReportPdfRenderer
                         table.Cell().Text($"{item.OccurredAtUtc:yyyy-MM-dd HH:mm:ss}");
                         table.Cell().Text(item.EventType);
                         table.Cell().Text(item.AggregateId.ToString());
-                        table.Cell().Text(item.Amount?.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture) ?? "—");
+                        table.Cell().Text(
+                            item.Amount?.ToString(
+                                "0.00",
+                                System.Globalization.CultureInfo.InvariantCulture)
+                            ?? "—");
                         table.Cell().Text($"v{item.AggregateVersion}");
                         table.Cell().Text(item.CorrelationId ?? "—");
                     }

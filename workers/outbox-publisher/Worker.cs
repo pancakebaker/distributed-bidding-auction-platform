@@ -21,7 +21,11 @@ public sealed class Worker(
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var pollInterval = TimeSpan.FromSeconds(Math.Max(1, options.Value.PollIntervalSeconds));
-        logger.LogInformation("Outbox publisher started. PollIntervalSeconds: {PollIntervalSeconds}, BatchSize: {BatchSize}", pollInterval.TotalSeconds, options.Value.BatchSize);
+        logger.LogInformation(
+            "Outbox publisher started. PollIntervalSeconds: {PollIntervalSeconds}, "
+            + "BatchSize: {BatchSize}",
+            pollInterval.TotalSeconds,
+            options.Value.BatchSize);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -39,7 +43,9 @@ public sealed class Worker(
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Outbox publisher loop failed. It will retry after the poll interval.");
+                logger.LogWarning(
+                    ex,
+                    "Outbox publisher loop failed. It will retry after the poll interval.");
                 await Task.Delay(pollInterval, stoppingToken);
             }
         }

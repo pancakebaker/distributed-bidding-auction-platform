@@ -8,7 +8,10 @@
 <PageTitle>Activity History | Auction Operations Portal</PageTitle>
 
 <h2>Activity History</h2>
-<p class="muted">Search the durable operational activity projection. All filters and displayed timestamps use UTC.</p>
+<p class="muted">
+    Search the durable operational activity projection. All filters and displayed timestamps use
+    UTC.
+</p>
 
 <form class="history-filters" @onsubmit="SearchAsync" @onsubmit:preventDefault>
     <label>
@@ -103,8 +106,14 @@ else
 {
     <div class="pagination" aria-label="History pagination">
         <span>Page @result.Page of @result.TotalPages (@result.TotalCount total)</span>
-        <button type="button" @onclick="() => GoToPageAsync(result.Page - 1)" disabled="@(result.Page <= 1)">Previous</button>
-        <button type="button" @onclick="() => GoToPageAsync(result.Page + 1)" disabled="@(result.Page >= result.TotalPages)">Next</button>
+        <button
+            type="button"
+            @onclick="() => GoToPageAsync(result.Page - 1)"
+            disabled="@(result.Page <= 1)">Previous</button>
+        <button
+            type="button"
+            @onclick="() => GoToPageAsync(result.Page + 1)"
+            disabled="@(result.Page >= result.TotalPages)">Next</button>
     </div>
 }
 
@@ -141,7 +150,14 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        var queryKey = string.Join('|', FromQuery, ToQuery, AggregateQuery, EventTypeQuery, PageQuery, PageSizeQuery);
+        var queryKey = string.Join(
+            '|',
+            FromQuery,
+            ToQuery,
+            AggregateQuery,
+            EventTypeQuery,
+            PageQuery,
+            PageSizeQuery);
         if (queryKey == lastQueryKey)
             return;
 
@@ -154,11 +170,18 @@ else
             aggregateInput = string.Empty;
             eventTypeInput = string.Empty;
             pageSizeInput = ActivityHistoryQueryRules.DefaultPageSize;
-            await ExecuteSearchAsync(new ActivityHistoryQuery(ToUtc(fromInput), ToUtc(toInput), null, null));
+            await ExecuteSearchAsync(
+                new ActivityHistoryQuery(ToUtc(fromInput), ToUtc(toInput), null, null));
             return;
         }
 
-        var parsed = ActivityHistoryQueryParser.Parse(FromQuery, ToQuery, AggregateQuery, EventTypeQuery, PageQuery, PageSizeQuery);
+        var parsed = ActivityHistoryQueryParser.Parse(
+            FromQuery,
+            ToQuery,
+            AggregateQuery,
+            EventTypeQuery,
+            PageQuery,
+            PageSizeQuery);
         SetInputs(parsed.Query);
         if (!parsed.IsValid)
         {
@@ -223,7 +246,8 @@ else
             ["aggregateId"] = query.AggregateId,
             ["eventType"] = query.EventType
         };
-        Navigation.NavigateTo(Navigation.GetUriWithQueryParameters("/activity/report.pdf", parameters));
+        Navigation.NavigateTo(
+            Navigation.GetUriWithQueryParameters("/activity/report.pdf", parameters));
         await Task.CompletedTask;
     }
 
@@ -232,7 +256,13 @@ else
         if (result is null || page < 1 || page > result.TotalPages)
             return;
 
-        var query = new ActivityHistoryQuery(ToUtc(fromInput), ToUtc(toInput), ParseAggregateForUrl(), string.IsNullOrWhiteSpace(eventTypeInput) ? null : eventTypeInput, page, pageSizeInput);
+        var query = new ActivityHistoryQuery(
+            ToUtc(fromInput),
+            ToUtc(toInput),
+            ParseAggregateForUrl(),
+            string.IsNullOrWhiteSpace(eventTypeInput) ? null : eventTypeInput,
+            page,
+            pageSizeInput);
         NavigateToQuery(query);
         await Task.CompletedTask;
     }
@@ -255,7 +285,14 @@ else
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Historical activity query failed for page {Page}, page size {PageSize}, event type {EventType}, aggregate {AggregateId}.", query.Page, query.PageSize, query.EventType, query.AggregateId);
+            Logger.LogError(
+                exception,
+                "Historical activity query failed for page {Page}, page size {PageSize}, "
+                + "event type {EventType}, aggregate {AggregateId}.",
+                query.Page,
+                query.PageSize,
+                query.EventType,
+                query.AggregateId);
             queryError = exception;
             result = null;
         }
@@ -277,7 +314,8 @@ else
             pageSizeInput = query.PageSize;
     }
 
-    private Guid? ParseAggregateForUrl() => Guid.TryParse(aggregateInput, out var aggregateId) ? aggregateId : null;
+    private Guid? ParseAggregateForUrl() =>
+        Guid.TryParse(aggregateInput, out var aggregateId) ? aggregateId : null;
 
     private void NavigateToQuery(ActivityHistoryQuery query)
     {
@@ -293,7 +331,8 @@ else
         Navigation.NavigateTo(Navigation.GetUriWithQueryParameters(parameters));
     }
 
-    private static DateTimeOffset ToUtc(DateTime value) => new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
+    private static DateTimeOffset ToUtc(DateTime value) =>
+        new(DateTime.SpecifyKind(value, DateTimeKind.Utc));
 
     public ValueTask DisposeAsync()
     {

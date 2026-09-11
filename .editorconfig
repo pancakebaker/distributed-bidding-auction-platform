@@ -9,6 +9,9 @@ trim_trailing_whitespace = true
 [*.cs]
 indent_style = space
 indent_size = 4
+# Standard target for manually authored C# source. The active Roslyn and
+# StyleCop rules do not emit a hard diagnostic for physical line length.
+max_line_length = 100
 
 # Built-in .NET analyzer policy: keep correctness/reliability diagnostics visible without turning every design suggestion into a release blocker.
 dotnet_analyzer_diagnostic.category-Security.severity = warning
@@ -86,3 +89,10 @@ dotnet_diagnostic.SA1604.severity = none
 dotnet_diagnostic.SA1611.severity = none
 dotnet_diagnostic.SA1615.severity = none
 dotnet_diagnostic.SA1633.severity = none
+
+[*.razor]
+indent_style = space
+indent_size = 4
+# Applies the repository's source-length target to authored Razor markup and
+# embedded C# without changing generated Razor output.
+max_line_length = 100

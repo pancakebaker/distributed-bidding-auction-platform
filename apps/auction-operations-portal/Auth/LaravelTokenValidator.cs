@@ -11,8 +11,14 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace AuctionOperationsPortal.Auth;
 
-/// <summary>Describes the validated Laravel administrator identity used by the portal.</summary>
-public sealed record PortalTokenIdentity(string Subject, string? Email, string Role, DateTimeOffset ExpiresAt);
+/// <summary>
+/// Describes the validated Laravel administrator identity used by the portal.
+/// </summary>
+public sealed record PortalTokenIdentity(
+    string Subject,
+    string? Email,
+    string Role,
+    DateTimeOffset ExpiresAt);
 
 /// <summary>Validates Laravel-issued administrator handoff tokens.</summary>
 public sealed class LaravelTokenValidator
@@ -23,7 +29,10 @@ public sealed class LaravelTokenValidator
     private readonly TokenValidationParameters validationParameters;
     private readonly JwtSecurityTokenHandler tokenHandler = new();
 
-    /// <summary>Initializes a new instance of the <see cref="LaravelTokenValidator"/> class using portal authentication settings and replay protection.</summary>
+    /// <summary>
+    /// Initializes a new instance of the <see cref="LaravelTokenValidator"/> class using portal
+    /// authentication settings and replay protection.
+    /// </summary>
     public LaravelTokenValidator(
         IOptions<LaravelAuthOptions> options,
         PortalReplayProtection replayProtection,
@@ -37,7 +46,10 @@ public sealed class LaravelTokenValidator
             ? this.options.PublicKeyPath
             : Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, this.options.PublicKeyPath));
         if (!File.Exists(keyPath))
-            throw new InvalidOperationException($"Laravel public key was not found at '{keyPath}'.");
+        {
+            throw new InvalidOperationException(
+                $"Laravel public key was not found at '{keyPath}'.");
+        }
 
         using var rsa = RSA.Create();
         rsa.ImportFromPem(File.ReadAllText(keyPath));
@@ -76,14 +88,21 @@ public sealed class LaravelTokenValidator
             throw new PortalTokenValidationException("invalid-token", exception);
         }
 
-        if (validatedToken is not JwtSecurityToken jwt || !string.Equals(jwt.Header.Alg, SecurityAlgorithms.RsaSha256, StringComparison.Ordinal))
+        if (validatedToken is not JwtSecurityToken jwt
+            || !string.Equals(
+                jwt.Header.Alg,
+                SecurityAlgorithms.RsaSha256,
+                StringComparison.Ordinal))
             throw new PortalTokenValidationException("invalid-algorithm");
 
-        var subject = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
+        var subject = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value
+            ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
         var jti = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Jti)?.Value;
-        var role = jwt.Claims.FirstOrDefault(c => c.Type == "role")?.Value ?? principal.FindFirstValue(ClaimTypes.Role);
+        var role = jwt.Claims.FirstOrDefault(c => c.Type == "role")?.Value
+            ?? principal.FindFirstValue(ClaimTypes.Role);
         var permissionValues = principal.Claims
-            .Where(c => c.Type == "permissions" || c.Type.EndsWith("/permissions", StringComparison.Ordinal))
+            .Where(c => c.Type == "permissions"
+                || c.Type.EndsWith("/permissions", StringComparison.Ordinal))
             .SelectMany(c => ReadPermissionValues(c.Value))
             .ToArray();
 
@@ -91,14 +110,22 @@ public sealed class LaravelTokenValidator
             throw new PortalTokenValidationException("missing-subject");
         if (string.IsNullOrWhiteSpace(jti))
             throw new PortalTokenValidationException("missing-jti");
-        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase) || !permissionValues.Contains(options.Permission, StringComparer.Ordinal))
+        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase)
+            || !permissionValues.Contains(options.Permission, StringComparer.Ordinal))
             throw new PortalTokenValidationException("missing-permission");
 
         var expiresAt = new DateTimeOffset(jwt.ValidTo, TimeSpan.Zero);
         if (!replayProtection.TryConsume(jti, expiresAt, timeProvider.GetUtcNow()))
             throw new PortalTokenValidationException("replayed-jti");
 
-        return new PortalTokenIdentity(subject, jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Email)?.Value ?? principal.FindFirstValue(ClaimTypes.Email), role!, expiresAt);
+        var email = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Email)?.Value
+            ?? principal.FindFirstValue(ClaimTypes.Email);
+
+        return new PortalTokenIdentity(
+            subject,
+            email,
+            role!,
+            expiresAt);
     }
 
     private static string[] ReadPermissionValues(string value)
@@ -118,7 +145,9 @@ public sealed class LaravelTokenValidator
 }
 
 /// <summary>Reports why a portal token could not be accepted.</summary>
-public sealed class PortalTokenValidationException(string category, Exception? inner = null) : Exception(category, inner)
+public sealed class PortalTokenValidationException(
+    string category,
+    Exception? inner = null) : Exception(category, inner)
 {
     /// <summary>Gets the stable validation failure category.</summary>
     public string Category { get; } = category;

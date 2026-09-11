@@ -19,22 +19,45 @@ public sealed class ActivityMessageHandler(
     ILogger<ActivityMessageHandler>? logger = null)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
-    private readonly ILogger<ActivityMessageHandler> logger = logger ?? NullLogger<ActivityMessageHandler>.Instance;
+    private readonly ILogger<ActivityMessageHandler> logger =
+        logger ?? NullLogger<ActivityMessageHandler>.Instance;
 
     /// <summary>Validates, persists, publishes, and acknowledges one broker delivery.</summary>
-    public async Task HandleAsync(ReadOnlyMemory<byte> body, IDeliveryActions actions, ulong deliveryTag, CancellationToken cancellationToken)
+    public async Task HandleAsync(
+        ReadOnlyMemory<byte> body,
+        IDeliveryActions actions,
+        ulong deliveryTag,
+        CancellationToken cancellationToken)
     {
         var started = Stopwatch.GetTimestamp();
-        using var activity = PortalTelemetry.StartActivity("portal.rabbitmq.process", ActivityKind.Consumer);
+        using var activity = PortalTelemetry.StartActivity(
+            "portal.rabbitmq.process",
+            ActivityKind.Consumer);
         try
         {
-            var envelope = JsonSerializer.Deserialize<IntegrationEventEnvelope>(Encoding.UTF8.GetString(body.Span), JsonOptions) ?? throw new FormatException("Message body is empty.");
-            PortalTelemetry.AddEventTags(activity, envelope.EventId, envelope.EventType, envelope.AggregateId, envelope.AggregateVersion, envelope.CorrelationId);
+            var envelope = JsonSerializer.Deserialize<IntegrationEventEnvelope>(
+                Encoding.UTF8.GetString(body.Span), JsonOptions)
+                ?? throw new FormatException("Message body is empty.");
+            PortalTelemetry.AddEventTags(
+                activity,
+                envelope.EventId,
+                envelope.EventType,
+                envelope.AggregateId,
+                envelope.AggregateVersion,
+                envelope.CorrelationId);
             var result = await persistence.PersistAsync(envelope, cancellationToken);
             if (result.Inserted)
-                PortalTelemetry.EventsProcessed.Add(1, new KeyValuePair<string, object?>("event_type", envelope.EventType));
+            {
+                PortalTelemetry.EventsProcessed.Add(
+                    1,
+                    new KeyValuePair<string, object?>("event_type", envelope.EventType));
+            }
             else
-                PortalTelemetry.EventsDuplicate.Add(1, new KeyValuePair<string, object?>("event_type", envelope.EventType));
+            {
+                PortalTelemetry.EventsDuplicate.Add(
+                    1,
+                    new KeyValuePair<string, object?>("event_type", envelope.EventType));
+            }
             if (result.Inserted && result.Activity is not null && notificationPublisher is not null)
             {
                 try
@@ -43,19 +66,29 @@ public sealed class ActivityMessageHandler(
                 }
                 catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
                 {
-                    logger.LogError(exception, "SignalR publication failed after activity {EventId} was persisted; acknowledging for client reconciliation.", envelope.EventId);
+                    const string publicationFailureMessage =
+                        "SignalR publication failed after activity {EventId} was persisted; "
+                        + "acknowledging for client reconciliation.";
+                    logger.LogError(
+                        exception,
+                        publicationFailureMessage,
+                        envelope.EventId);
                 }
             }
             await actions.AckAsync(deliveryTag, cancellationToken);
         }
         catch (JsonException)
         {
-            PortalTelemetry.EventsRejected.Add(1, new KeyValuePair<string, object?>("reason", "invalid_json"));
+            PortalTelemetry.EventsRejected.Add(
+                1,
+                new KeyValuePair<string, object?>("reason", "invalid_json"));
             await actions.RejectAsync(deliveryTag, requeue: false, cancellationToken);
         }
         catch (FormatException)
         {
-            PortalTelemetry.EventsRejected.Add(1, new KeyValuePair<string, object?>("reason", "invalid_event"));
+            PortalTelemetry.EventsRejected.Add(
+                1,
+                new KeyValuePair<string, object?>("reason", "invalid_event"));
             await actions.RejectAsync(deliveryTag, requeue: false, cancellationToken);
         }
         catch (Exception) when (!cancellationToken.IsCancellationRequested)
@@ -65,7 +98,8 @@ public sealed class ActivityMessageHandler(
         }
         finally
         {
-            PortalTelemetry.EventProcessingDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            PortalTelemetry.EventProcessingDuration.Record(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }
 }

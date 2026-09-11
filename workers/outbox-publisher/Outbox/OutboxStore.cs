@@ -9,12 +9,18 @@ namespace outbox_publisher.Outbox;
 /// <summary>
 /// Reads and updates outbox rows using PostgreSQL locking semantics.
 /// </summary>
-public sealed class OutboxStore(NpgsqlDataSource dataSource, TimeProvider timeProvider, ILogger<OutboxStore> logger)
+public sealed class OutboxStore(
+    NpgsqlDataSource dataSource,
+    TimeProvider timeProvider,
+    ILogger<OutboxStore> logger)
 {
     /// <summary>
     /// Claims unpublished outbox rows using PostgreSQL row locks.
     /// </summary>
-    public async Task<ClaimedOutboxBatch> ClaimBatchAsync(int batchSize, int maxPublishAttempts, CancellationToken cancellationToken)
+    public async Task<ClaimedOutboxBatch> ClaimBatchAsync(
+        int batchSize,
+        int maxPublishAttempts,
+        CancellationToken cancellationToken)
     {
         var connection = await dataSource.OpenConnectionAsync(cancellationToken);
         var transaction = await connection.BeginTransactionAsync(cancellationToken);
@@ -69,7 +75,10 @@ public sealed class OutboxStore(NpgsqlDataSource dataSource, TimeProvider timePr
     /// <summary>
     /// Marks an outbox message as published after broker confirmation.
     /// </summary>
-    public async Task MarkPublishedAsync(ClaimedOutboxBatch batch, OutboxMessage message, CancellationToken cancellationToken)
+    public async Task MarkPublishedAsync(
+        ClaimedOutboxBatch batch,
+        OutboxMessage message,
+        CancellationToken cancellationToken)
     {
         await using var command = new NpgsqlCommand(
             """
@@ -88,9 +97,15 @@ public sealed class OutboxStore(NpgsqlDataSource dataSource, TimeProvider timePr
     /// <summary>
     /// Records a failed publish attempt while leaving the outbox row unpublished.
     /// </summary>
-    public async Task MarkPublishFailedAsync(ClaimedOutboxBatch batch, OutboxMessage message, Exception exception, CancellationToken cancellationToken)
+    public async Task MarkPublishFailedAsync(
+        ClaimedOutboxBatch batch,
+        OutboxMessage message,
+        Exception exception,
+        CancellationToken cancellationToken)
     {
-        var conciseError = exception.Message.Length > 500 ? exception.Message[..500] : exception.Message;
+        var conciseError = exception.Message.Length > 500
+            ? exception.Message[..500]
+            : exception.Message;
         await using var command = new NpgsqlCommand(
             """
             UPDATE outbox_messages
@@ -109,7 +124,10 @@ public sealed class OutboxStore(NpgsqlDataSource dataSource, TimeProvider timePr
 /// <summary>
 /// Represents a claimed batch of unpublished outbox messages.
 /// </summary>
-public sealed class ClaimedOutboxBatch(NpgsqlConnection connection, NpgsqlTransaction transaction, IReadOnlyList<OutboxMessage> messages) : IAsyncDisposable
+public sealed class ClaimedOutboxBatch(
+    NpgsqlConnection connection,
+    NpgsqlTransaction transaction,
+    IReadOnlyList<OutboxMessage> messages) : IAsyncDisposable
 {
     /// <summary>
     /// Gets or sets the connection.
@@ -127,7 +145,8 @@ public sealed class ClaimedOutboxBatch(NpgsqlConnection connection, NpgsqlTransa
     /// <summary>
     /// Runs the commit async operation.
     /// </summary>
-    public Task CommitAsync(CancellationToken cancellationToken) => Transaction.CommitAsync(cancellationToken);
+    public Task CommitAsync(CancellationToken cancellationToken) =>
+        Transaction.CommitAsync(cancellationToken);
 
     /// <summary>
     /// Runs the dispose async operation.

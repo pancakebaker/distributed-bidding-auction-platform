@@ -21,14 +21,19 @@ public sealed record ActivityHistoryPage(
 public interface IActivityHistoryQueryService
 {
     /// <summary>Executes a bounded activity-history query.</summary>
-    Task<ActivityHistoryPage> SearchAsync(ActivityHistoryQuery query, CancellationToken cancellationToken);
+    Task<ActivityHistoryPage> SearchAsync(
+        ActivityHistoryQuery query,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>Implements activity-history queries against PostgreSQL.</summary>
-public sealed class ActivityHistoryQueryService(AuctionOperationsDbContext db) : IActivityHistoryQueryService
+public sealed class ActivityHistoryQueryService(AuctionOperationsDbContext db)
+    : IActivityHistoryQueryService
 {
     /// <summary>Searches persisted activity using the supplied filters and page.</summary>
-    public async Task<ActivityHistoryPage> SearchAsync(ActivityHistoryQuery query, CancellationToken cancellationToken)
+    public async Task<ActivityHistoryPage> SearchAsync(
+        ActivityHistoryQuery query,
+        CancellationToken cancellationToken)
     {
         var started = Stopwatch.GetTimestamp();
         using var activity = PortalTelemetry.StartActivity("portal.history.query");
@@ -47,14 +52,21 @@ public sealed class ActivityHistoryQueryService(AuctionOperationsDbContext db) :
             var skip = (long)(query.Page - 1) * query.PageSize;
             var activities = db.AuctionActivities
                 .AsNoTracking()
-                .Where(activity => activity.OccurredAtUtc >= fromUtc && activity.OccurredAtUtc <= toUtc);
+                .Where(activity =>
+                    activity.OccurredAtUtc >= fromUtc
+                    && activity.OccurredAtUtc <= toUtc);
             if (query.AggregateId is not null)
-                activities = activities.Where(activity => activity.AggregateId == query.AggregateId.Value);
+            {
+                activities = activities.Where(
+                    activity => activity.AggregateId == query.AggregateId.Value);
+            }
             if (query.EventType is not null)
                 activities = activities.Where(activity => activity.EventType == query.EventType);
 
             var totalCount = await activities.CountAsync(cancellationToken);
-            var totalPages = totalCount == 0 ? 0 : (totalCount + query.PageSize - 1) / query.PageSize;
+            var totalPages = totalCount == 0
+                ? 0
+                : (totalCount + query.PageSize - 1) / query.PageSize;
             var items = await activities
                 .OrderByDescending(activity => activity.OccurredAtUtc)
                 .ThenByDescending(activity => activity.Id)
@@ -75,17 +87,24 @@ public sealed class ActivityHistoryQueryService(AuctionOperationsDbContext db) :
                 .ToListAsync(cancellationToken);
 
             activity?.SetTag("history.result_count", items.Count);
-            return new ActivityHistoryPage(items, query.Page, query.PageSize, totalCount, totalPages);
+            return new ActivityHistoryPage(
+                items,
+                query.Page,
+                query.PageSize,
+                totalCount,
+                totalPages);
         }
         finally
         {
-            PortalTelemetry.HistoryQueryDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            PortalTelemetry.HistoryQueryDuration.Record(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }
 }
 
 /// <summary>Reports invalid activity-history query parameters.</summary>
-public sealed class ActivityHistoryQueryValidationException(IReadOnlyList<string> errors) : Exception(string.Join(" ", errors))
+public sealed class ActivityHistoryQueryValidationException(IReadOnlyList<string> errors)
+    : Exception(string.Join(" ", errors))
 {
     /// <summary>Gets the validation messages returned to the caller.</summary>
     public IReadOnlyList<string> Errors { get; } = errors;

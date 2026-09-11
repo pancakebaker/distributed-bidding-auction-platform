@@ -14,20 +14,34 @@ namespace AuctionOperationsPortal.Persistence;
 public interface IActivityPersistence
 {
     /// <summary>Persists an event and reports whether it was inserted or already present.</summary>
-    Task<ActivityPersistenceResult> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken);
+    Task<ActivityPersistenceResult> PersistAsync(
+        IntegrationEventEnvelope envelope,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>Describes the result of attempting to persist an activity event.</summary>
 public sealed record ActivityPersistenceResult(bool Inserted, AuctionActivity? Activity);
 
-/// <summary>Stores integration events while treating duplicate event identifiers as idempotent.</summary>
-public sealed class ActivityPersistence(AuctionOperationsDbContext db, TimeProvider timeProvider) : IActivityPersistence
+/// <summary>
+/// Stores integration events while treating duplicate event identifiers as idempotent.
+/// </summary>
+public sealed class ActivityPersistence(
+    AuctionOperationsDbContext db,
+    TimeProvider timeProvider) : IActivityPersistence
 {
     /// <summary>Persists an integration event in a transaction.</summary>
-    public async Task<ActivityPersistenceResult> PersistAsync(IntegrationEventEnvelope envelope, CancellationToken cancellationToken)
+    public async Task<ActivityPersistenceResult> PersistAsync(
+        IntegrationEventEnvelope envelope,
+        CancellationToken cancellationToken)
     {
         using var activitySpan = PortalTelemetry.StartActivity("portal.activity.persist");
-        PortalTelemetry.AddEventTags(activitySpan, envelope.EventId, envelope.EventType, envelope.AggregateId, envelope.AggregateVersion, envelope.CorrelationId);
+        PortalTelemetry.AddEventTags(
+            activitySpan,
+            envelope.EventId,
+            envelope.EventType,
+            envelope.AggregateId,
+            envelope.AggregateVersion,
+            envelope.CorrelationId);
         var activity = IntegrationEventMapper.ToActivity(envelope, timeProvider.GetUtcNow());
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
         db.AuctionActivities.Add(activity);
@@ -38,7 +52,10 @@ public sealed class ActivityPersistence(AuctionOperationsDbContext db, TimeProvi
             activitySpan?.SetTag("persistence.outcome", "inserted");
             return new ActivityPersistenceResult(true, activity);
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } postgres && postgres.ConstraintName == "ux_auction_activity_event_id")
+        catch (DbUpdateException exception)
+            when (exception.InnerException is PostgresException
+            { SqlState: PostgresErrorCodes.UniqueViolation } postgres
+            && postgres.ConstraintName == "ux_auction_activity_event_id")
         {
             await transaction.RollbackAsync(cancellationToken);
             db.Entry(activity).State = EntityState.Detached;
@@ -54,9 +71,15 @@ public sealed class IntegrationEventMapper
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>Converts a supported event envelope into an activity record.</summary>
-    public static AuctionActivity ToActivity(IntegrationEventEnvelope envelope, DateTimeOffset processedAtUtc)
+    public static AuctionActivity ToActivity(
+        IntegrationEventEnvelope envelope,
+        DateTimeOffset processedAtUtc)
     {
-        if (envelope.EventId == Guid.Empty || string.IsNullOrWhiteSpace(envelope.EventType) || string.IsNullOrWhiteSpace(envelope.AggregateType) || envelope.AggregateId == Guid.Empty || envelope.AggregateVersion < 1)
+        if (envelope.EventId == Guid.Empty
+            || string.IsNullOrWhiteSpace(envelope.EventType)
+            || string.IsNullOrWhiteSpace(envelope.AggregateType)
+            || envelope.AggregateId == Guid.Empty
+            || envelope.AggregateVersion < 1)
             throw new FormatException("The event envelope is invalid.");
 
         var activity = new AuctionActivity
@@ -101,11 +124,18 @@ public sealed class IntegrationEventMapper
         return activity;
     }
 
-    private static T Deserialize<T>(JsonElement payload) => JsonSerializer.Deserialize<T>(payload.GetRawText(), JsonOptions) ?? throw new FormatException("Event payload is missing.");
+    private static T Deserialize<T>(JsonElement payload) =>
+        JsonSerializer.Deserialize<T>(payload.GetRawText(), JsonOptions)
+        ?? throw new FormatException("Event payload is missing.");
 
-    private static void ValidateAuction(Guid auctionId, long auctionVersion, IntegrationEventEnvelope envelope)
+    private static void ValidateAuction(
+        Guid auctionId,
+        long auctionVersion,
+        IntegrationEventEnvelope envelope)
     {
-        if (auctionId == Guid.Empty || auctionId != envelope.AggregateId || auctionVersion != envelope.AggregateVersion)
+        if (auctionId == Guid.Empty
+            || auctionId != envelope.AggregateId
+            || auctionVersion != envelope.AggregateVersion)
             throw new FormatException("Event payload does not match its envelope.");
     }
 }

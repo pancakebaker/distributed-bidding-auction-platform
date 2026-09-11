@@ -32,7 +32,8 @@ public sealed record ActivityHistoryQuery(
                 errors.Add("The maximum historical range is 31 days.");
         }
 
-        if (EventType is not null && !ActivityHistoryQueryRules.KnownEventTypes.Contains(EventType))
+        if (EventType is not null
+            && !ActivityHistoryQueryRules.KnownEventTypes.Contains(EventType))
             errors.Add("Event Type must be BidAccepted, AuctionClosed, or WinnerSelected.");
         if (Page < 1)
             errors.Add("Page must be at least 1.");
@@ -53,18 +54,22 @@ public static class ActivityHistoryQueryRules
     /// <summary>Gets the maximum query range.</summary>
     public static readonly TimeSpan MaximumRange = TimeSpan.FromDays(31);
     /// <summary>Gets the event types accepted by history filters.</summary>
-    public static readonly IReadOnlySet<string> KnownEventTypes = new HashSet<string>(StringComparer.Ordinal)
+    public static readonly IReadOnlySet<string> KnownEventTypes =
+        new HashSet<string>(StringComparer.Ordinal)
     {
         "BidAccepted",
         "AuctionClosed",
         "WinnerSelected"
     };
     /// <summary>Gets the page sizes accepted by history filters.</summary>
-    public static readonly IReadOnlySet<int> AllowedPageSizes = new HashSet<int> { 25, 50, MaximumPageSize };
+    public static readonly IReadOnlySet<int> AllowedPageSizes =
+        new HashSet<int> { 25, 50, MaximumPageSize };
 }
 
 /// <summary>Contains a parsed history query and any validation errors.</summary>
-public sealed record ActivityHistoryQueryParseResult(ActivityHistoryQuery? Query, IReadOnlyList<string> Errors)
+public sealed record ActivityHistoryQueryParseResult(
+    ActivityHistoryQuery? Query,
+    IReadOnlyList<string> Errors)
 {
     /// <summary>Gets whether parsing produced a valid query without errors.</summary>
     public bool IsValid => Query is not null && Errors.Count == 0;
@@ -86,23 +91,40 @@ public static class ActivityHistoryQueryParser
         var fromUtc = ParseTimestamp(from, "From", errors);
         var toUtc = ParseTimestamp(to, "To", errors);
         Guid? parsedAggregateId = null;
-        if (!string.IsNullOrWhiteSpace(aggregateId) && !Guid.TryParse(aggregateId, out var aggregateIdValue))
+        if (!string.IsNullOrWhiteSpace(aggregateId)
+            && !Guid.TryParse(aggregateId, out _))
             errors.Add("Auction/Aggregate ID must be a valid GUID.");
         else if (!string.IsNullOrWhiteSpace(aggregateId))
             parsedAggregateId = Guid.Parse(aggregateId!);
 
         var parsedPage = ParseInteger(page, 1, "Page", errors);
-        var parsedPageSize = ParseInteger(pageSize, ActivityHistoryQueryRules.DefaultPageSize, "Page size", errors);
-        var query = new ActivityHistoryQuery(fromUtc, toUtc, string.IsNullOrWhiteSpace(aggregateId) ? null : parsedAggregateId, string.IsNullOrWhiteSpace(eventType) ? null : eventType, parsedPage, parsedPageSize);
+        var parsedPageSize = ParseInteger(
+            pageSize,
+            ActivityHistoryQueryRules.DefaultPageSize,
+            "Page size",
+            errors);
+        var query = new ActivityHistoryQuery(
+            fromUtc,
+            toUtc,
+            string.IsNullOrWhiteSpace(aggregateId) ? null : parsedAggregateId,
+            string.IsNullOrWhiteSpace(eventType) ? null : eventType,
+            parsedPage,
+            parsedPageSize);
         errors.AddRange(query.Validate());
-        return new ActivityHistoryQueryParseResult(query, errors.Distinct(StringComparer.Ordinal).ToArray());
+        return new ActivityHistoryQueryParseResult(
+            query,
+            errors.Distinct(StringComparer.Ordinal).ToArray());
     }
 
     private static DateTimeOffset? ParseTimestamp(string? value, string name, List<string> errors)
     {
         if (string.IsNullOrWhiteSpace(value))
             return null;
-        if (!DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var parsed))
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed))
         {
             errors.Add($"{name} must be a valid UTC timestamp.");
             return null;
@@ -111,11 +133,19 @@ public static class ActivityHistoryQueryParser
         return parsed.ToUniversalTime();
     }
 
-    private static int ParseInteger(string? value, int defaultValue, string name, List<string> errors)
+    private static int ParseInteger(
+        string? value,
+        int defaultValue,
+        string name,
+        List<string> errors)
     {
         if (string.IsNullOrWhiteSpace(value))
             return defaultValue;
-        if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed))
+        if (!int.TryParse(
+                value,
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var parsed))
         {
             errors.Add($"{name} must be a whole number.");
             return defaultValue;

@@ -13,7 +13,9 @@ namespace AuctionOperationsPortal.Persistence;
 public interface IActivityReportService
 {
     /// <summary>Queries and validates the activity rows for a report request.</summary>
-    Task<ActivityReport> BuildAsync(ActivityReportRequest request, CancellationToken cancellationToken);
+    Task<ActivityReport> BuildAsync(
+        ActivityReportRequest request,
+        CancellationToken cancellationToken);
     /// <summary>Renders a previously built report as a PDF document.</summary>
     Task<byte[]> GeneratePdfAsync(ActivityReport report, CancellationToken cancellationToken);
 }
@@ -25,7 +27,9 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
     public const int MaximumRows = 5_000;
 
     /// <inheritdoc />
-    public async Task<ActivityReport> BuildAsync(ActivityReportRequest request, CancellationToken cancellationToken)
+    public async Task<ActivityReport> BuildAsync(
+        ActivityReportRequest request,
+        CancellationToken cancellationToken)
     {
         using var activity = PortalTelemetry.StartActivity("portal.report.query");
         activity?.SetTag("report.has_aggregate_filter", request.AggregateId is not null);
@@ -33,7 +37,9 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
         var errors = request.Validate();
         if (errors.Count > 0)
         {
-            PortalTelemetry.ReportsRejected.Add(1, new KeyValuePair<string, object?>("reason", "validation"));
+            PortalTelemetry.ReportsRejected.Add(
+                1,
+                new KeyValuePair<string, object?>("reason", "validation"));
             throw new ActivityReportValidationException(errors);
         }
 
@@ -43,8 +49,11 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
         PortalTelemetry.ReportRowCount.Record(totalCount);
         if (totalCount > MaximumRows)
         {
-            PortalTelemetry.ReportsRejected.Add(1, new KeyValuePair<string, object?>("reason", "row_limit"));
-            throw new ActivityReportValidationException([$"The report cannot contain more than {MaximumRows:N0} activity rows."]);
+            PortalTelemetry.ReportsRejected.Add(
+                1,
+                new KeyValuePair<string, object?>("reason", "row_limit"));
+            throw new ActivityReportValidationException(
+                [$"The report cannot contain more than {MaximumRows:N0} activity rows."]);
         }
 
         var groupedCounts = await activities
@@ -53,7 +62,8 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
             .ToListAsync(cancellationToken);
         var counts = ActivityHistoryQueryRules.KnownEventTypes.ToDictionary(
             eventType => eventType,
-            eventType => groupedCounts.FirstOrDefault(group => group.EventType == eventType)?.Count ?? 0,
+            eventType => groupedCounts
+                .FirstOrDefault(group => group.EventType == eventType)?.Count ?? 0,
             StringComparer.Ordinal);
         var items = await activities
             .OrderBy(activity => activity.OccurredAtUtc)
@@ -72,7 +82,11 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
                 activity.WinnerId))
             .ToListAsync(cancellationToken);
 
-        return new ActivityReport(request, DateTimeOffset.UtcNow, new ActivityReportSummary(counts, totalCount), items);
+        return new ActivityReport(
+            request,
+            DateTimeOffset.UtcNow,
+            new ActivityReportSummary(counts, totalCount),
+            items);
     }
 
     /// <inheritdoc />
@@ -90,7 +104,8 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
         }
         finally
         {
-            PortalTelemetry.ReportGenerationDuration.Record(Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            PortalTelemetry.ReportGenerationDuration.Record(
+                Stopwatch.GetElapsedTime(started).TotalMilliseconds);
         }
     }
 
@@ -100,9 +115,14 @@ public sealed class ActivityReportService(AuctionOperationsDbContext db) : IActi
         var toUtc = request.ToUtc!.Value.ToUniversalTime();
         var activities = db.AuctionActivities
             .AsNoTracking()
-            .Where(activity => activity.OccurredAtUtc >= fromUtc && activity.OccurredAtUtc <= toUtc);
+            .Where(activity =>
+                activity.OccurredAtUtc >= fromUtc
+                && activity.OccurredAtUtc <= toUtc);
         if (request.AggregateId is not null)
-            activities = activities.Where(activity => activity.AggregateId == request.AggregateId.Value);
+        {
+            activities = activities.Where(
+                activity => activity.AggregateId == request.AggregateId.Value);
+        }
         if (request.EventType is not null)
             activities = activities.Where(activity => activity.EventType == request.EventType);
         return activities;

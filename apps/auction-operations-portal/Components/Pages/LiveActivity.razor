@@ -7,7 +7,10 @@
 <PageTitle>Live Activity | Auction Operations Portal</PageTitle>
 
 <h2>Live Activity</h2>
-<p class="muted">Persisted activity is the source of truth. The live connection fills in new events and reconciles after reconnect.</p>
+<p class="muted">
+    Persisted activity is the source of truth. The live connection fills in new events and
+    reconciles after reconnect.
+</p>
 
 @if (loading)
 {
@@ -77,12 +80,16 @@ else
         dotNetReference = DotNetObjectReference.Create(this);
         try
         {
-            await module.InvokeVoidAsync("start", dotNetReference, "/hubs/activity");
+            await module.InvokeVoidAsync(
+                "start",
+                dotNetReference,
+                "/hubs/activity");
             connectionStatus = "Live connection established.";
         }
         catch (JSException)
         {
-            connectionStatus = "Live connection is unavailable; persisted activity remains available.";
+    connectionStatus =
+        "Live connection is unavailable; persisted activity remains available.";
         }
 
         await InvokeAsync(StateHasChanged);
