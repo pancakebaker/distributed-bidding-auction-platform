@@ -96,3 +96,9 @@ indent_size = 4
 # Applies the repository's source-length target to authored Razor markup and
 # embedded C# without changing generated Razor output.
 max_line_length = 100
+
+[*.php]
+max_line_length = 100
+
+[*.blade.php]
+max_line_length = 100

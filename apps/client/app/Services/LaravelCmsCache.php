@@ -70,17 +70,20 @@ class LaravelCmsCache implements CmsCache
             return [];
         }
 
-        return $this->cache->remember(self::PUBLIC_NAVIGATION_KEY, Carbon::now()->addMinutes(30), function (): array {
-            return Page::published()
-                ->orderBy('id')
-                ->get(['title', 'slug'])
-                ->map(fn (Page $page): array => [
-                    'title' => $page->title,
-                    'slug' => $page->slug,
-                ])
-                ->values()
-                ->all();
-        });
+        return $this->cache->remember(
+            self::PUBLIC_NAVIGATION_KEY,
+            Carbon::now()->addMinutes(30),
+            function (): array {
+                return Page::published()
+                    ->orderBy('id')
+                    ->get(['title', 'slug'])
+                    ->map(fn (Page $page): array => [
+                        'title' => $page->title,
+                        'slug' => $page->slug,
+                    ])
+                    ->values()
+                    ->all();
+            });
     }
 
     /**
@@ -106,19 +109,22 @@ class LaravelCmsCache implements CmsCache
      */
     public function getFaqs(): array
     {
-        return $this->cache->remember(self::FAQ_KEY, Carbon::now()->addMinutes(30), function (): array {
-            return Faq::published()
-                ->orderBy('sort_order')
-                ->orderBy('id')
-                ->get(['id', 'question', 'answer'])
-                ->map(fn (Faq $faq): array => [
-                    'id' => $faq->id,
-                    'question' => $faq->question,
-                    'answer' => $faq->answer,
-                ])
-                ->values()
-                ->all();
-        });
+        return $this->cache->remember(
+            self::FAQ_KEY,
+            Carbon::now()->addMinutes(30),
+            function (): array {
+                return Faq::published()
+                    ->orderBy('sort_order')
+                    ->orderBy('id')
+                    ->get(['id', 'question', 'answer'])
+                    ->map(fn (Faq $faq): array => [
+                        'id' => $faq->id,
+                        'question' => $faq->question,
+                        'answer' => $faq->answer,
+                    ])
+                    ->values()
+                    ->all();
+            });
     }
 
     /**

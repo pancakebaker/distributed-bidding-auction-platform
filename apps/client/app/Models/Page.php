@@ -73,7 +73,11 @@ class Page extends Model
     public function isPubliclyVisible(): bool
     {
         return $this->status === PageStatus::Published
-            && ($this->published_at === null || $this->published_at->isPast() || $this->published_at->isCurrentSecond());
+            && (
+                $this->published_at === null
+                || $this->published_at->isPast()
+                || $this->published_at->isCurrentSecond()
+            );
     }
 
     /**

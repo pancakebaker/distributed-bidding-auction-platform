@@ -23,11 +23,15 @@ Route::get('/pages/{page:slug}', [PublicPageController::class, 'show'])->name('c
 
 Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
 Route::post('/login', [AuthenticatedSessionController::class, 'store'])->name('login.store');
-Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->middleware('auth')->name('logout');
+Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
+    ->middleware('auth')
+    ->name('logout');
 
 Route::middleware('auth')->group(function (): void {
-    Route::get('/account/notifications', [NotificationPreferenceController::class, 'edit'])->name('account.notifications.edit');
-    Route::put('/account/notifications', [NotificationPreferenceController::class, 'update'])->name('account.notifications.update');
+    Route::get('/account/notifications', [NotificationPreferenceController::class, 'edit'])
+        ->name('account.notifications.edit');
+    Route::put('/account/notifications', [NotificationPreferenceController::class, 'update'])
+        ->name('account.notifications.update');
 });
 
 Route::middleware(['auth', 'can:access-admin'])
@@ -36,13 +40,18 @@ Route::middleware(['auth', 'can:access-admin'])
     ->group(function (): void {
         Route::get('/', AdminDashboardController::class)->name('dashboard');
         Route::get('/live-feed', LiveFeedAdminController::class)->name('live-feed');
-        Route::get('/auction-operations', AuctionOperationsController::class)->name('auction-operations');
-        Route::post('/live-feed/token', [LiveFeedAdminController::class, 'token'])->name('live-feed.token');
+        Route::get('/auction-operations', AuctionOperationsController::class)
+            ->name('auction-operations');
+        Route::post('/live-feed/token', [LiveFeedAdminController::class, 'token'])
+            ->name('live-feed.token');
         Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
-        Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])->name('audit-logs.index');
-        Route::post('/audit-logs/export', [AdminExportController::class, 'store'])->name('audit-logs.export');
+        Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])
+            ->name('audit-logs.index');
+        Route::post('/audit-logs/export', [AdminExportController::class, 'store'])
+            ->name('audit-logs.export');
         Route::get('/exports', [AdminExportController::class, 'index'])->name('exports.index');
-        Route::get('/exports/{export}/download', [AdminExportController::class, 'download'])->name('exports.download');
+        Route::get('/exports/{export}/download', [AdminExportController::class, 'download'])
+            ->name('exports.download');
 
         Route::get('/pages', [AdminPageController::class, 'index'])->name('pages.index');
         Route::get('/pages/create', [AdminPageController::class, 'create'])->name('pages.create');

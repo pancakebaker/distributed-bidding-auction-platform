@@ -11,13 +11,18 @@ class AuctionOperationsTokenIssuer
     /** @return array{token: string, expiresAt: string} */
     public function issue(User $user): array
     {
-        $privateKey = @file_get_contents((string) config('auction_operations.token_private_key_path'));
+        $privateKey = @file_get_contents(
+            (string) config('auction_operations.token_private_key_path'),
+        );
         if ($privateKey === false || $privateKey === '') {
             throw new RuntimeException('Auction Operations signing key is not configured.');
         }
 
         $issuedAt = time();
-        $expiresAt = $issuedAt + max(60, min((int) config('auction_operations.token_ttl_seconds', 300), 600));
+        $expiresAt = $issuedAt + max(
+            60,
+            min((int) config('auction_operations.token_ttl_seconds', 300), 600),
+        );
         $claims = [
             'sub' => (string) $user->getAuthIdentifier(),
             'email' => (string) $user->email,
@@ -38,7 +43,10 @@ class AuctionOperationsTokenIssuer
             throw new RuntimeException('Auction Operations token signing failed.');
         }
 
-        return ['token' => $input.'.'.$this->base64UrlEncode($signature), 'expiresAt' => gmdate(DATE_ATOM, $expiresAt)];
+        return [
+            'token' => $input.'.'.$this->base64UrlEncode($signature),
+            'expiresAt' => gmdate(DATE_ATOM, $expiresAt),
+        ];
     }
 
     /** @param array<string, mixed> $value */

@@ -20,9 +20,14 @@ class InvalidateCmsCache
     /**
      * Forget affected public CMS cache entries after a successful CMS write.
      */
-    public function handle(PageCreated|PageUpdated|PagePublished|PageDeleted|FaqCreated|FaqUpdated $event): void
-    {
-        if ($event instanceof PageCreated || $event instanceof PagePublished || $event instanceof PageDeleted) {
+    public function handle(
+        PageCreated|PageUpdated|PagePublished|PageDeleted|FaqCreated|FaqUpdated $event,
+    ): void {
+        if (
+            $event instanceof PageCreated
+            || $event instanceof PagePublished
+            || $event instanceof PageDeleted
+        ) {
             $this->cache->forgetPage($event->page->slug);
             $this->cache->forgetPublicNavigationPages();
 

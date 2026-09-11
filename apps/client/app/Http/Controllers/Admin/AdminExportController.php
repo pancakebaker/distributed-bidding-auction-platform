@@ -52,9 +52,15 @@ class AdminExportController extends Controller
     public function download(Request $request, Export $export): StreamedResponse
     {
         abort_unless($export->user_id === $request->user()->id, 403);
-        abort_unless($export->status === ExportStatus::Completed && $export->file_path !== null, 404);
+        abort_unless(
+            $export->status === ExportStatus::Completed && $export->file_path !== null,
+            404,
+        );
         abort_unless(Storage::disk('local')->exists($export->file_path), 404);
 
-        return Storage::disk('local')->download($export->file_path, "audit-log-export-{$export->id}.csv");
+        return Storage::disk('local')->download(
+            $export->file_path,
+            "audit-log-export-{$export->id}.csv",
+        );
     }
 }

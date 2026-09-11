@@ -29,7 +29,13 @@ class UpdatePageRequest extends FormRequest
 
         return [
             'title' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'alpha_dash:ascii', Rule::unique('pages', 'slug')->ignore($page->id)],
+            'slug' => [
+                'required',
+                'string',
+                'max:255',
+                'alpha_dash:ascii',
+                Rule::unique('pages', 'slug')->ignore($page->id),
+            ],
             'body' => ['required', 'string'],
             'status' => ['required', 'string', Rule::in(PageStatus::values())],
             'published_at' => ['nullable', 'date'],

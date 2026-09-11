@@ -17,7 +17,14 @@ class CsvAuditLogExporter implements AuditLogExporter
         $path = "exports/audit-logs/{$export->id}.csv";
         $stream = fopen('php://temp', 'w+');
 
-        fputcsv($stream, ['timestamp', 'actor', 'action', 'resource_type', 'resource_id', 'summary']);
+        fputcsv($stream, [
+            'timestamp',
+            'actor',
+            'action',
+            'resource_type',
+            'resource_id',
+            'summary',
+        ]);
 
         AuditLog::query()
             ->with('user:id,name')

@@ -18,8 +18,9 @@ class RecordAuditLog
     /**
      * Record a minimal, safe audit row for CMS and admin actions.
      */
-    public function handle(PageCreated|PageUpdated|PagePublished|FaqCreated|FaqUpdated|ExportRequested $event): void
-    {
+    public function handle(
+        PageCreated|PageUpdated|PagePublished|FaqCreated|FaqUpdated|ExportRequested $event,
+    ): void {
         AuditLog::query()->create($this->payload($event));
     }
 
@@ -28,8 +29,9 @@ class RecordAuditLog
      *
      * @return array<string, mixed>
      */
-    private function payload(PageCreated|PageUpdated|PagePublished|FaqCreated|FaqUpdated|ExportRequested $event): array
-    {
+    private function payload(
+        PageCreated|PageUpdated|PagePublished|FaqCreated|FaqUpdated|ExportRequested $event,
+    ): array {
         if ($event instanceof PageCreated) {
             return $this->pagePayload('page.created', $event->page, $event->actorId);
         }

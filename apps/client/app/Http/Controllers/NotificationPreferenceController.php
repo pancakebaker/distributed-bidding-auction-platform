@@ -27,8 +27,14 @@ class NotificationPreferenceController extends Controller
                     'flash' => session('status'),
                     'errors' => session('errors')?->getBag('default')->toArray() ?? [],
                     'preferences' => [
-                        'cms_publication_updates_enabled' => (bool) old('cms_publication_updates_enabled', $preferences->cms_publication_updates_enabled),
-                        'database_notifications_enabled' => (bool) old('database_notifications_enabled', $preferences->database_notifications_enabled),
+                        'cms_publication_updates_enabled' => (bool) old(
+                            'cms_publication_updates_enabled',
+                            $preferences->cms_publication_updates_enabled,
+                        ),
+                        'database_notifications_enabled' => (bool) old(
+                            'database_notifications_enabled',
+                            $preferences->database_notifications_enabled,
+                        ),
                     ],
                 ],
             ],

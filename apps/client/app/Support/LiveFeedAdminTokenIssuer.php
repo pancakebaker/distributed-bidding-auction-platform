@@ -23,7 +23,10 @@ class LiveFeedAdminTokenIssuer
         }
 
         $issuedAt = time();
-        $expiresAt = $issuedAt + max(60, min((int) config('live_feed.token_ttl_seconds', 600), 900));
+        $expiresAt = $issuedAt + max(
+            60,
+            min((int) config('live_feed.token_ttl_seconds', 600), 900),
+        );
         $claims = [
             'sub' => (string) $user->getAuthIdentifier(),
             'email' => (string) $user->email,
