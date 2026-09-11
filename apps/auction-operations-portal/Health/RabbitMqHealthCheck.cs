@@ -12,7 +12,9 @@ namespace AuctionOperationsPortal.Health;
 public sealed class RabbitMqHealthCheck(IOptions<RabbitMqOptions> options) : IHealthCheck
 {
     /// <summary>Runs a bounded broker connectivity check.</summary>
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
     {
         var config = options.Value;
         try
@@ -27,7 +29,9 @@ public sealed class RabbitMqHealthCheck(IOptions<RabbitMqOptions> options) : IHe
                 RequestedConnectionTimeout = TimeSpan.FromSeconds(3)
             };
             await using var connection = await factory.CreateConnectionAsync(cancellationToken);
-            return connection.IsOpen ? HealthCheckResult.Healthy() : HealthCheckResult.Unhealthy("RabbitMQ connection is closed.");
+            return connection.IsOpen
+                ? HealthCheckResult.Healthy()
+                : HealthCheckResult.Unhealthy("RabbitMQ connection is closed.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

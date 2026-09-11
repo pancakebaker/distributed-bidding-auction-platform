@@ -13,7 +13,9 @@ public sealed class ActivityHub(ILogger<ActivityHub> logger) : Hub
     /// <summary>Logs and completes a newly established hub connection.</summary>
     public override Task OnConnectedAsync()
     {
-        logger.LogInformation("Activity hub connection established {ConnectionId}.", Context.ConnectionId);
+        logger.LogInformation(
+            "Activity hub connection established {ConnectionId}.",
+            Context.ConnectionId);
         return base.OnConnectedAsync();
     }
 
@@ -21,9 +23,18 @@ public sealed class ActivityHub(ILogger<ActivityHub> logger) : Hub
     public override Task OnDisconnectedAsync(Exception? exception)
     {
         if (exception is null)
-            logger.LogInformation("Activity hub connection closed {ConnectionId}.", Context.ConnectionId);
+        {
+            logger.LogInformation(
+                "Activity hub connection closed {ConnectionId}.",
+                Context.ConnectionId);
+        }
         else
-            logger.LogInformation(exception, "Activity hub connection closed unexpectedly {ConnectionId}.", Context.ConnectionId);
+        {
+            logger.LogInformation(
+                exception,
+                "Activity hub connection closed unexpectedly {ConnectionId}.",
+                Context.ConnectionId);
+        }
 
         return base.OnDisconnectedAsync(exception);
     }

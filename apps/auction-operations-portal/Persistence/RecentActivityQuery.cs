@@ -11,14 +11,18 @@ namespace AuctionOperationsPortal.Persistence;
 public interface IRecentActivityQuery
 {
     /// <summary>Returns a bounded newest-first activity list.</summary>
-    Task<IReadOnlyList<ActivityNotification>> GetRecentAsync(int limit, CancellationToken cancellationToken);
+    Task<IReadOnlyList<ActivityNotification>> GetRecentAsync(
+        int limit,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>Queries recent activity from the durable projection.</summary>
 public sealed class RecentActivityQuery(AuctionOperationsDbContext db) : IRecentActivityQuery
 {
     /// <summary>Loads the newest persisted activities within the requested bound.</summary>
-    public async Task<IReadOnlyList<ActivityNotification>> GetRecentAsync(int limit, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<ActivityNotification>> GetRecentAsync(
+        int limit,
+        CancellationToken cancellationToken)
     {
         var boundedLimit = Math.Clamp(limit, 1, 100);
         return await db.AuctionActivities

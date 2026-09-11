@@ -13,7 +13,8 @@ public sealed record ActivityReportRequest(
     string? EventType)
 {
     /// <summary>Returns validation errors for the requested report range and filters.</summary>
-    public IReadOnlyList<string> Validate() => new ActivityHistoryQuery(FromUtc, ToUtc, AggregateId, EventType).Validate();
+    public IReadOnlyList<string> Validate() =>
+        new ActivityHistoryQuery(FromUtc, ToUtc, AggregateId, EventType).Validate();
 }
 
 /// <summary>Contains grouped counts and the total number of report rows.</summary>
@@ -27,7 +28,8 @@ public sealed record ActivityReport(
     IReadOnlyList<ActivityNotification> Items);
 
 /// <summary>Indicates that a requested report cannot be generated from its filters.</summary>
-public sealed class ActivityReportValidationException(IReadOnlyList<string> errors) : Exception(string.Join(" ", errors))
+public sealed class ActivityReportValidationException(IReadOnlyList<string> errors)
+    : Exception(string.Join(" ", errors))
 {
     /// <summary>Gets the validation messages that explain why the report was rejected.</summary>
     public IReadOnlyList<string> Errors { get; } = errors;

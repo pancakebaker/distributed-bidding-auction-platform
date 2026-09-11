@@ -10,7 +10,9 @@ namespace AuctionOperationsPortal.Health;
 public sealed class PortalDatabaseHealthCheck(IConfiguration configuration) : IHealthCheck
 {
     /// <summary>Runs a bounded database connectivity check.</summary>
-    public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken = default)
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        HealthCheckContext context,
+        CancellationToken cancellationToken = default)
     {
         var connectionString = configuration.GetConnectionString("AuctionOperationsDb");
         if (string.IsNullOrWhiteSpace(connectionString))

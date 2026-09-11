@@ -17,7 +17,9 @@ public sealed class LiveActivityState(int limit = 100)
         .Take(limit)
         .ToArray();
 
-    /// <summary>Merges incoming notifications and removes entries beyond the configured limit.</summary>
+    /// <summary>
+    /// Merges incoming notifications and removes entries beyond the configured limit.
+    /// </summary>
     public void Merge(IEnumerable<ActivityNotification> activities)
     {
         foreach (var activity in activities)
@@ -30,7 +32,9 @@ public sealed class LiveActivityState(int limit = 100)
             .Select(activity => activity.EventId)
             .ToHashSet();
 
-        foreach (var eventId in byEventId.Keys.Where(eventId => !retained.Contains(eventId)).ToArray())
+        foreach (var eventId in byEventId.Keys
+            .Where(eventId => !retained.Contains(eventId))
+            .ToArray())
             byEventId.Remove(eventId);
     }
 }

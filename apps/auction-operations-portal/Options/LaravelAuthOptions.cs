@@ -15,7 +15,8 @@ public sealed class LaravelAuthOptions
     /// <summary>Gets or sets the required administrator permission.</summary>
     public string Permission { get; set; } = "access-auction-operations";
     /// <summary>Gets or sets the Laravel public key path.</summary>
-    public string PublicKeyPath { get; set; } = "../live-feed-service/config/live-feed-admin-public.pem";
+    public string PublicKeyPath { get; set; } =
+        "../live-feed-service/config/live-feed-admin-public.pem";
     /// <summary>Gets or sets the portal authentication cookie name.</summary>
     public string CookieName { get; set; } = "auction_operations_auth";
     /// <summary>Gets or sets the authentication cookie lifetime in seconds.</summary>
