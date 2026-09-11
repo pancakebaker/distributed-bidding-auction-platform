@@ -20,6 +20,7 @@ function token(overrides: Record<string, unknown> = {}): string {
     aud: 'live-feed-admin',
     iat: 1_000,
     exp: 2_000,
+    jti: 'token-1',
     ...overrides,
   });
   const signer = createSign('RSA-SHA256');
@@ -38,25 +39,30 @@ function verifier(now = 1_500): JwtAdminTokenVerifier {
 }
 
 void test('accepts a valid RS256 admin token', () => {
-  assert.equal(verifier().verify(token()).sub, '1');
+  assert.equal(verifier().verify(token()).jti, 'token-1');
 });
+function assertRejected(overrides: Record<string, unknown>, code: string): void {
+  assert.throws(
+    () => verifier().verify(token(overrides)),
+    (error: unknown) => (error as { code?: string }).code === code,
+  );
+}
+
 void test('rejects invalid claims and signatures', () => {
-  assert.throws(
-    () => verifier().verify(token({ exp: 900 })),
-    (error: unknown) => (error as { code?: string }).code === 'invalid_admin_token',
+  assertRejected({ exp: 900 }, 'invalid_admin_token');
+  assertRejected({ iss: 'other' }, 'invalid_admin_token');
+  assertRejected({ aud: 'other' }, 'invalid_admin_token');
+  assertRejected(
+    { role: 'user', permissions: ['access-live-feed-admin'] },
+    'admin_authorization_required',
   );
-  assert.throws(
-    () => verifier().verify(token({ iss: 'other' })),
-    (error: unknown) => (error as { code?: string }).code === 'invalid_admin_token',
-  );
-  assert.throws(
-    () => verifier().verify(token({ aud: 'other' })),
-    (error: unknown) => (error as { code?: string }).code === 'invalid_admin_token',
-  );
-  assert.throws(
-    () => verifier().verify(token({ role: 'user', permissions: [] })),
-    (error: unknown) => (error as { code?: string }).code === 'admin_authorization_required',
-  );
+  assertRejected({ role: undefined }, 'admin_authorization_required');
+  assertRejected({ permissions: [] }, 'invalid_admin_token');
+  assertRejected({ permissions: 'access-live-feed-admin' }, 'invalid_admin_token');
+  assertRejected({ permissions: ['access-live-feed-admin', 7] }, 'invalid_admin_token');
+  assertRejected({ permissions: ['other-permission'] }, 'admin_authorization_required');
+  assertRejected({ jti: undefined }, 'invalid_admin_token');
+  assertRejected({ jti: '' }, 'invalid_admin_token');
   const validToken = token();
   const [header, payload, signature] = validToken.split('.');
   const tamperedSignature = Buffer.from(signature, 'base64url');

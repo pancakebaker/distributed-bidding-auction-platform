@@ -75,11 +75,8 @@ function validateClaims(
   const exp = numberClaim(payload.exp);
   const aud = audienceClaim(payload.aud);
   const nbf = payload.nbf === undefined ? undefined : numberClaim(payload.nbf);
-  const permissions = Array.isArray(payload.permissions)
-    ? payload.permissions.filter(
-        (permission): permission is string => typeof permission === 'string',
-      )
-    : undefined;
+  const permissions = permissionsClaim(payload.permissions);
+  const jti = stringClaim(payload.jti);
 
   if (
     !sub ||
@@ -87,11 +84,13 @@ function validateClaims(
     !aud.includes(options.audience) ||
     exp <= now ||
     iat > now + 30 ||
-    (nbf !== undefined && nbf > now)
+    (nbf !== undefined && nbf > now) ||
+    !jti ||
+    !permissions
   ) {
     throw invalidToken();
   }
-  if (payload.role !== 'admin' && !permissions?.includes('access-live-feed-admin')) {
+  if (payload.role !== 'admin' || !permissions.includes('access-live-feed-admin')) {
     throw new ApplicationError(
       'Admin authorization is required.',
       403,
@@ -109,7 +108,7 @@ function validateClaims(
     iat,
     exp,
     nbf,
-    jti: typeof payload.jti === 'string' ? payload.jti : undefined,
+    jti,
   };
 }
 
@@ -139,6 +138,13 @@ function stringClaim(value: unknown): string {
 
 function numberClaim(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : Number.NaN;
+}
+
+function permissionsClaim(value: unknown): string[] | undefined {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  return value.every((permission): permission is string => typeof permission === 'string')
+    ? value
+    : undefined;
 }
 
 function audienceClaim(value: unknown): string[] {

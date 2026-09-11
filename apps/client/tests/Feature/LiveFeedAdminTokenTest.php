@@ -44,6 +44,9 @@ class LiveFeedAdminTokenTest extends TestCase
         $this->assertSame('auction-client', $payload['iss']);
         $this->assertSame('live-feed-admin', $payload['aud']);
         $this->assertSame('admin', $payload['role']);
+        $this->assertSame(['access-live-feed-admin'], $payload['permissions']);
+        $this->assertIsString($payload['jti']);
+        $this->assertNotSame('', $payload['jti']);
         $this->assertArrayNotHasKey('password', $payload);
     }
 

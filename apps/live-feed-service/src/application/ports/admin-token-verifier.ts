@@ -15,7 +15,7 @@ export type AdminTokenClaims = {
   iat: number;
   exp: number;
   nbf?: number;
-  jti?: string;
+  jti: string;
 };
 
 /**
