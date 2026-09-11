@@ -1,0 +1,17 @@
+// <copyright file="IntegrationEventTypes.cs" company="Distributed Bidding Auction Platform">
+// Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
+// </copyright>
+namespace DistributedBidding.IntegrationContracts;
+
+/// <summary>Defines event discriminator values shared by auction services.</summary>
+public static class IntegrationEventTypes
+{
+    /// <summary>Identifies an accepted bid event.</summary>
+    public const string BidAccepted = "BidAccepted";
+
+    /// <summary>Identifies an auction-closed event.</summary>
+    public const string AuctionClosed = "AuctionClosed";
+
+    /// <summary>Identifies a winner-selected event.</summary>
+    public const string WinnerSelected = "WinnerSelected";
+}

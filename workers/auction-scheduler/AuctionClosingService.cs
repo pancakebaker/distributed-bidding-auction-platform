@@ -4,6 +4,7 @@
 using System.Data;
 using System.Text.Json;
 using auction_scheduler.Outbox;
+using DistributedBidding.IntegrationContracts;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using NpgsqlTypes;
@@ -21,7 +22,6 @@ public sealed class AuctionClosingService(
 {
     private const string OpenStatus = "Open";
     private const string ClosedStatus = "Closed";
-    private const string AggregateType = "Auction";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
@@ -326,7 +326,7 @@ public sealed class AuctionClosingService(
 
         command.Parameters.AddWithValue("id", Guid.NewGuid());
         command.Parameters.AddWithValue("eventType", eventType);
-        command.Parameters.AddWithValue("aggregateType", AggregateType);
+        command.Parameters.AddWithValue("aggregateType", AggregateTypes.Auction);
         command.Parameters.AddWithValue("aggregateId", aggregateId);
         command.Parameters.AddWithValue("aggregateVersion", aggregateVersion);
         command.Parameters.AddWithValue("occurredAtUtc", occurredAtUtc);

@@ -6,6 +6,9 @@
     <Project Path="apps/bidding-service.Tests/bidding-service.Tests.csproj" />
     <Project Path="apps/bidding-service/bidding-service.csproj" />
   </Folder>
+  <Folder Name="/contracts/">
+    <Project Path="contracts/integration-contracts/DistributedBidding.IntegrationContracts.csproj" />
+  </Folder>
   <Folder Name="/workers/">
     <Project Path="workers/auction-scheduler.Tests/auction-scheduler.Tests.csproj" />
     <Project Path="workers/auction-scheduler/auction-scheduler.csproj" />

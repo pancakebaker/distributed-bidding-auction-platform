@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using DistributedBidding.IntegrationContracts;
 using bidding_service.Contracts;
 using bidding_service.Data;
 using bidding_service.Domain;
@@ -158,7 +159,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         Assert.NotNull(acceptedBid);
         var message = Assert.Single(messages);
         Assert.Equal(IntegrationEventTypes.BidAccepted, message.EventType);
-        Assert.Equal(nameof(Auction), message.AggregateType);
+        Assert.Equal(AggregateTypes.Auction, message.AggregateType);
         Assert.Equal(TestAuctionData.OpenAuctionId, message.AggregateId);
         Assert.Equal(acceptedBid.AuctionVersion, message.AggregateVersion);
         Assert.Null(message.PublishedAtUtc);

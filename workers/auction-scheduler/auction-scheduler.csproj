@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\contracts\integration-contracts\DistributedBidding.IntegrationContracts.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.10" />
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>

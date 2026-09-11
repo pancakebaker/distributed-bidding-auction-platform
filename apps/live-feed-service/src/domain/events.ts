@@ -1,14 +1,34 @@
 /**
  * Live-feed event contracts and validation helpers for RabbitMQ messages and Socket.IO payloads.
  */
+
+/** Wire-level integration event discriminator values. */
+export const integrationEventTypes = {
+  bidAccepted: 'BidAccepted',
+  auctionClosed: 'AuctionClosed',
+  winnerSelected: 'WinnerSelected',
+} as const;
+
+/** Wire-level aggregate discriminator values. */
+export const aggregateTypes = {
+  auction: 'Auction',
+} as const;
+
+/** Identifies the integration events accepted by the live-feed consumer. */
+export type IntegrationEventType =
+  (typeof integrationEventTypes)[keyof typeof integrationEventTypes];
+
+/** Identifies the aggregate types represented by integration events. */
+export type AggregateType = (typeof aggregateTypes)[keyof typeof aggregateTypes];
+
 /**
  * Integration envelope published when the Bidding Service accepts a bid.
  */
 export type BidAcceptedEnvelope = {
   eventId: string;
-  eventType: 'BidAccepted';
+  eventType: typeof integrationEventTypes.bidAccepted;
   occurredAtUtc: string;
-  aggregateType: 'Auction';
+  aggregateType: typeof aggregateTypes.auction;
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
@@ -26,9 +46,9 @@ export type BidAcceptedEnvelope = {
  */
 export type AuctionClosedEnvelope = {
   eventId: string;
-  eventType: 'AuctionClosed';
+  eventType: typeof integrationEventTypes.auctionClosed;
   occurredAtUtc: string;
-  aggregateType: 'Auction';
+  aggregateType: typeof aggregateTypes.auction;
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
@@ -46,9 +66,9 @@ export type AuctionClosedEnvelope = {
  */
 export type WinnerSelectedEnvelope = {
   eventId: string;
-  eventType: 'WinnerSelected';
+  eventType: typeof integrationEventTypes.winnerSelected;
   occurredAtUtc: string;
-  aggregateType: 'Auction';
+  aggregateType: typeof aggregateTypes.auction;
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
@@ -150,7 +170,7 @@ export function parseLiveFeedEnvelope(body: Buffer): LiveFeedEnvelope {
  */
 export function parseBidAcceptedEnvelope(body: Buffer): BidAcceptedEnvelope {
   const envelope = parseLiveFeedEnvelope(body);
-  if (envelope.eventType !== 'BidAccepted') {
+  if (envelope.eventType !== integrationEventTypes.bidAccepted) {
     throw new Error('Unsupported eventType.');
   }
 
@@ -167,15 +187,15 @@ export function validateLiveFeedEnvelope(value: unknown): LiveFeedEnvelope {
     throw new Error('Event payload must be an object.');
   }
 
-  if (base.eventType === 'BidAccepted') {
+  if (base.eventType === integrationEventTypes.bidAccepted) {
     return validateBidAcceptedEnvelopeFromBase(base);
   }
 
-  if (base.eventType === 'AuctionClosed') {
+  if (base.eventType === integrationEventTypes.auctionClosed) {
     return validateAuctionClosedEnvelopeFromBase(base);
   }
 
-  if (base.eventType === 'WinnerSelected') {
+  if (base.eventType === integrationEventTypes.winnerSelected) {
     return validateWinnerSelectedEnvelopeFromBase(base);
   }
 
@@ -187,7 +207,7 @@ export function validateLiveFeedEnvelope(value: unknown): LiveFeedEnvelope {
  */
 export function validateBidAcceptedEnvelope(value: unknown): BidAcceptedEnvelope {
   const envelope = validateLiveFeedEnvelope(value);
-  if (envelope.eventType !== 'BidAccepted') {
+  if (envelope.eventType !== integrationEventTypes.bidAccepted) {
     throw new Error('Unsupported eventType.');
   }
 
@@ -198,7 +218,7 @@ function validateBaseEnvelope(value: unknown): Record<string, unknown> & {
   eventId: string;
   eventType: string;
   occurredAtUtc: string;
-  aggregateType: 'Auction';
+  aggregateType: AggregateType;
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
@@ -220,7 +240,7 @@ function validateBaseEnvelope(value: unknown): Record<string, unknown> & {
     throw new Error('Event envelope has an invalid occurredAtUtc.');
   }
 
-  if (value.aggregateType !== 'Auction') {
+  if (value.aggregateType !== aggregateTypes.auction) {
     throw new Error('Unsupported aggregateType.');
   }
 
@@ -240,7 +260,7 @@ function validateBaseEnvelope(value: unknown): Record<string, unknown> & {
     eventId: string;
     eventType: string;
     occurredAtUtc: string;
-    aggregateType: 'Auction';
+    aggregateType: AggregateType;
     aggregateId: string;
     aggregateVersion: number;
     correlationId: string | null;
@@ -279,7 +299,7 @@ function validateBidAcceptedEnvelopeFromBase(
 
   return {
     eventId: value.eventId,
-    eventType: 'BidAccepted',
+    eventType: integrationEventTypes.bidAccepted,
     occurredAtUtc: value.occurredAtUtc,
     aggregateType: value.aggregateType,
     aggregateId: value.aggregateId,
@@ -329,7 +349,7 @@ function validateAuctionClosedEnvelopeFromBase(
 
   return {
     eventId: value.eventId,
-    eventType: 'AuctionClosed',
+    eventType: integrationEventTypes.auctionClosed,
     occurredAtUtc: value.occurredAtUtc,
     aggregateType: value.aggregateType,
     aggregateId: value.aggregateId,
@@ -380,7 +400,7 @@ function validateWinnerSelectedEnvelopeFromBase(
 
   return {
     eventId: value.eventId,
-    eventType: 'WinnerSelected',
+    eventType: integrationEventTypes.winnerSelected,
     occurredAtUtc: value.occurredAtUtc,
     aggregateType: value.aggregateType,
     aggregateId: value.aggregateId,
@@ -403,7 +423,7 @@ function validateWinnerSelectedEnvelopeFromBase(
 export function toSocketPayload(
   envelope: LiveFeedEnvelope,
 ): BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload {
-  if (envelope.eventType === 'BidAccepted') {
+  if (envelope.eventType === integrationEventTypes.bidAccepted) {
     return {
       auctionId: envelope.payload.auctionId,
       bidId: envelope.payload.bidId,
@@ -415,7 +435,7 @@ export function toSocketPayload(
     };
   }
 
-  if (envelope.eventType === 'AuctionClosed') {
+  if (envelope.eventType === integrationEventTypes.auctionClosed) {
     return {
       auctionId: envelope.payload.auctionId,
       closedAtUtc: envelope.payload.closedAtUtc,

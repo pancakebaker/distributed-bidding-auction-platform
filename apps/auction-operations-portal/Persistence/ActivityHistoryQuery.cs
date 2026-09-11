@@ -2,6 +2,7 @@
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
 using System.Globalization;
+using DistributedBidding.IntegrationContracts;
 
 namespace AuctionOperationsPortal.Persistence;
 
@@ -57,9 +58,9 @@ public static class ActivityHistoryQueryRules
     public static readonly IReadOnlySet<string> KnownEventTypes =
         new HashSet<string>(StringComparer.Ordinal)
     {
-        "BidAccepted",
-        "AuctionClosed",
-        "WinnerSelected"
+        IntegrationEventTypes.BidAccepted,
+        IntegrationEventTypes.AuctionClosed,
+        IntegrationEventTypes.WinnerSelected
     };
     /// <summary>Gets the page sizes accepted by history filters.</summary>
     public static readonly IReadOnlySet<int> AllowedPageSizes =

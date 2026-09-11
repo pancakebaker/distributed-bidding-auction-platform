@@ -3,6 +3,7 @@
 // </copyright>
 using System.Text.Json;
 using bidding_service.Domain;
+using DistributedBidding.IntegrationContracts;
 
 namespace bidding_service.Services;
 
@@ -34,7 +35,7 @@ public static class OutboxMessageFactory
         {
             Id = Guid.NewGuid(),
             EventType = IntegrationEventTypes.BidAccepted,
-            AggregateType = nameof(Auction),
+            AggregateType = AggregateTypes.Auction,
             AggregateId = auction.Id,
             AggregateVersion = auction.Version,
             OccurredAtUtc = occurredAtUtc,
@@ -46,17 +47,6 @@ public static class OutboxMessageFactory
             LastError = null
         };
     }
-}
-
-/// <summary>
-/// Defines integration event type names used by outbox producers.
-/// </summary>
-public static class IntegrationEventTypes
-{
-    /// <summary>
-    /// Event type emitted when a bid is accepted.
-    /// </summary>
-    public const string BidAccepted = "BidAccepted";
 }
 
 /// <summary>

@@ -1,8 +1,8 @@
 /**
  * Framework-agnostic live-feed event processing and projection decisions.
  */
-import type { LiveFeedEnvelope } from '../../domain/events.js';
-import { toSocketPayload } from '../../domain/events.js';
+import type { IntegrationEventType, LiveFeedEnvelope } from '../../domain/events.js';
+import { integrationEventTypes, toSocketPayload } from '../../domain/events.js';
 import type { ActivityRecorder } from '../ports/activity-recorder.js';
 import type { LiveFeedPublisher } from '../ports/live-feed-publisher.js';
 import type { LiveStateStore } from '../ports/live-state-store.js';
@@ -125,13 +125,13 @@ export class LiveFeedEventProcessor {
 }
 
 function socketEventName(
-  eventType: 'BidAccepted' | 'AuctionClosed' | 'WinnerSelected',
+  eventType: IntegrationEventType,
 ): 'bid:accepted' | 'auction:closed' | 'winner:selected' {
-  if (eventType === 'BidAccepted') {
+  if (eventType === integrationEventTypes.bidAccepted) {
     return 'bid:accepted';
   }
 
-  if (eventType === 'AuctionClosed') {
+  if (eventType === integrationEventTypes.auctionClosed) {
     return 'auction:closed';
   }
 

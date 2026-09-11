@@ -5,6 +5,7 @@ using System.Text.Json;
 using AuctionOperationsPortal.Contracts;
 using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Telemetry;
+using DistributedBidding.IntegrationContracts;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -96,20 +97,20 @@ public sealed class IntegrationEventMapper
 
         switch (envelope.EventType)
         {
-            case "BidAccepted":
+            case IntegrationEventTypes.BidAccepted:
                 var bid = Deserialize<BidAcceptedPayload>(envelope.Payload);
                 ValidateAuction(bid.AuctionId, bid.AuctionVersion, envelope);
                 activity.BidId = bid.BidId;
                 activity.BidderId = bid.BidderId;
                 activity.Amount = bid.Amount;
                 break;
-            case "AuctionClosed":
+            case IntegrationEventTypes.AuctionClosed:
                 var closed = Deserialize<AuctionClosedPayload>(envelope.Payload);
                 ValidateAuction(closed.AuctionId, closed.AuctionVersion, envelope);
                 activity.BidderId = closed.FinalBidderId;
                 activity.Amount = closed.FinalBidAmount;
                 break;
-            case "WinnerSelected":
+            case IntegrationEventTypes.WinnerSelected:
                 var winner = Deserialize<WinnerSelectedPayload>(envelope.Payload);
                 ValidateAuction(winner.AuctionId, winner.AuctionVersion, envelope);
                 activity.BidId = winner.WinningBidId;

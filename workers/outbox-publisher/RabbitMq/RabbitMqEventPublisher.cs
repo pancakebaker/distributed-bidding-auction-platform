@@ -2,6 +2,7 @@
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
 using System.Text;
+using DistributedBidding.IntegrationContracts;
 using Microsoft.Extensions.Options;
 using outbox_publisher.Options;
 using outbox_publisher.Outbox;
@@ -29,9 +30,9 @@ public sealed class RabbitMqEventPublisher(
     /// </summary>
     public string RoutingKeyFor(OutboxMessage message) => message.EventType switch
     {
-        "BidAccepted" => BidAcceptedRoutingKey,
-        "AuctionClosed" => AuctionClosedRoutingKey,
-        "WinnerSelected" => WinnerSelectedRoutingKey,
+        IntegrationEventTypes.BidAccepted => BidAcceptedRoutingKey,
+        IntegrationEventTypes.AuctionClosed => AuctionClosedRoutingKey,
+        IntegrationEventTypes.WinnerSelected => WinnerSelectedRoutingKey,
         _ => $"auction.{message.EventType.ToLowerInvariant()}"
     };
 
