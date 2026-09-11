@@ -28,6 +28,7 @@ public sealed class LaravelTokenValidatorTests : IDisposable
         var identity = Validator().Validate(CreateToken());
         Assert.Equal("admin-1", identity.Subject);
         Assert.Equal("admin@example.com", identity.Email);
+        Assert.Equal("admin", identity.Role);
     }
 
     [Theory]

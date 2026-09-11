@@ -39,7 +39,12 @@ function verifier(now = 1_500): JwtAdminTokenVerifier {
 }
 
 void test('accepts a valid RS256 admin token', () => {
-  assert.equal(verifier().verify(token()).jti, 'token-1');
+  const claims = verifier().verify(token());
+  assert.equal(claims.role, 'admin');
+  assert.deepEqual(claims.permissions, ['access-live-feed-admin']);
+  assert.equal(claims.iss, 'auction-client');
+  assert.equal(claims.aud, 'live-feed-admin');
+  assert.equal(claims.jti, 'token-1');
 });
 function assertRejected(overrides: Record<string, unknown>, code: string): void {
   assert.throws(
