@@ -4,8 +4,13 @@
 import React from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import { LiveFeedAdminApp } from '../components/live-feed-admin-app.js';
-import type { LiveFeedDashboardSnapshot } from '../../application/diagnostics/get-live-feed-dashboard.js';
-import { liveFeedAdminRootId, liveFeedAdminStateScriptId } from '../server/render-live-feed-admin.js';
+import type {
+  LiveFeedDashboardSnapshot,
+} from '../../application/diagnostics/get-live-feed-dashboard.js';
+import {
+  liveFeedAdminRootId,
+  liveFeedAdminStateScriptId,
+} from '../server/render-live-feed-admin.js';
 
 const root = document.getElementById(liveFeedAdminRootId);
 const stateElement = document.getElementById(liveFeedAdminStateScriptId);

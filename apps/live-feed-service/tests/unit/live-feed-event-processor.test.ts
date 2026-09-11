@@ -5,8 +5,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { LiveFeedEventProcessor } from '../../src/application/processors/live-feed-event-processor.js';
-import type { LiveFeedPublisher, LiveFeedUpdate } from '../../src/application/ports/live-feed-publisher.js';
-import type { EventAcceptanceResult, LiveStateStore } from '../../src/application/ports/live-state-store.js';
+import type {
+  LiveFeedPublisher,
+  LiveFeedUpdate,
+} from '../../src/application/ports/live-feed-publisher.js';
+import type {
+  EventAcceptanceResult,
+  LiveStateStore,
+} from '../../src/application/ports/live-state-store.js';
 import type { BidAcceptedEnvelope } from '../../src/domain/events.js';
 
 function event(): BidAcceptedEnvelope {
@@ -37,7 +43,10 @@ void test('accepted events publish the existing event name and payload through t
   const updates: LiveFeedUpdate[] = [];
   const publisher: LiveFeedPublisher = { publish: (update) => updates.push(update) };
   const envelope = event();
-  const processor = new LiveFeedEventProcessor(publisher, stateStore({ status: 'accepted', previousVersion: 6 }));
+  const processor = new LiveFeedEventProcessor(
+    publisher,
+    stateStore({ status: 'accepted', previousVersion: 6 }),
+  );
 
   const result = await processor.process(envelope);
 

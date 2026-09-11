@@ -7,7 +7,10 @@ import type {
   LiveFeedHistoryFilters,
   LiveFeedHistoryRow,
 } from '../../../application/history/live-feed-history-types.js';
-import { parseHistoryFilters, queryLiveFeedHistory } from '../../../application/history/query-live-feed-history.js';
+import {
+  parseHistoryFilters,
+  queryLiveFeedHistory,
+} from '../../../application/history/query-live-feed-history.js';
 import type { LiveFeedHistoryStore } from '../../../application/ports/live-feed-history-store.js';
 import type { AdminAuth } from './admin-auth.js';
 import { applyAdminSecurityHeaders } from './admin-security.js';
@@ -23,11 +26,17 @@ export type AdminHistoryRouteDependencies = {
 /**
  * Registers bounded, read-only history endpoints under the existing admin boundary.
  */
-export function registerAdminHistoryRoutes(app: Express, dependencies: AdminHistoryRouteDependencies): void {
+export function registerAdminHistoryRoutes(
+  app: Express,
+  dependencies: AdminHistoryRouteDependencies,
+): void {
   app.get('/admin/api/history', async (request, response, next) => {
     applyAdminSecurityHeaders(response);
     if (!isAuthorized(request.get('cookie'), dependencies.auth)) {
-      response.status(401).json({ error: 'admin_authorization_required', message: 'Admin authorization is required.' });
+      response.status(401).json({
+        error: 'admin_authorization_required',
+        message: 'Admin authorization is required.',
+      });
       return;
     }
 
@@ -43,7 +52,10 @@ export function registerAdminHistoryRoutes(app: Express, dependencies: AdminHist
   app.get('/admin/api/history.pdf', async (request, response, next) => {
     applyAdminSecurityHeaders(response);
     if (!isAuthorized(request.get('cookie'), dependencies.auth)) {
-      response.status(401).json({ error: 'admin_authorization_required', message: 'Admin authorization is required.' });
+      response.status(401).json({
+        error: 'admin_authorization_required',
+        message: 'Admin authorization is required.',
+      });
       return;
     }
 
@@ -110,7 +122,9 @@ export function writeHistoryPdf(
   document.text(`Returned: ${rows.length}`);
   document.moveDown(1);
 
-  document.fontSize(9).text('Processed Time | Event Type | Auction ID | Version | Outcome', { underline: true });
+  document
+    .fontSize(9)
+    .text('Processed Time | Event Type | Auction ID | Version | Outcome', { underline: true });
   document.moveDown(0.25);
 
   for (const row of rows) {

@@ -29,6 +29,8 @@ void test('admin publisher emits safe activity only to the admin room', () => {
 
   publisher.publish(activity);
 
-  assert.deepEqual(calls, [{ room: adminLiveFeedRoom, event: adminActivityEvent, payload: activity }]);
+  assert.deepEqual(calls, [
+    { room: adminLiveFeedRoom, event: adminActivityEvent, payload: activity },
+  ]);
   assert.notEqual(calls[0]?.payload, activity);
 });

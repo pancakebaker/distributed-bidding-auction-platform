@@ -1,7 +1,13 @@
 /**
  * Auction display, lifecycle, and bid-error helpers shared by public auction pages.
  */
-import type { ApiErrorResponse, AuctionDetail, AuctionSummary, LiveAuctionClosed, LiveStatus } from '../../types';
+import type {
+    ApiErrorResponse,
+    AuctionDetail,
+    AuctionSummary,
+    LiveAuctionClosed,
+    LiveStatus,
+} from '../../types';
 
 /**
  * Formats auction currency values for display.
@@ -42,7 +48,10 @@ export function statusTone(status: string) {
 /**
  * Derives the current auction countdown label.
  */
-export function getCountdown(auction: Pick<AuctionSummary, 'status' | 'startTimeUtc' | 'endTimeUtc'>, now: number) {
+export function getCountdown(
+    auction: Pick<AuctionSummary, 'status' | 'startTimeUtc' | 'endTimeUtc'>,
+    now: number,
+) {
     const starts = new Date(auction.startTimeUtc).getTime();
     const ends = new Date(auction.endTimeUtc).getTime();
 
@@ -69,7 +78,10 @@ function duration(ms: number) {
 /**
  * Applies a non-stale auction closure event to detail state.
  */
-export function applyAuctionClosed(current: AuctionDetail | null, event: LiveAuctionClosed): AuctionDetail | null {
+export function applyAuctionClosed(
+    current: AuctionDetail | null,
+    event: LiveAuctionClosed,
+): AuctionDetail | null {
     if (!current || event.auctionVersion < current.version) {
         return current;
     }
@@ -97,7 +109,11 @@ export function describeBidError(apiError: ApiErrorResponse | null, caught: unkn
     }
 
     if (apiError.code === 'bid_below_minimum' && apiError.details?.minimumValidBid !== undefined) {
-        return 'Bid is below the current minimum of ' + formatMoney(apiError.details.minimumValidBid) + '.';
+        return (
+            'Bid is below the current minimum of ' +
+            formatMoney(apiError.details.minimumValidBid) +
+            '.'
+        );
     }
 
     if (

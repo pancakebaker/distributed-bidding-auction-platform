@@ -10,9 +10,13 @@ import type { LiveFeedStreamRecord } from '../../application/streams/create-live
 const sourceHighWaterMark = 1;
 
 /**
- * Registers the read-only NDJSON diagnostics endpoint without exposing application or infrastructure types.
+ * Registers the read-only NDJSON diagnostics endpoint without exposing application
+ * or infrastructure types.
  */
-export function registerLiveFeedStreamRoute(app: Express, createRecords: () => Iterable<LiveFeedStreamRecord>): void {
+export function registerLiveFeedStreamRoute(
+  app: Express,
+  createRecords: () => Iterable<LiveFeedStreamRecord>,
+): void {
   app.get('/diagnostics/live-feed/stream', (_request, response, next) => {
     const controller = new AbortController();
     const abortOnDisconnect = () => {

@@ -4,7 +4,9 @@
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { LiveFeedAdminApp } from '../components/live-feed-admin-app.js';
-import type { LiveFeedDashboardSnapshot } from '../../application/diagnostics/get-live-feed-dashboard.js';
+import type {
+  LiveFeedDashboardSnapshot,
+} from '../../application/diagnostics/get-live-feed-dashboard.js';
 
 const rootId = 'live-feed-admin-root';
 const stateScriptId = 'live-feed-admin-state';

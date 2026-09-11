@@ -15,7 +15,12 @@ export class ApplicationError extends Error {
    */
   public readonly code: string;
 
-  public constructor(message: string, statusCode = 500, code = 'internal_error', options?: ErrorOptions) {
+  public constructor(
+    message: string,
+    statusCode = 500,
+    code = 'internal_error',
+    options?: ErrorOptions,
+  ) {
     super(message, options);
     this.name = 'ApplicationError';
     this.statusCode = statusCode;

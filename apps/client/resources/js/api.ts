@@ -1,9 +1,18 @@
 /**
  * Browser-side Bidding API client used by the Laravel React auction demo.
  */
-import type { ApiErrorResponse, AuctionDetail, AuctionSummary, Bid, PlaceBidResponse } from './types';
+import type {
+    ApiErrorResponse,
+    AuctionDetail,
+    AuctionSummary,
+    Bid,
+    PlaceBidResponse,
+} from './types';
 
-const biddingApiUrl = (import.meta.env.VITE_BIDDING_API_URL ?? 'http://localhost:5000').replace(/\/$/, '');
+const biddingApiUrl = (import.meta.env.VITE_BIDDING_API_URL ?? 'http://localhost:5000').replace(
+    /\/$/,
+    '',
+);
 
 /**
  * Error wrapper that preserves structured Bidding API failure details for the UI.
@@ -82,9 +91,14 @@ export function getAuctionBids(id: string): Promise<Bid[]> {
 }
 
 /**
- * Submits a bid command with a client-generated correlation ID for tracing through the demo pipeline.
+ * Submits a bid command with a client-generated correlation ID for tracing through
+ * the demo pipeline.
  */
-export function placeBid(auctionId: string, bidderId: string, amount: number): Promise<PlaceBidResponse> {
+export function placeBid(
+    auctionId: string,
+    bidderId: string,
+    amount: number,
+): Promise<PlaceBidResponse> {
     const correlationId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
     return request<PlaceBidResponse>(`/api/auctions/${auctionId}/bids`, {

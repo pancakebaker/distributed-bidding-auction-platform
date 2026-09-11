@@ -5,7 +5,14 @@ import React, { StrictMode, useCallback, useEffect, useRef, useState } from 'rea
 import type { ChangeEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 
-type AdminPage = 'dashboard' | 'users' | 'pages' | 'faqs' | 'audit-logs' | 'exports' | 'notification-preferences';
+type AdminPage =
+    | 'dashboard'
+    | 'users'
+    | 'pages'
+    | 'faqs'
+    | 'audit-logs'
+    | 'exports'
+    | 'notification-preferences';
 
 type AdminNavigationItem = {
     label: string;
@@ -335,7 +342,10 @@ export function useAdminNavigation(initialBootstrap: AdminBootstrap): AdminNavig
             const target = event.target;
             const anchor = target instanceof Element ? target.closest('a') : null;
 
-            if (!(anchor instanceof HTMLAnchorElement) || !shouldInterceptAdminLink(event, anchor)) {
+            if (
+                !(anchor instanceof HTMLAnchorElement) ||
+                !shouldInterceptAdminLink(event, anchor)
+            ) {
                 return;
             }
 
@@ -405,12 +415,18 @@ export function AdminApp({ bootstrap }: { bootstrap: AdminBootstrap }) {
             onRetry={navigation.retry}
             page={navigation.bootstrap.page}
         >
-            {navigation.bootstrap.page === 'dashboard' && <DashboardPage {...navigation.bootstrap.props} />}
+            {navigation.bootstrap.page === 'dashboard' && (
+                <DashboardPage {...navigation.bootstrap.props} />
+            )}
             {navigation.bootstrap.page === 'users' && <UsersPage {...navigation.bootstrap.props} />}
             {navigation.bootstrap.page === 'pages' && renderPagesPage(navigation.bootstrap.props)}
             {navigation.bootstrap.page === 'faqs' && renderFaqsPage(navigation.bootstrap.props)}
-            {navigation.bootstrap.page === 'audit-logs' && <AuditLogPage {...navigation.bootstrap.props} />}
-            {navigation.bootstrap.page === 'exports' && <ExportsPage {...navigation.bootstrap.props} />}
+            {navigation.bootstrap.page === 'audit-logs' && (
+                <AuditLogPage {...navigation.bootstrap.props} />
+            )}
+            {navigation.bootstrap.page === 'exports' && (
+                <ExportsPage {...navigation.bootstrap.props} />
+            )}
             {navigation.bootstrap.page === 'notification-preferences' && (
                 <NotificationPreferencesPage {...navigation.bootstrap.props} />
             )}
@@ -440,8 +456,14 @@ function AdminLayout({
             <section aria-busy={loading} aria-label="Admin content" className="admin-main">
                 <AdminHeader page={page} />
                 {loading && (
-                    <div aria-label="Loading admin page" className="admin-navigation-progress" role="status">
-                        <span className="admin-navigation-progress-label">Loading admin page...</span>
+                    <div
+                        aria-label="Loading admin page"
+                        className="admin-navigation-progress"
+                        role="status"
+                    >
+                        <span className="admin-navigation-progress-label">
+                            Loading admin page...
+                        </span>
                     </div>
                 )}
                 {error && <NavigationError message={error} onRetry={onRetry} />}
@@ -596,7 +618,11 @@ function UsersPage({ pagination, users }: { users: AdminUser[]; pagination: Pagi
 
     return (
         <section className="admin-panel">
-            <PanelHeader detail={page.rangeLabel} meta={`${pagination.per_page} per page`} title="Registered users" />
+            <PanelHeader
+                detail={page.rangeLabel}
+                meta={`${pagination.per_page} per page`}
+                title="Registered users"
+            />
             <div className="admin-table-wrap">
                 <table className="admin-table">
                     <thead>
@@ -676,7 +702,9 @@ function PageList({ flash, pages }: { flash?: string | null; pages: CmsPageRow[]
                                 <td>{page.title}</td>
                                 <td>/pages/{page.slug}</td>
                                 <td>
-                                    <StatusBadge tone={page.status === 'published' ? 'success' : 'neutral'}>
+                                    <StatusBadge
+                                        tone={page.status === 'published' ? 'success' : 'neutral'}
+                                    >
                                         {page.status}
                                     </StatusBadge>
                                 </td>
@@ -729,7 +757,12 @@ function PageForm({
                 title={method === 'POST' ? 'Create page' : 'Edit page'}
             />
             {flash && <p className="admin-flash">{flash}</p>}
-            <form action={action} className="admin-form" method="post" onSubmit={() => setSubmitting(true)}>
+            <form
+                action={action}
+                className="admin-form"
+                method="post"
+                onSubmit={() => setSubmitting(true)}
+            >
                 <input name="_token" type="hidden" value={token} />
                 {method === 'PUT' && <input name="_method" type="hidden" value="PUT" />}
                 <AdminField
@@ -878,7 +911,12 @@ function FaqForm({
                 title={method === 'POST' ? 'Create FAQ' : 'Edit FAQ'}
             />
             {flash && <p className="admin-flash">{flash}</p>}
-            <form action={action} className="admin-form" method="post" onSubmit={() => setSubmitting(true)}>
+            <form
+                action={action}
+                className="admin-form"
+                method="post"
+                onSubmit={() => setSubmitting(true)}
+            >
                 <input name="_token" type="hidden" value={token} />
                 {method === 'PUT' && <input name="_method" type="hidden" value="PUT" />}
                 <AdminField
@@ -927,7 +965,11 @@ function AuditLogPage({ logs, pagination }: { logs: AuditLogRow[]; pagination: P
 
     return (
         <section className="admin-panel">
-            <PanelHeader detail={page.rangeLabel} meta={`${pagination.per_page} per page`} title="Audit events" />
+            <PanelHeader
+                detail={page.rangeLabel}
+                meta={`${pagination.per_page} per page`}
+                title="Audit events"
+            />
             {logs.length === 0 ? (
                 <p className="admin-empty">No audit events yet.</p>
             ) : (
@@ -953,7 +995,8 @@ function AuditLogPage({ logs, pagination }: { logs: AuditLogRow[]; pagination: P
                                     <td>{log.actor_name}</td>
                                     <td>{log.action_label}</td>
                                     <td>
-                                        {log.auditable_type ?? 'Unknown'} #{log.auditable_id ?? 'n/a'}
+                                        {log.auditable_type ?? 'Unknown'} #
+                                        {log.auditable_id ?? 'n/a'}
                                     </td>
                                     <td>{log.summary}</td>
                                 </tr>
@@ -985,7 +1028,11 @@ function ExportsPage({
 
     return (
         <section className="admin-panel">
-            <PanelHeader detail={page.rangeLabel} meta={`${pagination.per_page} per page`} title="Audit log exports" />
+            <PanelHeader
+                detail={page.rangeLabel}
+                meta={`${pagination.per_page} per page`}
+                title="Audit log exports"
+            />
             {flash && <p className="admin-flash">{flash}</p>}
             <form
                 action={requestAction}
@@ -1021,14 +1068,21 @@ function ExportsPage({
                                     <td>{formatDateTime(item.created_at)}</td>
                                     <td>{item.type.replace('_', ' ')}</td>
                                     <td>
-                                        <StatusBadge tone={item.status === 'completed' ? 'success' : 'neutral'}>
+                                        <StatusBadge
+                                            tone={
+                                                item.status === 'completed' ? 'success' : 'neutral'
+                                            }
+                                        >
                                             {item.status}
                                         </StatusBadge>
                                     </td>
                                     <td>{formatDateTime(item.completed_at)}</td>
                                     <td>
                                         {item.download_url ? (
-                                            <a className="admin-table-link" href={item.download_url}>
+                                            <a
+                                                className="admin-table-link"
+                                                href={item.download_url}
+                                            >
                                                 Download
                                             </a>
                                         ) : (
@@ -1074,7 +1128,12 @@ function NotificationPreferencesPage({
                 title="Notification preferences"
             />
             {flash && <p className="admin-flash">{flash}</p>}
-            <form action={action} className="admin-form" method="post" onSubmit={() => setSubmitting(true)}>
+            <form
+                action={action}
+                className="admin-form"
+                method="post"
+                onSubmit={() => setSubmitting(true)}
+            >
                 <input name="_token" type="hidden" value={csrfToken} />
                 <input name="_method" type="hidden" value="PUT" />
                 <input name="cms_publication_updates_enabled" type="hidden" value="0" />
@@ -1082,7 +1141,9 @@ function NotificationPreferencesPage({
                     <input
                         checked={values.cms_publication_updates_enabled}
                         name="cms_publication_updates_enabled"
-                        onChange={(event) => update('cms_publication_updates_enabled', event.target.checked)}
+                        onChange={(event) =>
+                            update('cms_publication_updates_enabled', event.target.checked)
+                        }
                         type="checkbox"
                         value="1"
                     />
@@ -1094,7 +1155,9 @@ function NotificationPreferencesPage({
                     <input
                         checked={values.database_notifications_enabled}
                         name="database_notifications_enabled"
-                        onChange={(event) => update('database_notifications_enabled', event.target.checked)}
+                        onChange={(event) =>
+                            update('database_notifications_enabled', event.target.checked)
+                        }
                         type="checkbox"
                         value="1"
                     />
@@ -1196,16 +1259,32 @@ function ValidationMessage({ message }: { message?: string }) {
     return <small className="admin-validation">{message}</small>;
 }
 
-function StatusBadge({ children, tone }: { children: React.ReactNode; tone: 'neutral' | 'success' }) {
-    return <span className={tone === 'success' ? 'admin-status yes' : 'admin-status'}>{children}</span>;
+function StatusBadge({
+    children,
+    tone,
+}: {
+    children: React.ReactNode;
+    tone: 'neutral' | 'success';
+}) {
+    return (
+        <span className={tone === 'success' ? 'admin-status yes' : 'admin-status'}>{children}</span>
+    );
 }
 
 function PaginationControls({ page }: { page: ReturnType<typeof useAdminPagination> }) {
     return (
         <nav className="admin-pagination" aria-label="Admin pagination">
-            {page.previousUrl ? <a href={page.previousUrl}>Previous</a> : <span aria-disabled="true">Previous</span>}
+            {page.previousUrl ? (
+                <a href={page.previousUrl}>Previous</a>
+            ) : (
+                <span aria-disabled="true">Previous</span>
+            )}
             <span>{page.pageLabel}</span>
-            {page.nextUrl ? <a href={page.nextUrl}>Next</a> : <span aria-disabled="true">Next</span>}
+            {page.nextUrl ? (
+                <a href={page.nextUrl}>Next</a>
+            ) : (
+                <span aria-disabled="true">Next</span>
+            )}
         </nav>
     );
 }
@@ -1239,7 +1318,11 @@ const root = document.getElementById('admin-app');
 if (root) {
     createRoot(root).render(
         <StrictMode>
-            {window.__ADMIN_BOOTSTRAP__ ? <AdminApp bootstrap={window.__ADMIN_BOOTSTRAP__} /> : <MissingBootstrap />}
+            {window.__ADMIN_BOOTSTRAP__ ? (
+                <AdminApp bootstrap={window.__ADMIN_BOOTSTRAP__} />
+            ) : (
+                <MissingBootstrap />
+            )}
         </StrictMode>,
     );
 }

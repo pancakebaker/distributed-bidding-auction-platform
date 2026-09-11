@@ -128,7 +128,9 @@ export class LiveFeedRabbitMqConsumer {
 
   private async configureTopology(channel: Channel): Promise<void> {
     await channel.assertExchange(this.config.rabbitMqExchange, 'topic', { durable: true });
-    await channel.assertExchange(this.config.rabbitMqDeadLetterExchange, 'direct', { durable: true });
+    await channel.assertExchange(this.config.rabbitMqDeadLetterExchange, 'direct', {
+      durable: true,
+    });
     await channel.assertQueue(this.config.rabbitMqDeadLetterQueue, { durable: true });
     await channel.bindQueue(
       this.config.rabbitMqDeadLetterQueue,
@@ -171,7 +173,9 @@ export class LiveFeedRabbitMqConsumer {
         channel.ack(message);
       } catch (error) {
         const messageText = error instanceof Error ? error.message : 'Live-feed processing failed.';
-        console.warn('Transient live-feed processing failure; message will be requeued.', { message: messageText });
+        console.warn('Transient live-feed processing failure; message will be requeued.', {
+          message: messageText,
+        });
         channel.nack(message, false, true);
       }
     });

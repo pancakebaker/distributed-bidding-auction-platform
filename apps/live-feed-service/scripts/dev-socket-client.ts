@@ -18,16 +18,20 @@ const socket = io(liveFeedUrl, {
 
 socket.on('connect', () => {
   console.log(`Connected to ${liveFeedUrl}`);
-  socket.emit('auction:subscribe', auctionId, (response: { ok: boolean; room?: string; error?: string }) => {
-    if (!response.ok) {
-      console.error(`Subscription failed: ${response.error}`);
-      process.exitCode = 1;
-      socket.disconnect();
-      return;
-    }
+  socket.emit(
+    'auction:subscribe',
+    auctionId,
+    (response: { ok: boolean; room?: string; error?: string }) => {
+      if (!response.ok) {
+        console.error(`Subscription failed: ${response.error}`);
+        process.exitCode = 1;
+        socket.disconnect();
+        return;
+      }
 
-    console.log(`Subscribed to ${response.room}`);
-  });
+      console.log(`Subscribed to ${response.room}`);
+    },
+  );
 });
 
 socket.on('bid:accepted', (payload) => {

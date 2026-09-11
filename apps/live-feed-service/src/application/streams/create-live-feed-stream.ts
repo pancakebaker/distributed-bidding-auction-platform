@@ -23,7 +23,9 @@ export type LiveFeedStreamSnapshot = {
 /**
  * Converts one existing runtime snapshot into a small iterable of line-oriented records.
  */
-export function createLiveFeedStreamRecords(snapshot: LiveFeedStreamSnapshot): LiveFeedStreamRecord[] {
+export function createLiveFeedStreamRecords(
+  snapshot: LiveFeedStreamSnapshot,
+): LiveFeedStreamRecord[] {
   return [
     {
       type: 'runtime',

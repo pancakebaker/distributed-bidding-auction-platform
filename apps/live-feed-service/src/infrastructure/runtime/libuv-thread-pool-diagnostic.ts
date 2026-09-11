@@ -33,41 +33,64 @@ export type LibuvDiagnosticResult = {
 /**
  * Runs asynchronous PBKDF2 work using Node's native libuv-backed crypto API.
  */
-export function runLibuvThreadPoolDiagnostic(options: LibuvDiagnosticOptions = {}): Promise<LibuvDiagnosticResult> {
+export function runLibuvThreadPoolDiagnostic(
+  options: LibuvDiagnosticOptions = {},
+): Promise<LibuvDiagnosticResult> {
   const iterations = options.iterations ?? defaultIterations;
   const keyLength = options.keyLength ?? defaultKeyLength;
   try {
     validateOptions(iterations, keyLength);
   } catch (error) {
-    return Promise.reject(error instanceof Error ? error : new Error('Thread-pool diagnostic validation failed.'));
+    return Promise.reject(
+      error instanceof Error ? error : new Error('Thread-pool diagnostic validation failed.'),
+    );
   }
 
   if (options.signal?.aborted) {
-    return Promise.reject(new ApplicationError('Thread-pool diagnostic was cancelled.', 499, 'diagnostic_cancelled'));
+    return Promise.reject(
+      new ApplicationError('Thread-pool diagnostic was cancelled.', 499, 'diagnostic_cancelled'),
+    );
   }
 
   const startedAt = performance.now();
 
   return new Promise((resolve, reject) => {
-    pbkdf2('live-feed-diagnostic-input', 'live-feed-diagnostic-salt', iterations, keyLength, 'sha256', (error) => {
-      if (error) {
-        reject(new ApplicationError('Thread-pool diagnostic failed.', 500, 'diagnostic_failed', { cause: error }));
-        return;
-      }
+    pbkdf2(
+      'live-feed-diagnostic-input',
+      'live-feed-diagnostic-salt',
+      iterations,
+      keyLength,
+      'sha256',
+      (error) => {
+        if (error) {
+          reject(
+            new ApplicationError('Thread-pool diagnostic failed.', 500, 'diagnostic_failed', {
+              cause: error,
+            }),
+          );
+          return;
+        }
 
-      if (options.signal?.aborted) {
-        reject(new ApplicationError('Thread-pool diagnostic was cancelled.', 499, 'diagnostic_cancelled'));
-        return;
-      }
+        if (options.signal?.aborted) {
+          reject(
+            new ApplicationError(
+              'Thread-pool diagnostic was cancelled.',
+              499,
+              'diagnostic_cancelled',
+            ),
+          );
+          return;
+        }
 
-      resolve({
-        operation: 'pbkdf2',
-        durationMs: Math.max(0, performance.now() - startedAt),
-        iterations,
-        keyLength,
-        threadPoolBacked: true,
-      });
-    });
+        resolve({
+          operation: 'pbkdf2',
+          durationMs: Math.max(0, performance.now() - startedAt),
+          iterations,
+          keyLength,
+          threadPoolBacked: true,
+        });
+      },
+    );
   });
 }
 

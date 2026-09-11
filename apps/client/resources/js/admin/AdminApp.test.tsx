@@ -91,7 +91,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'dashboard',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Dashboard' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Dashboard',
+                    })),
                     props: {
                         metrics: [
                             { label: 'Total users', value: 12 },
@@ -110,7 +113,9 @@ describe('admin UI', () => {
                                 summary: 'About',
                             },
                         ],
-                        auditActionCounts: [{ action: 'page.updated', label: 'Page Updated', total: 3 }],
+                        auditActionCounts: [
+                            { action: 'page.updated', label: 'Page Updated', total: 3 },
+                        ],
                     },
                 }}
             />,
@@ -119,7 +124,10 @@ describe('admin UI', () => {
         expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
         expect(screen.getByRole('link', { name: 'Pages' })).toHaveAttribute('href', '/admin/pages');
         expect(screen.getByRole('link', { name: 'FAQs' })).toHaveAttribute('href', '/admin/faqs');
-        expect(screen.getByRole('link', { name: 'Audit Log' })).toHaveAttribute('href', '/admin/audit-logs');
+        expect(screen.getByRole('link', { name: 'Audit Log' })).toHaveAttribute(
+            'href',
+            '/admin/audit-logs',
+        );
         expect(screen.getByText('Recent CMS changes')).toBeInTheDocument();
         expect(screen.getAllByText('Page Updated')[0]).toBeInTheDocument();
     });
@@ -129,7 +137,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'users',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Users' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Users',
+                    })),
                     props: {
                         users: [
                             {
@@ -148,7 +159,10 @@ describe('admin UI', () => {
 
         expect(screen.getByRole('heading', { name: 'Users' })).toBeInTheDocument();
         expect(screen.getByRole('cell', { name: 'Admin User' })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute('href', '/admin/users?page=2');
+        expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute(
+            'href',
+            '/admin/users?page=2',
+        );
     });
 
     it('renders page list rows with creator and updater names', () => {
@@ -156,7 +170,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'pages',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Pages' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Pages',
+                    })),
                     props: {
                         mode: 'index',
                         pages: [
@@ -180,7 +197,10 @@ describe('admin UI', () => {
         expect(screen.getByRole('heading', { level: 1, name: 'Pages' })).toBeInTheDocument();
         expect(screen.getByRole('cell', { name: 'About' })).toBeInTheDocument();
         expect(screen.getByRole('cell', { name: 'Ada Admin' })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/admin/pages/about/edit');
+        expect(screen.getByRole('link', { name: 'Edit' })).toHaveAttribute(
+            'href',
+            '/admin/pages/about/edit',
+        );
     });
 
     it('renders page form validation errors and pending submit state', () => {
@@ -196,7 +216,14 @@ describe('admin UI', () => {
                         csrfToken: 'token',
                         statusOptions: ['draft', 'published'],
                         errors: { title: ['The title field is required.'] },
-                        page: { id: null, title: '', slug: '', body: '', status: 'draft', published_at: '' },
+                        page: {
+                            id: null,
+                            title: '',
+                            slug: '',
+                            body: '',
+                            status: 'draft',
+                            published_at: '',
+                        },
                     },
                 }}
             />,
@@ -212,7 +239,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'faqs',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'FAQs' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'FAQs',
+                    })),
                     props: {
                         mode: 'index',
                         faqs: [
@@ -260,7 +290,9 @@ describe('admin UI', () => {
         );
 
         expect(screen.getByDisplayValue('Can I cancel a bid?')).toBeInTheDocument();
-        expect(screen.getByDisplayValue('Accepted bids are authoritative in the bidding service.')).toBeInTheDocument();
+        expect(
+            screen.getByDisplayValue('Accepted bids are authoritative in the bidding service.'),
+        ).toBeInTheDocument();
         expect(screen.getByRole('checkbox', { name: 'Published' })).toBeChecked();
     });
 
@@ -269,7 +301,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'audit-logs',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Audit Log' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Audit Log',
+                    })),
                     props: {
                         logs: [
                             {
@@ -292,7 +327,10 @@ describe('admin UI', () => {
         expect(screen.getByRole('heading', { name: 'Audit Log' })).toBeInTheDocument();
         expect(screen.getByRole('cell', { name: 'Ada Admin' })).toBeInTheDocument();
         expect(screen.getByRole('cell', { name: 'Can I bid?' })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute('href', '/admin/audit-logs?page=2');
+        expect(screen.getByRole('link', { name: 'Next' })).toHaveAttribute(
+            'href',
+            '/admin/audit-logs?page=2',
+        );
     });
 
     it('renders an empty audit state', () => {
@@ -331,7 +369,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'exports',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Exports' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Exports',
+                    })),
                     props: {
                         requestAction: '/admin/audit-logs/export',
                         csrfToken: 'token',
@@ -353,8 +394,13 @@ describe('admin UI', () => {
         );
 
         expect(screen.getByRole('heading', { name: 'Exports' })).toBeInTheDocument();
-        expect(screen.getByRole('link', { name: 'Download' })).toHaveAttribute('href', '/admin/exports/1/download');
-        fireEvent.submit(screen.getByRole('button', { name: 'Queue audit export' }).closest('form')!);
+        expect(screen.getByRole('link', { name: 'Download' })).toHaveAttribute(
+            'href',
+            '/admin/exports/1/download',
+        );
+        fireEvent.submit(
+            screen.getByRole('button', { name: 'Queue audit export' }).closest('form')!,
+        );
         expect(screen.getByRole('button', { name: 'Queueing...' })).toBeDisabled();
     });
 
@@ -403,7 +449,9 @@ describe('admin UI', () => {
             />,
         );
 
-        expect(screen.getByRole('heading', { name: 'Notification Preferences' })).toBeInTheDocument();
+        expect(
+            screen.getByRole('heading', { name: 'Notification Preferences' }),
+        ).toBeInTheDocument();
         expect(screen.getByRole('checkbox', { name: 'CMS publication updates' })).toBeChecked();
         expect(screen.getByRole('checkbox', { name: 'Database notifications' })).not.toBeChecked();
     });
@@ -440,7 +488,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'dashboard',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Dashboard' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Dashboard',
+                    })),
                     props: { metrics: [], recentAuditLogs: [], auditActionCounts: [] },
                 }}
             />,
@@ -449,7 +500,9 @@ describe('admin UI', () => {
         const shell = screen.getByLabelText('Admin content');
         fireEvent.click(screen.getByRole('link', { name: 'Pages' }));
 
-        await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Pages' })).toBeInTheDocument());
+        await waitFor(() =>
+            expect(screen.getByRole('heading', { level: 1, name: 'Pages' })).toBeInTheDocument(),
+        );
         expect(fetchMock).toHaveBeenCalledWith(
             expect.stringContaining('/admin/pages'),
             expect.objectContaining({ credentials: 'same-origin' }),
@@ -467,7 +520,10 @@ describe('admin UI', () => {
             <AdminApp
                 bootstrap={{
                     page: 'dashboard',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Dashboard' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Dashboard',
+                    })),
                     props: { metrics: [], recentAuditLogs: [], auditActionCounts: [] },
                 }}
             />,
@@ -477,16 +533,23 @@ describe('admin UI', () => {
 
         expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
         expect(screen.getByRole('status', { name: 'Loading admin page' })).toBeInTheDocument();
-        expect(screen.queryByText('Loading admin page...', { selector: 'p' })).not.toBeInTheDocument();
+        expect(
+            screen.queryByText('Loading admin page...', { selector: 'p' }),
+        ).not.toBeInTheDocument();
 
         response.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ page: 'pages', navigation, props: { mode: 'index', pages: [] } }),
+            json: () =>
+                Promise.resolve({ page: 'pages', navigation, props: { mode: 'index', pages: [] } }),
         } as Response);
 
-        await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Pages' })).toBeInTheDocument());
-        expect(screen.queryByRole('status', { name: 'Loading admin page' })).not.toBeInTheDocument();
+        await waitFor(() =>
+            expect(screen.getByRole('heading', { level: 1, name: 'Pages' })).toBeInTheDocument(),
+        );
+        expect(
+            screen.queryByRole('status', { name: 'Loading admin page' }),
+        ).not.toBeInTheDocument();
     });
 
     it('keeps the old page visible when navigation fails', async () => {
@@ -506,7 +569,9 @@ describe('admin UI', () => {
         fireEvent.click(screen.getByRole('link', { name: 'Pages' }));
 
         await waitFor(() =>
-            expect(screen.getByRole('heading', { name: 'Admin page unavailable' })).toBeInTheDocument(),
+            expect(
+                screen.getByRole('heading', { name: 'Admin page unavailable' }),
+            ).toBeInTheDocument(),
         );
         expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeInTheDocument();
     });
@@ -548,10 +613,13 @@ describe('admin UI', () => {
         secondResponse.resolve({
             ok: true,
             status: 200,
-            json: () => Promise.resolve({ page: 'users', navigation, props: { users: [], pagination } }),
+            json: () =>
+                Promise.resolve({ page: 'users', navigation, props: { users: [], pagination } }),
         } as Response);
 
-        await waitFor(() => expect(screen.getByRole('heading', { name: 'Users' })).toBeInTheDocument());
+        await waitFor(() =>
+            expect(screen.getByRole('heading', { name: 'Users' })).toBeInTheDocument(),
+        );
         expect(screen.queryByRole('heading', { name: 'Pages' })).not.toBeInTheDocument();
     });
     it('updates admin content when browser history emits popstate', async () => {
@@ -561,7 +629,10 @@ describe('admin UI', () => {
             json: () =>
                 Promise.resolve({
                     page: 'users',
-                    navigation: navigation.map((item) => ({ ...item, active: item.label === 'Users' })),
+                    navigation: navigation.map((item) => ({
+                        ...item,
+                        active: item.label === 'Users',
+                    })),
                     props: { users: [], pagination },
                 }),
         });
@@ -580,7 +651,9 @@ describe('admin UI', () => {
         window.history.pushState({}, '', '/admin/users');
         window.dispatchEvent(new PopStateEvent('popstate'));
 
-        await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: 'Users' })).toBeInTheDocument());
+        await waitFor(() =>
+            expect(screen.getByRole('heading', { level: 1, name: 'Users' })).toBeInTheDocument(),
+        );
         expect(fetchMock).toHaveBeenCalledWith(
             expect.stringContaining('/admin/users'),
             expect.objectContaining({ credentials: 'same-origin' }),

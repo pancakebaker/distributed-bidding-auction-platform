@@ -48,7 +48,9 @@ export function calculateAuctionActivity(input: ActivityInput): ActivityResult {
 
   for (let iteration = 0; iteration < iterations; iteration += 1) {
     for (let index = 0; index < input.samples.length; index += 1) {
-      checksum = (checksum + Math.trunc(Math.abs(input.samples[index]) * 1000) + iteration + index) % checksumModulo;
+      checksum =
+        (checksum + Math.trunc(Math.abs(input.samples[index]) * 1000) + iteration + index) %
+        checksumModulo;
     }
   }
 
@@ -78,14 +80,22 @@ function validateInput(samples: readonly number[], bucketCount: number, iteratio
   }
 }
 
-function createHistogram(samples: readonly number[], bucketCount: number, minimum: number, maximum: number): number[] {
+function createHistogram(
+  samples: readonly number[],
+  bucketCount: number,
+  minimum: number,
+  maximum: number,
+): number[] {
   const histogram = Array.from({ length: bucketCount }, () => 0);
 
   for (const sample of samples) {
     const bucket =
       minimum === maximum
         ? 0
-        : Math.min(bucketCount - 1, Math.floor(((sample - minimum) / (maximum - minimum)) * bucketCount));
+        : Math.min(
+            bucketCount - 1,
+            Math.floor(((sample - minimum) / (maximum - minimum)) * bucketCount),
+          );
     histogram[bucket] += 1;
   }
 
@@ -97,5 +107,8 @@ function percentile(sortedSamples: readonly number[], rank: number): number {
     return 0;
   }
 
-  return sortedSamples[Math.min(sortedSamples.length - 1, Math.ceil(sortedSamples.length * rank) - 1)] ?? 0;
+  return (
+    sortedSamples[Math.min(sortedSamples.length - 1, Math.ceil(sortedSamples.length * rank) - 1)] ??
+    0
+  );
 }

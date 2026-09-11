@@ -62,7 +62,10 @@ export class LiveFeedStateStore implements LiveStateStore {
    */
   public async acceptEvent(envelope: LiveFeedEnvelope): Promise<EventAcceptanceResult> {
     const result = await this.redis.eval(acceptEventScript, {
-      keys: [this.processedEventKey(envelope.eventId), this.auctionVersionKey(envelope.aggregateId)],
+      keys: [
+        this.processedEventKey(envelope.eventId),
+        this.auctionVersionKey(envelope.aggregateId),
+      ],
       arguments: [String(envelope.aggregateVersion), String(this.idempotencyTtlSeconds)],
     });
 

@@ -5,7 +5,10 @@ import React, { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import type { LiveFeedHistoryResult } from '../../application/history/live-feed-history-types.js';
 import type { LiveFeedDashboardSnapshot } from '../../application/diagnostics/get-live-feed-dashboard.js';
-import { adminActivityEvent, adminLiveFeedRoom } from '../../transport/websocket/admin-live-feed-publisher.js';
+import {
+  adminActivityEvent,
+  adminLiveFeedRoom,
+} from '../../transport/websocket/admin-live-feed-publisher.js';
 import { mergeRecentActivity } from './live-feed-admin-state.js';
 
 export type LiveFeedAdminAppProps = {
@@ -68,12 +71,15 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
         socket.disconnect();
       }
     });
-    socket.on(adminActivityEvent, (activity: LiveFeedDashboardSnapshot['recentActivity'][number]) => {
-      setState((current) => ({
-        ...current,
-        recentActivity: mergeRecentActivity(current.recentActivity, activity),
-      }));
-    });
+    socket.on(
+      adminActivityEvent,
+      (activity: LiveFeedDashboardSnapshot['recentActivity'][number]) => {
+        setState((current) => ({
+          ...current,
+          recentActivity: mergeRecentActivity(current.recentActivity, activity),
+        }));
+      },
+    );
 
     return () => {
       socket.off(adminActivityEvent);
@@ -144,7 +150,9 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
             <dd>{formatBytes(state.runtime.memory.heapTotal)}</dd>
             <dt>External / buffers</dt>
             <dd>
-              {formatBytes(state.runtime.memory.external)} / {formatBytes(state.runtime.memory.arrayBuffers)}
+              {formatBytes(state.runtime.memory.external)}
+              {' / '}
+              {formatBytes(state.runtime.memory.arrayBuffers)}
             </dd>
           </dl>
         </article>
@@ -157,7 +165,11 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
             <dd>{state.redis.connected ? 'Connected' : 'Degraded'}</dd>
             <dt>History PostgreSQL</dt>
             <dd>
-              {state.database.configured ? (state.database.available ? 'Configured' : 'Degraded') : 'Not configured'}
+              {state.database.configured
+                ? state.database.available
+                  ? 'Configured'
+                  : 'Degraded'
+                : 'Not configured'}
             </dd>
             <dt>WebSocket clients</dt>
             <dd>{state.websocket.connectedClients}</dd>

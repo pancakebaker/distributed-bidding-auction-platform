@@ -3,8 +3,14 @@
  */
 import { Worker } from 'node:worker_threads';
 import { ApplicationError } from '../../application/errors/application-error.js';
-import type { ActivityCalculator, ActivityCalculationOptions } from '../../application/ports/activity-calculator.js';
-import type { ActivityInput, ActivityResult } from '../../application/activity/calculate-auction-activity.js';
+import type {
+  ActivityCalculator,
+  ActivityCalculationOptions,
+} from '../../application/ports/activity-calculator.js';
+import type {
+  ActivityInput,
+  ActivityResult,
+} from '../../application/activity/calculate-auction-activity.js';
 
 /**
  * Default maximum duration for one diagnostic worker invocation.
@@ -21,8 +27,13 @@ export class WorkerActivityCalculator implements ActivityCalculator {
   /**
    * Runs the pure activity calculation in a Worker Thread.
    */
-  public calculate(input: ActivityInput, options: ActivityCalculationOptions = {}): Promise<ActivityResult> {
-    const workerFile = import.meta.url.endsWith('.ts') ? 'activity.worker.ts' : 'activity.worker.js';
+  public calculate(
+    input: ActivityInput,
+    options: ActivityCalculationOptions = {},
+  ): Promise<ActivityResult> {
+    const workerFile = import.meta.url.endsWith('.ts')
+      ? 'activity.worker.ts'
+      : 'activity.worker.js';
     const worker = new Worker(new URL(`./${workerFile}`, import.meta.url), {
       workerData: input,
       execArgv: workerExecArgv(),
@@ -33,11 +44,15 @@ export class WorkerActivityCalculator implements ActivityCalculator {
       let settled = false;
       const timeoutMs = options.timeoutMs ?? defaultActivityTimeoutMs;
       const timer = setTimeout(() => {
-        settleReject(new ApplicationError('Activity calculation timed out.', 504, 'activity_timeout'));
+        settleReject(
+          new ApplicationError('Activity calculation timed out.', 504, 'activity_timeout'),
+        );
       }, timeoutMs);
 
       const abort = () => {
-        settleReject(new ApplicationError('Activity calculation was cancelled.', 499, 'activity_cancelled'));
+        settleReject(
+          new ApplicationError('Activity calculation was cancelled.', 499, 'activity_cancelled'),
+        );
       };
 
       options.signal?.addEventListener('abort', abort, { once: true });
@@ -78,11 +93,21 @@ export class WorkerActivityCalculator implements ActivityCalculator {
       this.activeRejectors.set(worker, settleReject);
       worker.once('message', (result: ActivityResult) => settleResolve(result));
       worker.once('error', (error: Error) =>
-        settleReject(new ApplicationError('Activity worker failed.', 500, 'activity_worker_failed', { cause: error })),
+        settleReject(
+          new ApplicationError('Activity worker failed.', 500, 'activity_worker_failed', {
+            cause: error,
+          }),
+        ),
       );
       worker.once('exit', (code) => {
         if (code !== 0 && !settled) {
-          settleReject(new ApplicationError('Activity worker exited unexpectedly.', 500, 'activity_worker_failed'));
+          settleReject(
+            new ApplicationError(
+              'Activity worker exited unexpectedly.',
+              500,
+              'activity_worker_failed',
+            ),
+          );
         }
       });
     });
@@ -95,7 +120,11 @@ export class WorkerActivityCalculator implements ActivityCalculator {
     const workers = [...this.activeWorkers];
     for (const worker of workers) {
       this.activeRejectors.get(worker)?.(
-        new ApplicationError('Activity worker was terminated during shutdown.', 503, 'activity_worker_shutdown'),
+        new ApplicationError(
+          'Activity worker was terminated during shutdown.',
+          503,
+          'activity_worker_shutdown',
+        ),
       );
     }
 

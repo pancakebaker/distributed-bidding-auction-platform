@@ -57,7 +57,8 @@ export type LiveFeedService = {
 };
 
 /**
- * Creates the live-feed HTTP server, Socket.IO server, Redis adapter, state store, and RabbitMQ consumer.
+ * Creates the live-feed HTTP server, Socket.IO server, Redis adapter, state store,
+ * and RabbitMQ consumer.
  */
 export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): LiveFeedService {
   const config = loadConfig(overrides);
@@ -89,7 +90,11 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const recentActivity = new RecentActivityStore(50);
   const adminPublisher = new SocketIoAdminLiveFeedPublisher(io);
   const historyStore = createLiveFeedHistoryStore(config);
-  const activityObserver = new LiveFeedActivityObserver(recentActivity, adminPublisher, historyStore);
+  const activityObserver = new LiveFeedActivityObserver(
+    recentActivity,
+    adminPublisher,
+    historyStore,
+  );
   const processor = new LiveFeedEventProcessor(publisher, stateStore, activityObserver);
   const adminAuth = new AdminAuth();
   const adminTokenVerifier = new JwtAdminTokenVerifier({
@@ -144,7 +149,11 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     const processMetrics = getProcessMetrics();
     const eventLoop = eventLoopMonitor.snapshot();
     return {
-      samples: [...Object.values(processMetrics.memory), eventLoop.utilization, ...Object.values(eventLoop.delayMs)],
+      samples: [
+        ...Object.values(processMetrics.memory),
+        eventLoop.utilization,
+        ...Object.values(eventLoop.delayMs),
+      ],
     };
   });
   registerRuntimeThreadPoolRoute(app);
@@ -169,15 +178,18 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   });
 
   io.on('connection', (socket) => {
-    socket.on('admin:subscribe', (acknowledge?: (response: { ok: boolean; error?: string }) => void) => {
-      if (!adminAuth.isAuthorizedCookie(socket.handshake.headers.cookie)) {
-        acknowledge?.({ ok: false, error: 'admin_authorization_required' });
-        return;
-      }
+    socket.on(
+      'admin:subscribe',
+      (acknowledge?: (response: { ok: boolean; error?: string }) => void) => {
+        if (!adminAuth.isAuthorizedCookie(socket.handshake.headers.cookie)) {
+          acknowledge?.({ ok: false, error: 'admin_authorization_required' });
+          return;
+        }
 
-      void socket.join(adminLiveFeedRoom);
-      acknowledge?.({ ok: true });
-    });
+        void socket.join(adminLiveFeedRoom);
+        acknowledge?.({ ok: true });
+      },
+    );
     socket.emit('status', {
       service: 'live-feed-service',
       message: 'connected',

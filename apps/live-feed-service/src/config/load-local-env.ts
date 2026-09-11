@@ -1,5 +1,6 @@
 /**
- * Loads the optional repository-root environment file without changing deployment configuration semantics.
+ * Loads the optional repository-root environment file without changing deployment
+ * configuration semantics.
  */
 import { loadEnvFile } from 'node:process';
 import { dirname, resolve } from 'node:path';

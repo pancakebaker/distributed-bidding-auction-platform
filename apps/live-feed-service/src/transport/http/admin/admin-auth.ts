@@ -23,7 +23,10 @@ export class AdminAuth {
   private readonly sessionLifetimeSeconds: number;
 
   public constructor(options: AdminAuthOptions = {}) {
-    this.secret = options.secret ?? process.env.LIVE_FEED_ADMIN_SESSION_SECRET ?? randomBytes(32).toString('hex');
+    this.secret =
+      options.secret ??
+      process.env.LIVE_FEED_ADMIN_SESSION_SECRET ??
+      randomBytes(32).toString('hex');
     this.secure = options.secure ?? process.env.NODE_ENV === 'production';
     this.now = options.now ?? (() => Date.now());
     this.sessionLifetimeSeconds = options.sessionLifetimeSeconds ?? 900;
@@ -58,12 +61,20 @@ export class AdminAuth {
 
     const [expiresText, nonce, signature] = token.split('.');
     const expiresAt = Number(expiresText);
-    if (!Number.isInteger(expiresAt) || !nonce || !signature || expiresAt < Math.floor(this.now() / 1000)) return false;
+    if (
+      !Number.isInteger(expiresAt) ||
+      !nonce ||
+      !signature ||
+      expiresAt < Math.floor(this.now() / 1000)
+    )
+      return false;
 
     const expected = this.sign(expiresText + '.' + nonce);
     const providedBytes = Buffer.from(signature);
     const expectedBytes = Buffer.from(expected);
-    return providedBytes.length === expectedBytes.length && timingSafeEqual(providedBytes, expectedBytes);
+    return (
+      providedBytes.length === expectedBytes.length && timingSafeEqual(providedBytes, expectedBytes)
+    );
   }
 
   /**

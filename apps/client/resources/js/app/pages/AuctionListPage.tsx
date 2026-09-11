@@ -23,7 +23,9 @@ export function AuctionListPage() {
                 setAuctions(items);
                 setError(null);
             })
-            .catch((caught) => setError(caught instanceof Error ? caught.message : 'Unable to load auctions.'))
+            .catch((caught) =>
+                setError(caught instanceof Error ? caught.message : 'Unable to load auctions.'),
+            )
             .finally(() => setLoading(false));
     }, []);
 
@@ -33,13 +35,16 @@ export function AuctionListPage() {
                 <p className="eyebrow">Auction discovery</p>
                 <h1>Live bidding demo</h1>
                 <p>
-                    Browse seeded auctions, place bids through the authoritative .NET API, and watch accepted bids fan
-                    out in real time.
+                    Browse seeded auctions, place bids through the authoritative .NET API, and watch
+                    accepted bids fan out in real time.
                 </p>
             </section>
 
             {loading && (
-                <StateMessage title="Loading auctions" message="Fetching current auction state from the Bidding API." />
+                <StateMessage
+                    title="Loading auctions"
+                    message="Fetching current auction state from the Bidding API."
+                />
             )}
             {error && <StateMessage title="Bidding API unavailable" message={error} tone="error" />}
 
@@ -47,14 +52,18 @@ export function AuctionListPage() {
                 {auctions.map((auction) => (
                     <article className="auction-card" key={auction.id}>
                         <div className="card-row">
-                            <span className={`status-pill ${statusTone(auction.status)}`}>{auction.status}</span>
+                            <span className={`status-pill ${statusTone(auction.status)}`}>
+                                {auction.status}
+                            </span>
                             <span className="countdown">{getCountdown(auction, now)}</span>
                         </div>
                         <h2>{auction.title}</h2>
                         <dl className="metric-list">
                             <div>
                                 <dt>Current bid</dt>
-                                <dd>{formatMoney(auction.currentBidAmount ?? auction.startingPrice)}</dd>
+                                <dd>
+                                    {formatMoney(auction.currentBidAmount ?? auction.startingPrice)}
+                                </dd>
                             </div>
                             <div>
                                 <dt>Minimum increment</dt>
@@ -63,7 +72,8 @@ export function AuctionListPage() {
                             <div>
                                 <dt>Window</dt>
                                 <dd>
-                                    {formatDate(auction.startTimeUtc)} - {formatDate(auction.endTimeUtc)}
+                                    {formatDate(auction.startTimeUtc)} -{' '}
+                                    {formatDate(auction.endTimeUtc)}
                                 </dd>
                             </div>
                         </dl>

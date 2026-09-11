@@ -10,7 +10,10 @@ import { createHttpErrorHandler } from '../../src/transport/http/error-handler.j
 import { registerRuntimeChildProcessRoute } from '../../src/transport/http/runtime-child-process-route.js';
 import { registerRuntimeThreadPoolRoute } from '../../src/transport/http/runtime-thread-pool-route.js';
 
-async function request(app: express.Express, path: string): Promise<{ status: number; body: string }> {
+async function request(
+  app: express.Express,
+  path: string,
+): Promise<{ status: number; body: string }> {
   const server = createServer(app).listen(0);
   await once(server, 'listening');
   const address = server.address();
@@ -20,7 +23,9 @@ async function request(app: express.Express, path: string): Promise<{ status: nu
     const response = await fetch(`http://127.0.0.1:${address.port}${path}`);
     return { status: response.status, body: await response.text() };
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
   }
 }
 

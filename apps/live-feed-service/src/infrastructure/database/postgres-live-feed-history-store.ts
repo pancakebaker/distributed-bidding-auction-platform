@@ -54,9 +54,14 @@ export class PostgresLiveFeedHistoryStore implements LiveFeedHistoryStore {
         ],
       );
     } catch (error) {
-      throw new ApplicationError('Live-feed history persistence is unavailable.', 503, 'history_unavailable', {
-        cause: error,
-      });
+      throw new ApplicationError(
+        'Live-feed history persistence is unavailable.',
+        503,
+        'history_unavailable',
+        {
+          cause: error,
+        },
+      );
     }
   }
 
@@ -95,7 +100,9 @@ export class PostgresLiveFeedHistoryStore implements LiveFeedHistoryStore {
         values,
       );
     } catch (error) {
-      throw new ApplicationError('Live-feed history is unavailable.', 503, 'history_unavailable', { cause: error });
+      throw new ApplicationError('Live-feed history is unavailable.', 503, 'history_unavailable', {
+        cause: error,
+      });
     }
 
     const rows = result.rows.map(toHistoryRow);
@@ -133,7 +140,9 @@ export class UnavailableLiveFeedHistoryStore implements LiveFeedHistoryStore {
    * Rejects admin queries with a safe service-unavailable error.
    */
   public query(_filters: LiveFeedHistoryFilters): Promise<LiveFeedHistoryResult> {
-    return Promise.reject(new ApplicationError('Live-feed history is unavailable.', 503, 'history_unavailable'));
+    return Promise.reject(
+      new ApplicationError('Live-feed history is unavailable.', 503, 'history_unavailable'),
+    );
   }
 
   /**

@@ -3,7 +3,10 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseChildProbeOutput, runChildProcessProbe } from '../../src/infrastructure/runtime/child-process-probe.js';
+import {
+  parseChildProbeOutput,
+  runChildProcessProbe,
+} from '../../src/infrastructure/runtime/child-process-probe.js';
 
 void test('child-process probe returns isolated runtime metadata', async () => {
   const result = await runChildProcessProbe();
@@ -31,5 +34,8 @@ void test('child-process probe aborts and cleans up the request-local child', as
   const operation = runChildProcessProbe({ signal: controller.signal });
   controller.abort();
 
-  await assert.rejects(operation, (error: unknown) => error instanceof Error && error.name === 'ApplicationError');
+  await assert.rejects(
+    operation,
+    (error: unknown) => error instanceof Error && error.name === 'ApplicationError',
+  );
 });

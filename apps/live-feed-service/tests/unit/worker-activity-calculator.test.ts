@@ -53,7 +53,8 @@ void test('worker failures reject safely and clean up the worker', async () => {
   try {
     await assert.rejects(
       calculator.calculate({ samples: [Number.NaN], iterations: 1 }),
-      (error: unknown) => error instanceof ApplicationError && error.code === 'activity_worker_failed',
+      (error: unknown) =>
+        error instanceof ApplicationError && error.code === 'activity_worker_failed',
     );
     assert.equal(calculator.activeWorkerCount(), 0);
   } finally {

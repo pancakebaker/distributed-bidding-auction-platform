@@ -30,7 +30,10 @@ export class PostgresPool {
   /**
    * Executes a parameterized query through the shared pool.
    */
-  public query<Row extends QueryResultRow>(text: string, values: readonly unknown[] = []): Promise<QueryResult<Row>> {
+  public query<Row extends QueryResultRow>(
+    text: string,
+    values: readonly unknown[] = [],
+  ): Promise<QueryResult<Row>> {
     return this.pool.query<Row>(text, values as unknown[]);
   }
 

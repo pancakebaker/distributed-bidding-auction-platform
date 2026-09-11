@@ -19,7 +19,8 @@ export type AuctionSummary = {
 };
 
 /**
- * Detailed auction state used by the bidding screen and REST reconciliation after missed live events.
+ * Detailed auction state used by the bidding screen and REST reconciliation after
+ * missed live events.
  */
 export type AuctionDetail = AuctionSummary & {
     description: string;

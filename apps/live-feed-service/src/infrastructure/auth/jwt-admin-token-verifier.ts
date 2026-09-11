@@ -4,7 +4,10 @@
 import { createVerify } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { ApplicationError } from '../../application/errors/application-error.js';
-import type { AdminTokenClaims, AdminTokenVerifier } from '../../application/ports/admin-token-verifier.js';
+import type {
+  AdminTokenClaims,
+  AdminTokenVerifier,
+} from '../../application/ports/admin-token-verifier.js';
 
 /** Configuration for verifying Laravel-issued admin tokens. */
 export type JwtAdminTokenVerifierOptions = {
@@ -16,7 +19,8 @@ export type JwtAdminTokenVerifierOptions = {
 };
 
 /**
- * Pins RS256 and validates signature, issuer, audience, timing, subject, and admin permission claims.
+ * Pins RS256 and validates signature, issuer, audience, timing, subject, and admin
+ * permission claims.
  */
 export class JwtAdminTokenVerifier implements AdminTokenVerifier {
   private readonly now: () => number;
@@ -72,7 +76,9 @@ function validateClaims(
   const aud = audienceClaim(payload.aud);
   const nbf = payload.nbf === undefined ? undefined : numberClaim(payload.nbf);
   const permissions = Array.isArray(payload.permissions)
-    ? payload.permissions.filter((permission): permission is string => typeof permission === 'string')
+    ? payload.permissions.filter(
+        (permission): permission is string => typeof permission === 'string',
+      )
     : undefined;
 
   if (
@@ -86,7 +92,11 @@ function validateClaims(
     throw invalidToken();
   }
   if (payload.role !== 'admin' && !permissions?.includes('access-live-feed-admin')) {
-    throw new ApplicationError('Admin authorization is required.', 403, 'admin_authorization_required');
+    throw new ApplicationError(
+      'Admin authorization is required.',
+      403,
+      'admin_authorization_required',
+    );
   }
 
   return {
@@ -107,7 +117,9 @@ function parseJson<T>(encoded: string): T {
   try {
     return JSON.parse(decodeBase64Url(encoded).toString('utf8')) as T;
   } catch (error) {
-    throw new ApplicationError('Invalid admin token.', 401, 'invalid_admin_token', { cause: error });
+    throw new ApplicationError('Invalid admin token.', 401, 'invalid_admin_token', {
+      cause: error,
+    });
   }
 }
 
@@ -115,7 +127,9 @@ function decodeBase64Url(value: string): Buffer {
   try {
     return Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64');
   } catch (error) {
-    throw new ApplicationError('Invalid admin token.', 401, 'invalid_admin_token', { cause: error });
+    throw new ApplicationError('Invalid admin token.', 401, 'invalid_admin_token', {
+      cause: error,
+    });
   }
 }
 
@@ -129,7 +143,9 @@ function numberClaim(value: unknown): number {
 
 function audienceClaim(value: unknown): string[] {
   if (typeof value === 'string') return [value];
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : [];
 }
 
 function invalidToken(): ApplicationError {

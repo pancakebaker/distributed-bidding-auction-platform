@@ -13,7 +13,10 @@ import { createHttpErrorHandler } from '../../src/transport/http/error-handler.j
 import { registerLiveFeedActivityRoute } from '../../src/transport/http/live-feed-activity-route.js';
 import { WorkerActivityCalculator } from '../../src/infrastructure/workers/worker-activity-calculator.js';
 
-async function request(app: express.Express, path: string): Promise<{ status: number; body: string }> {
+async function request(
+  app: express.Express,
+  path: string,
+): Promise<{ status: number; body: string }> {
   const server = createServer(app).listen(0);
   await once(server, 'listening');
   const address = server.address();
@@ -23,7 +26,9 @@ async function request(app: express.Express, path: string): Promise<{ status: nu
     const response = await fetch(`http://127.0.0.1:${address.port}${path}`);
     return { status: response.status, body: await response.text() };
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
   }
 }
 
@@ -50,13 +55,17 @@ void test('activity endpoint returns the worker-backed diagnostic result', async
 void test('activity failures use the centralized safe HTTP error response', async () => {
   const app = express();
   const failingCalculator: ActivityCalculator = {
-    calculate: () => Promise.reject(new ApplicationError('private worker detail', 500, 'activity_worker_failed')),
+    calculate: () =>
+      Promise.reject(new ApplicationError('private worker detail', 500, 'activity_worker_failed')),
   };
   registerLiveFeedActivityRoute(app, failingCalculator, () => ({ samples: [1], iterations: 1 }));
   app.use(createHttpErrorHandler());
 
   const response = await request(app, '/diagnostics/live-feed/activity');
   assert.equal(response.status, 500);
-  assert.deepEqual(JSON.parse(response.body), { error: 'activity_worker_failed', message: 'Internal server error.' });
+  assert.deepEqual(JSON.parse(response.body), {
+    error: 'activity_worker_failed',
+    message: 'Internal server error.',
+  });
   assert.doesNotMatch(response.body, /private worker detail/);
 });

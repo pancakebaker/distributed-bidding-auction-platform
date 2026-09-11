@@ -7,7 +7,10 @@ import type { TransformCallback, TransformOptions } from 'node:stream';
 /**
  * Options for the diagnostic NDJSON transform.
  */
-export type NdjsonTransformOptions = Omit<TransformOptions, 'writableObjectMode' | 'readableObjectMode'>;
+export type NdjsonTransformOptions = Omit<
+  TransformOptions,
+  'writableObjectMode' | 'readableObjectMode'
+>;
 
 /**
  * Creates an object-mode-to-byte-mode transform for newline-delimited JSON.

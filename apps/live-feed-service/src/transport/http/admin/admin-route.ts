@@ -42,7 +42,9 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
     applyTokenExchangeCors(request, response, dependencies.clientOrigin);
     const token = bearerToken(request.get('authorization')) ?? tokenFromBody(request.body);
     if (!token) {
-      response.status(401).json({ error: 'invalid_admin_token', message: 'A Laravel admin token is required.' });
+      response
+        .status(401)
+        .json({ error: 'invalid_admin_token', message: 'A Laravel admin token is required.' });
       return;
     }
 
@@ -54,7 +56,8 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
       const statusCode = error instanceof ApplicationError ? error.statusCode : 401;
       response.status(statusCode).json({
         error: error instanceof ApplicationError ? error.code : 'invalid_admin_token',
-        message: statusCode >= 500 ? 'Admin token verification is unavailable.' : 'Invalid admin token.',
+        message:
+          statusCode >= 500 ? 'Admin token verification is unavailable.' : 'Invalid admin token.',
       });
     }
   });

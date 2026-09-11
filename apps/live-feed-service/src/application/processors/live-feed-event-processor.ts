@@ -11,7 +11,13 @@ import type { LiveStateStore } from '../ports/live-state-store.js';
  * Result of handling a validated live-feed event, used by the RabbitMQ adapter for ACK decisions.
  */
 export type ProcessResult =
-  | { action: 'broadcast'; socketEvent: string; eventId: string; aggregateId: string; aggregateVersion: number }
+  | {
+      action: 'broadcast';
+      socketEvent: string;
+      eventId: string;
+      aggregateId: string;
+      aggregateVersion: number;
+    }
   | {
       action: 'ignored';
       reason: 'duplicate' | 'stale';
@@ -21,7 +27,8 @@ export type ProcessResult =
     };
 
 /**
- * Applies live-feed state decisions and delegates client publication through narrow application ports.
+ * Applies live-feed state decisions and delegates client publication through narrow
+ * application ports.
  */
 export class LiveFeedEventProcessor {
   public constructor(
@@ -95,7 +102,10 @@ export class LiveFeedEventProcessor {
   /**
    * Records operational metadata without allowing observation to affect processing.
    */
-  private recordActivity(envelope: LiveFeedEnvelope, outcome: 'applied' | 'stale' | 'ignored'): void {
+  private recordActivity(
+    envelope: LiveFeedEnvelope,
+    outcome: 'applied' | 'stale' | 'ignored',
+  ): void {
     try {
       this.activityRecorder?.record({
         eventId: envelope.eventId,

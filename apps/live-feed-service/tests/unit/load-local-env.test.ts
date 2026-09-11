@@ -35,5 +35,7 @@ void test('loads a local env file without replacing explicit process values', as
 });
 
 void test('missing local env files are harmless', () => {
-  assert.doesNotThrow(() => loadLocalEnvironment(join(os.tmpdir(), 'live-feed-env-does-not-exist', '.env')));
+  assert.doesNotThrow(() =>
+    loadLocalEnvironment(join(os.tmpdir(), 'live-feed-env-does-not-exist', '.env')),
+  );
 });

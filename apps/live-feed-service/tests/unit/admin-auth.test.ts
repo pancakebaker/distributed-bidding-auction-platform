@@ -16,7 +16,12 @@ void test('admin auth creates and validates a signed HttpOnly same-site root coo
 
 void test('admin auth rejects expired sessions and adds Secure in production mode', () => {
   let now = 1_000_000;
-  const auth = new AdminAuth({ secret: 'test-secret', secure: true, now: () => now, sessionLifetimeSeconds: 10 });
+  const auth = new AdminAuth({
+    secret: 'test-secret',
+    secure: true,
+    now: () => now,
+    sessionLifetimeSeconds: 10,
+  });
   const cookie = auth.createSession();
   assert.match(cookie, /Secure/);
   assert.equal(auth.isAuthorizedCookie(cookie), true);

@@ -37,14 +37,19 @@ const result: LiveFeedHistoryResult = {
   count: 1,
 };
 
-async function startApp(app: express.Express): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+async function startApp(
+  app: express.Express,
+): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const server = createServer(app).listen(0);
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
   };
 }
 
@@ -52,7 +57,13 @@ function fakeStore(queryResult: LiveFeedHistoryResult = result): LiveFeedHistory
   return {
     record: () => Promise.resolve(),
     query: (_filters: LiveFeedHistoryFilters) => Promise.resolve(queryResult),
-    status: () => ({ configured: true, available: true, totalCount: 1, idleCount: 1, waitingCount: 0 }),
+    status: () => ({
+      configured: true,
+      available: true,
+      totalCount: 1,
+      idleCount: 1,
+      waitingCount: 0,
+    }),
     close: () => Promise.resolve(),
   };
 }
@@ -97,7 +108,10 @@ void test('history PDF is authenticated, downloadable, and emits PDF bytes', asy
     });
     assert.equal(response.status, 200);
     assert.match(response.headers.get('content-type') ?? '', /^application\/pdf/);
-    assert.match(response.headers.get('content-disposition') ?? '', /attachment; filename="live-feed-history-/);
+    assert.match(
+      response.headers.get('content-disposition') ?? '',
+      /attachment; filename="live-feed-history-/,
+    );
     const bytes = Buffer.from(await response.arrayBuffer());
     assert.equal(bytes.subarray(0, 4).toString(), '%PDF');
   } finally {
@@ -126,7 +140,8 @@ void test('history API rejects an over-large range without querying the store', 
 
   try {
     const response = await fetch(
-      server.baseUrl + '/admin/api/history?from=2026-01-01T00%3A00%3A00.000Z&to=2026-03-01T00%3A00%3A00.000Z',
+      server.baseUrl +
+        '/admin/api/history?from=2026-01-01T00%3A00%3A00.000Z&to=2026-03-01T00%3A00%3A00.000Z',
       { headers: { cookie: cookie?.split(';')[0] ?? '' } },
     );
     assert.equal(response.status, 400);

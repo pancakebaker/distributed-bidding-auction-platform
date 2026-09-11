@@ -91,7 +91,10 @@ const bids: Bid[] = [
 
 function json(data: unknown, status = 200) {
     return Promise.resolve(
-        new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }),
+        new Response(JSON.stringify(data), {
+            status,
+            headers: { 'Content-Type': 'application/json' },
+        }),
     );
 }
 
@@ -236,10 +239,14 @@ describe('auction UI', () => {
         expect(screen.queryByText('alice placed $1,600')).not.toBeInTheDocument();
 
         const postCall = fetchMock.mock.calls.find(
-            (call) => String(call[0]).endsWith(`/api/auctions/${macBook.id}/bids`) && call[1]?.method === 'POST',
+            (call) =>
+                String(call[0]).endsWith(`/api/auctions/${macBook.id}/bids`) &&
+                call[1]?.method === 'POST',
         );
         expect(postCall?.[1]?.body).toBe(JSON.stringify({ bidderId: 'Alice', amount: 1600 }));
-        expect((postCall?.[1]?.headers as Record<string, string>)['X-Correlation-ID']).toBe('client-correlation-id');
+        expect((postCall?.[1]?.headers as Record<string, string>)['X-Correlation-ID']).toBe(
+            'client-correlation-id',
+        );
     });
 
     it('bid_below_minimum error is displayed and refreshes state', async () => {
@@ -250,7 +257,11 @@ describe('auction UI', () => {
                     {
                         code: 'bid_below_minimum',
                         message: 'Too low.',
-                        details: { currentBidAmount: 1500, minimumValidBid: 1550, auctionVersion: 9 },
+                        details: {
+                            currentBidAmount: 1500,
+                            minimumValidBid: 1550,
+                            auctionVersion: 9,
+                        },
                     },
                     400,
                 );
@@ -265,7 +276,9 @@ describe('auction UI', () => {
         await screen.findByRole('heading', { name: 'MacBook Pro' });
         await user.click(screen.getByRole('button', { name: 'Place bid' }));
 
-        expect(await screen.findByText('Bid is below the current minimum of $1,550.')).toBeInTheDocument();
+        expect(
+            await screen.findByText('Bid is below the current minimum of $1,550.'),
+        ).toBeInTheDocument();
     });
 
     it('auction_not_open error is displayed', async () => {
@@ -284,7 +297,9 @@ describe('auction UI', () => {
         await screen.findByRole('heading', { name: 'MacBook Pro' });
         await user.click(screen.getByRole('button', { name: 'Place bid' }));
 
-        expect(await screen.findByText('This auction is not accepting bids right now.')).toBeInTheDocument();
+        expect(
+            await screen.findByText('This auction is not accepting bids right now.'),
+        ).toBeInTheDocument();
     });
 
     it('live BidAccepted event updates current bid and history', async () => {
@@ -388,7 +403,9 @@ describe('auction UI', () => {
         await user.click(screen.getByRole('button', { name: 'Place bid' }));
 
         expect(
-            await screen.findByText('Auction state changed while bidding. Refreshing latest state.'),
+            await screen.findByText(
+                'Auction state changed while bidding. Refreshing latest state.',
+            ),
         ).toBeInTheDocument();
     });
     it('auction:closed updates status and disables bidding', async () => {

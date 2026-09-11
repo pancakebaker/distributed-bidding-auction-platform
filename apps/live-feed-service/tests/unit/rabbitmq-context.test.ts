@@ -82,7 +82,10 @@ void test('RabbitMQ deliveries receive isolated event context without changing A
   ]);
 
   assert.equal(acknowledgements.length, 2);
-  assert.deepEqual(observed.map((entry) => entry.correlationId).sort(), ['correlation-a', undefined]);
+  assert.deepEqual(observed.map((entry) => entry.correlationId).sort(), [
+    'correlation-a',
+    undefined,
+  ]);
   assert.ok(observed.every((entry) => entry.eventId && entry.auctionId));
   assert.equal(getContext(), undefined);
   assert.equal(getContextValue('eventId'), undefined);

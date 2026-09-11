@@ -94,7 +94,11 @@ const root = document.getElementById('cms-app');
 if (root) {
     createRoot(root).render(
         <StrictMode>
-            {window.__CMS_BOOTSTRAP__ ? <PublicCmsApp bootstrap={window.__CMS_BOOTSTRAP__} /> : <MissingBootstrap />}
+            {window.__CMS_BOOTSTRAP__ ? (
+                <PublicCmsApp bootstrap={window.__CMS_BOOTSTRAP__} />
+            ) : (
+                <MissingBootstrap />
+            )}
         </StrictMode>,
     );
 }

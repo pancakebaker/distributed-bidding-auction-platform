@@ -4,7 +4,10 @@
 import type { LiveFeedConfig } from '../../config/config.js';
 import type { LiveFeedHistoryStore } from '../../application/ports/live-feed-history-store.js';
 import { PostgresPool } from './postgres-pool.js';
-import { PostgresLiveFeedHistoryStore, UnavailableLiveFeedHistoryStore } from './postgres-live-feed-history-store.js';
+import {
+  PostgresLiveFeedHistoryStore,
+  UnavailableLiveFeedHistoryStore,
+} from './postgres-live-feed-history-store.js';
 
 /**
  * Creates one configured pool or a degraded no-op history store.

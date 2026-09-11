@@ -18,7 +18,8 @@ import type {
 } from '../../src/domain/events.js';
 import type { LiveFeedConfig } from '../../src/config/config.js';
 
-const rabbitMqUrl = process.env.RABBITMQ_URL ?? 'amqp://auction:change_me_in_local_env@localhost:5672';
+const rabbitMqUrl =
+  process.env.RABBITMQ_URL ?? 'amqp://auction:change_me_in_local_env@localhost:5672';
 const redisUrl = process.env.LIVE_FEED_TEST_REDIS_URL ?? 'redis://localhost:6379/1';
 const exchange = process.env.RABBITMQ_EXCHANGE ?? 'auction.events';
 
@@ -322,7 +323,11 @@ void test('AuctionClosed and WinnerSelected events broadcast to the correct auct
   const client = await connectClient(context, auctionId);
   const otherClient = await connectClient(context, otherAuctionId);
   const closed = auctionClosed({ aggregateId: auctionId, aggregateVersion: 16 });
-  const winner = winnerSelected({ aggregateId: auctionId, aggregateVersion: 16, correlationId: closed.correlationId });
+  const winner = winnerSelected({
+    aggregateId: auctionId,
+    aggregateVersion: 16,
+    correlationId: closed.correlationId,
+  });
 
   try {
     const closedReceived = once<AuctionClosedSocketPayload>(client, 'auction:closed', 1500);
@@ -460,7 +465,12 @@ void test('duplicate eventId is ignored regardless of version', async () => {
     await waitFor(() => assert.equal(seen.length, 1));
     publish(
       context,
-      auctionClosed({ eventId, aggregateId: auctionId, aggregateVersion: 17, payload: { auctionVersion: 17 } }),
+      auctionClosed({
+        eventId,
+        aggregateId: auctionId,
+        aggregateVersion: 17,
+        payload: { auctionVersion: 17 },
+      }),
     );
     await delay(400);
 
@@ -499,7 +509,9 @@ void test('runtime diagnostics are read-only and expose expected sections', asyn
     const secondResponse = await fetch(`${context.service.url()}/diagnostics/runtime`, {
       headers: { 'x-correlation-id': 'http-correlation-b' },
     });
-    const secondBody = (await secondResponse.json()) as { requestContext: { correlationId?: string } };
+    const secondBody = (await secondResponse.json()) as {
+      requestContext: { correlationId?: string };
+    };
     assert.equal(secondBody.requestContext.correlationId, 'http-correlation-b');
     assert.equal('env' in body, false);
   } finally {

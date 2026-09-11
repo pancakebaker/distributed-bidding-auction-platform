@@ -39,7 +39,10 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     const [bidderId, setBidderId] = useState(bidders[0]);
     const [amount, setAmount] = useState('');
     const [submitting, setSubmitting] = useState(false);
-    const [formMessage, setFormMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+    const [formMessage, setFormMessage] = useState<{
+        tone: 'success' | 'error';
+        text: string;
+    } | null>(null);
     const [liveStatus, setLiveStatus] = useState<LiveStatus>('connecting');
     const [activity, setActivity] = useState<string[]>([]);
     const [winner, setWinner] = useState<WinnerState | null>(null);
@@ -65,7 +68,9 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         : null,
                 );
             })
-            .catch((caught) => setLoadError(caught instanceof Error ? caught.message : 'Unable to load auction.'))
+            .catch((caught) =>
+                setLoadError(caught instanceof Error ? caught.message : 'Unable to load auction.'),
+            )
             .finally(() => setLoading(false));
     };
 
@@ -160,7 +165,9 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         auctionVersion: event.auctionVersion,
                     };
                 });
-                setActivity((current) => [`Winner selected: ${event.winnerId}`, ...current].slice(0, 4));
+                setActivity((current) =>
+                    [`Winner selected: ${event.winnerId}`, ...current].slice(0, 4),
+                );
             },
         });
 
@@ -174,15 +181,24 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     const biddingUnavailable = !auction || auction.status !== 'Open' || countdown === 'Closed';
     const displayedWinner =
         winner ??
-        (auction?.status === 'Closed' && auction.currentBidderId && auction.currentBidAmount !== null
-            ? { winnerId: auction.currentBidderId, amount: auction.currentBidAmount, auctionVersion: auction.version }
+        (auction?.status === 'Closed' &&
+        auction.currentBidderId &&
+        auction.currentBidAmount !== null
+            ? {
+                  winnerId: auction.currentBidderId,
+                  amount: auction.currentBidAmount,
+                  auctionVersion: auction.version,
+              }
             : null);
 
     async function onSubmit(event: FormEvent) {
         event.preventDefault();
 
         if (!auction || biddingUnavailable) {
-            setFormMessage({ tone: 'error', text: 'This auction is not accepting bids right now.' });
+            setFormMessage({
+                tone: 'error',
+                text: 'This auction is not accepting bids right now.',
+            });
             return;
         }
 
@@ -221,7 +237,10 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
             const apiError = caught instanceof ApiClientError ? caught.error : null;
             setFormMessage({ tone: 'error', text: describeBidError(apiError, caught) });
 
-            if (apiError?.details?.minimumValidBid !== undefined || apiError?.code === 'auction_concurrency_conflict') {
+            if (
+                apiError?.details?.minimumValidBid !== undefined ||
+                apiError?.code === 'auction_concurrency_conflict'
+            ) {
                 refresh();
             }
         } finally {
@@ -236,15 +255,22 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
             </button>
 
             {loading && (
-                <StateMessage title="Loading auction" message="Fetching auction detail and accepted bid history." />
+                <StateMessage
+                    title="Loading auction"
+                    message="Fetching auction detail and accepted bid history."
+                />
             )}
-            {loadError && <StateMessage title="Auction unavailable" message={loadError} tone="error" />}
+            {loadError && (
+                <StateMessage title="Auction unavailable" message={loadError} tone="error" />
+            )}
 
             {auction && (
                 <section className="detail-layout">
                     <article className="detail-main">
                         <div className="card-row">
-                            <span className={`status-pill ${statusTone(auction.status)}`}>{auction.status}</span>
+                            <span className={`status-pill ${statusTone(auction.status)}`}>
+                                {auction.status}
+                            </span>
                             <LiveIndicator status={liveStatus} />
                         </div>
                         <h1>{auction.title}</h1>
@@ -252,7 +278,9 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
                         <div className="price-panel">
                             <span>{auction.status === 'Closed' ? 'Final bid' : 'Current bid'}</span>
-                            <strong>{formatMoney(auction.currentBidAmount ?? auction.startingPrice)}</strong>
+                            <strong>
+                                {formatMoney(auction.currentBidAmount ?? auction.startingPrice)}
+                            </strong>
                             <small>
                                 {auction.currentBidderId
                                     ? `${auction.status === 'Closed' ? 'Winner' : 'Highest bidder'}: ${auction.currentBidderId}`
@@ -270,7 +298,8 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                 </strong>
                                 {displayedWinner ? (
                                     <p>
-                                        {displayedWinner.winnerId.toLowerCase() === bidderId.toLowerCase()
+                                        {displayedWinner.winnerId.toLowerCase() ===
+                                        bidderId.toLowerCase()
                                             ? 'You won this auction.'
                                             : `Winner: ${displayedWinner.winnerId}`}
                                     </p>
@@ -357,9 +386,17 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                 disabled={submitting || biddingUnavailable}
                                 type="submit"
                             >
-                                {biddingUnavailable ? 'Auction closed' : submitting ? 'Placing bid...' : 'Place bid'}
+                                {biddingUnavailable
+                                    ? 'Auction closed'
+                                    : submitting
+                                      ? 'Placing bid...'
+                                      : 'Place bid'}
                             </button>
-                            {formMessage && <p className={`form-message ${formMessage.tone}`}>{formMessage.text}</p>}
+                            {formMessage && (
+                                <p className={`form-message ${formMessage.tone}`}>
+                                    {formMessage.text}
+                                </p>
+                            )}
                         </form>
 
                         <section className="system-panel">

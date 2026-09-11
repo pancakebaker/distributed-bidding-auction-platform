@@ -5,11 +5,20 @@ import test from 'node:test';
 import express from 'express';
 import { AdminAuth } from '../../src/transport/http/admin/admin-auth.js';
 import { registerAdminRoutes } from '../../src/transport/http/admin/admin-route.js';
-import type { AdminTokenClaims, AdminTokenVerifier } from '../../src/application/ports/admin-token-verifier.js';
+import type {
+  AdminTokenClaims,
+  AdminTokenVerifier,
+} from '../../src/application/ports/admin-token-verifier.js';
 import type { LiveFeedDashboardSnapshot } from '../../src/application/diagnostics/get-live-feed-dashboard.js';
 
 const snapshot: LiveFeedDashboardSnapshot = {
-  service: { name: 'live-feed-service', status: 'ok', pid: 1, nodeVersion: 'v24', uptimeSeconds: 1 },
+  service: {
+    name: 'live-feed-service',
+    status: 'ok',
+    pid: 1,
+    nodeVersion: 'v24',
+    uptimeSeconds: 1,
+  },
   runtime: {
     eventLoop: { utilization: 0, delayMs: { min: 0, max: 0, mean: 0, p50: 0, p95: 0, p99: 0 } },
     memory: { rss: 1, heapTotal: 1, heapUsed: 1, external: 1, arrayBuffers: 1 },
@@ -21,14 +30,19 @@ const snapshot: LiveFeedDashboardSnapshot = {
   database: { configured: false, available: false, totalCount: 0, idleCount: 0, waitingCount: 0 },
 };
 
-async function startApp(app: express.Express): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+async function startApp(
+  app: express.Express,
+): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const server = createServer(app).listen(0);
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   return {
     baseUrl: 'http://127.0.0.1:' + address.port,
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve()))),
+    close: () =>
+      new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      ),
   };
 }
 

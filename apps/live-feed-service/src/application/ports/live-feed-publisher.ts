@@ -15,7 +15,8 @@ export type LiveFeedSocketEvent = 'bid:accepted' | 'auction:closed' | 'winner:se
 /**
  * Existing browser-facing live-feed payload union.
  */
-export type LiveFeedSocketPayload = BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload;
+export type LiveFeedSocketPayload =
+  BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload;
 
 /**
  * Update passed from application processing to a transport publisher.

@@ -17,7 +17,11 @@ void test(
       return;
     }
 
-    const pool = new PostgresPool({ connectionString: databaseUrl, max: 1, connectionTimeoutMillis: 1000 });
+    const pool = new PostgresPool({
+      connectionString: databaseUrl,
+      max: 1,
+      connectionTimeoutMillis: 1000,
+    });
     const store = new PostgresLiveFeedHistoryStore(pool);
     const suffix = randomUUID();
     const processedAt = new Date('2026-01-01T00:00:00.000Z');

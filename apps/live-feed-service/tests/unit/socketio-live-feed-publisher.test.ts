@@ -15,7 +15,11 @@ void test('publisher preserves the existing room, event name, and payload', () =
   const publisher = new SocketIoLiveFeedPublisher(io as never);
   const payload = { auctionId: 'auction-id', amount: 100 };
 
-  publisher.publish({ auctionId: 'auction-id', eventName: 'bid:accepted', payload: payload as never });
+  publisher.publish({
+    auctionId: 'auction-id',
+    eventName: 'bid:accepted',
+    payload: payload as never,
+  });
 
   assert.deepEqual(calls, [{ room: 'auction:auction-id', eventName: 'bid:accepted', payload }]);
 });

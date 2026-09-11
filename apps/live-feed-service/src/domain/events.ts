@@ -248,7 +248,9 @@ function validateBaseEnvelope(value: unknown): Record<string, unknown> & {
   };
 }
 
-function validateBidAcceptedEnvelopeFromBase(value: ReturnType<typeof validateBaseEnvelope>): BidAcceptedEnvelope {
+function validateBidAcceptedEnvelopeFromBase(
+  value: ReturnType<typeof validateBaseEnvelope>,
+): BidAcceptedEnvelope {
   const payload = value.payload as Record<string, unknown>;
 
   if (!isUuid(payload.bidId)) {
@@ -293,7 +295,9 @@ function validateBidAcceptedEnvelopeFromBase(value: ReturnType<typeof validateBa
   };
 }
 
-function validateAuctionClosedEnvelopeFromBase(value: ReturnType<typeof validateBaseEnvelope>): AuctionClosedEnvelope {
+function validateAuctionClosedEnvelopeFromBase(
+  value: ReturnType<typeof validateBaseEnvelope>,
+): AuctionClosedEnvelope {
   const payload = value.payload as Record<string, unknown>;
 
   if (!isUuid(payload.auctionId)) {

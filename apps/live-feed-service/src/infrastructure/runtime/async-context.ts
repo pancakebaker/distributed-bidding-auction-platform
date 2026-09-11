@@ -32,6 +32,8 @@ export function getContext(): AsyncContext | undefined {
 /**
  * Returns one current context field without exposing the underlying storage.
  */
-export function getContextValue<TKey extends keyof AsyncContext>(key: TKey): AsyncContext[TKey] | undefined {
+export function getContextValue<TKey extends keyof AsyncContext>(
+  key: TKey,
+): AsyncContext[TKey] | undefined {
   return getContext()?.[key];
 }

@@ -102,3 +102,6 @@ max_line_length = 100
 
 [*.blade.php]
 max_line_length = 100
+
+[*.{js,jsx,ts,tsx,mjs,cjs}]
+max_line_length = 100

@@ -3,7 +3,10 @@
  */
 import type { Server } from 'socket.io';
 import { auctionRoom } from './rooms.js';
-import type { LiveFeedPublisher, LiveFeedUpdate } from '../../application/ports/live-feed-publisher.js';
+import type {
+  LiveFeedPublisher,
+  LiveFeedUpdate,
+} from '../../application/ports/live-feed-publisher.js';
 
 /**
  * Publishes existing live-feed event names and payloads through Socket.IO.

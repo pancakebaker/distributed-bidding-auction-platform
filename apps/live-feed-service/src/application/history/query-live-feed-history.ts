@@ -36,15 +36,27 @@ export function parseHistoryFilters(
   const normalizedFrom = from ?? new Date(normalizedTo.getTime() - defaultHistoryRangeMs);
 
   if (normalizedFrom.getTime() > normalizedTo.getTime()) {
-    throw new ApplicationError('The history from time must not be after the to time.', 400, 'invalid_history_range');
+    throw new ApplicationError(
+      'The history from time must not be after the to time.',
+      400,
+      'invalid_history_range',
+    );
   }
 
   if (normalizedTo.getTime() > currentTime + 5 * 60 * 1000) {
-    throw new ApplicationError('The history to time must not be far in the future.', 400, 'invalid_history_range');
+    throw new ApplicationError(
+      'The history to time must not be far in the future.',
+      400,
+      'invalid_history_range',
+    );
   }
 
   if (normalizedTo.getTime() - normalizedFrom.getTime() > maxHistoryRangeMs) {
-    throw new ApplicationError('History queries are limited to a 31-day range.', 400, 'history_range_too_large');
+    throw new ApplicationError(
+      'History queries are limited to a 31-day range.',
+      400,
+      'history_range_too_large',
+    );
   }
 
   const limit = parseLimit(input.limit, exportRequest ? maxHistoryExportLimit : maxHistoryLimit);
@@ -75,12 +87,20 @@ function parseDate(value: unknown, field: string): Date | undefined {
   }
 
   if (typeof value !== 'string') {
-    throw new ApplicationError(`The ${field} time must be an ISO-8601 string.`, 400, 'invalid_history_range');
+    throw new ApplicationError(
+      `The ${field} time must be an ISO-8601 string.`,
+      400,
+      'invalid_history_range',
+    );
   }
 
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) {
-    throw new ApplicationError(`The ${field} time must be an ISO-8601 string.`, 400, 'invalid_history_range');
+    throw new ApplicationError(
+      `The ${field} time must be an ISO-8601 string.`,
+      400,
+      'invalid_history_range',
+    );
   }
 
   return parsed;
@@ -92,18 +112,30 @@ function parseLimit(value: unknown, maximum: number): number {
   }
 
   if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new ApplicationError('The history limit must be a positive integer.', 400, 'invalid_history_limit');
+    throw new ApplicationError(
+      'The history limit must be a positive integer.',
+      400,
+      'invalid_history_limit',
+    );
   }
 
   const limit = Number(value);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > maximum) {
-    throw new ApplicationError(`The history limit must be between 1 and ${maximum}.`, 400, 'invalid_history_limit');
+    throw new ApplicationError(
+      `The history limit must be between 1 and ${maximum}.`,
+      400,
+      'invalid_history_limit',
+    );
   }
 
   return limit;
 }
 
-function parseOptionalText(value: unknown, field: string, maximumLength: number): string | undefined {
+function parseOptionalText(
+  value: unknown,
+  field: string,
+  maximumLength: number,
+): string | undefined {
   if (value === undefined || value === '') {
     return undefined;
   }
@@ -125,5 +157,9 @@ function parseOutcome(value: unknown): LiveFeedHistoryFilters['outcome'] {
     return value;
   }
 
-  throw new ApplicationError('The history outcome filter is invalid.', 400, 'invalid_history_filter');
+  throw new ApplicationError(
+    'The history outcome filter is invalid.',
+    400,
+    'invalid_history_filter',
+  );
 }

@@ -22,6 +22,9 @@ const lifecycle = new ProcessLifecycle(
 lifecycle.register();
 
 service.start().catch((error) => {
-  console.error('Live Feed Service failed to start.', error instanceof Error ? error.name : typeof error);
+  console.error(
+    'Live Feed Service failed to start.',
+    error instanceof Error ? error.name : typeof error,
+  );
   void lifecycle.shutdown('startup-failure', true);
 });

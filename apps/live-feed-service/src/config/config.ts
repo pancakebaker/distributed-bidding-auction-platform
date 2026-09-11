@@ -5,7 +5,8 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Runtime settings for HTTP, Redis, RabbitMQ, PostgreSQL history, and live-feed idempotency behavior.
+ * Runtime settings for HTTP, Redis, RabbitMQ, PostgreSQL history, and live-feed
+ * idempotency behavior.
  */
 export type LiveFeedConfig = {
   port: number;
@@ -46,7 +47,8 @@ function numberFromEnv(name: string, fallback: number): number {
 }
 
 function routingKeysFromEnv(): string[] {
-  const raw = process.env.LIVE_FEED_RABBITMQ_ROUTING_KEYS ?? process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY;
+  const raw =
+    process.env.LIVE_FEED_RABBITMQ_ROUTING_KEYS ?? process.env.LIVE_FEED_RABBITMQ_ROUTING_KEY;
   if (!raw) {
     return ['auction.bid.accepted', 'auction.closed', 'auction.winner.selected'];
   }
@@ -64,11 +66,15 @@ function rabbitMqUrlFromEnv(): string {
 
   const host = process.env.RABBITMQ_HOST ?? 'localhost';
   const port = process.env.RABBITMQ_AMQP_PORT ?? '5672';
-  const username = encodeURIComponent(process.env.RABBITMQ_USERNAME ?? process.env.RABBITMQ_DEFAULT_USER ?? 'auction');
+  const username = encodeURIComponent(
+    process.env.RABBITMQ_USERNAME ?? process.env.RABBITMQ_DEFAULT_USER ?? 'auction',
+  );
   const password = encodeURIComponent(
     process.env.RABBITMQ_PASSWORD ?? process.env.RABBITMQ_DEFAULT_PASS ?? 'change_me_in_local_env',
   );
-  const virtualHost = process.env.RABBITMQ_VHOST ? `/${encodeURIComponent(process.env.RABBITMQ_VHOST)}` : '';
+  const virtualHost = process.env.RABBITMQ_VHOST
+    ? `/${encodeURIComponent(process.env.RABBITMQ_VHOST)}`
+    : '';
 
   return `amqp://${username}:${password}@${host}:${port}${virtualHost}`;
 }

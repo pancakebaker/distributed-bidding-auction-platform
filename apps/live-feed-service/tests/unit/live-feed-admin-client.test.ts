@@ -7,12 +7,15 @@ import test from 'node:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const clientPath = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/ui/components/live-feed-admin-app.tsx');
+const clientPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../src/ui/components/live-feed-admin-app.tsx',
+);
 const clientSource = readFileSync(clientPath, 'utf8');
 
 void test('hydrated admin client subscribes, updates state, and cleans up admin activity listeners', () => {
   assert.match(clientSource, /socket\.emit\('admin:subscribe'/);
-  assert.match(clientSource, /socket\.on\(adminActivityEvent/);
+  assert.match(clientSource, /socket\.on\(\s*adminActivityEvent/);
   assert.match(clientSource, /mergeRecentActivity\(current\.recentActivity, activity\)/);
   assert.match(clientSource, /socket\.off\(adminActivityEvent\)/);
   assert.match(clientSource, /socket\.disconnect\(\)/);

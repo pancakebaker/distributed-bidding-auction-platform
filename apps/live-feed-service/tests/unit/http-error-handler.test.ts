@@ -9,14 +9,19 @@ import express from 'express';
 import { ApplicationError } from '../../src/application/errors/application-error.js';
 import { createHttpErrorHandler } from '../../src/transport/http/error-handler.js';
 
-async function request(app: express.Express, path: string): Promise<{ status: number; body: string }> {
+async function request(
+  app: express.Express,
+  path: string,
+): Promise<{ status: number; body: string }> {
   const server = createServer(app).listen(0);
   await once(server, 'listening');
   const address = server.address();
   assert.ok(address && typeof address !== 'string');
   const response = await fetch(`http://127.0.0.1:${address.port}${path}`);
   const body = await response.text();
-  await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  await new Promise<void>((resolve, reject) =>
+    server.close((error) => (error ? reject(error) : resolve())),
+  );
   return { status: response.status, body };
 }
 
@@ -29,7 +34,10 @@ void test('known errors map to safe classified responses', async () => {
 
   const result = await request(app, '/known');
   assert.equal(result.status, 400);
-  assert.deepEqual(JSON.parse(result.body), { error: 'invalid_request', message: 'invalid request' });
+  assert.deepEqual(JSON.parse(result.body), {
+    error: 'invalid_request',
+    message: 'invalid request',
+  });
 });
 
 void test('unknown errors return a generic response without internal details', async () => {
@@ -39,7 +47,10 @@ void test('unknown errors return a generic response without internal details', a
 
   const result = await request(app, '/unknown');
   assert.equal(result.status, 500);
-  assert.deepEqual(JSON.parse(result.body), { error: 'internal_error', message: 'Internal server error.' });
+  assert.deepEqual(JSON.parse(result.body), {
+    error: 'internal_error',
+    message: 'Internal server error.',
+  });
   assert.doesNotMatch(result.body, /secret connection string/);
 });
 

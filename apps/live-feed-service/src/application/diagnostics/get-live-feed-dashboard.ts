@@ -1,8 +1,14 @@
 /**
  * Builds a framework-agnostic, read-only snapshot for the live-feed operations page.
  */
-import type { EventLoopMetrics, EventLoopMonitor } from '../../infrastructure/runtime/event-loop-monitor.js';
-import { getProcessMetrics, type ProcessMetrics } from '../../infrastructure/runtime/process-metrics.js';
+import type {
+  EventLoopMetrics,
+  EventLoopMonitor,
+} from '../../infrastructure/runtime/event-loop-monitor.js';
+import {
+  getProcessMetrics,
+  type ProcessMetrics,
+} from '../../infrastructure/runtime/process-metrics.js';
 import type { LiveFeedHistoryStore } from '../ports/live-feed-history-store.js';
 import type { OperationalActivity, RecentActivityReader } from './recent-activity-store.js';
 
@@ -57,7 +63,9 @@ export type LiveFeedDashboardDependencies = {
 /**
  * Collects safe runtime and operational data for one page render.
  */
-export function getLiveFeedDashboard(dependencies: LiveFeedDashboardDependencies): LiveFeedDashboardSnapshot {
+export function getLiveFeedDashboard(
+  dependencies: LiveFeedDashboardDependencies,
+): LiveFeedDashboardSnapshot {
   const processMetrics = getProcessMetrics();
 
   return {

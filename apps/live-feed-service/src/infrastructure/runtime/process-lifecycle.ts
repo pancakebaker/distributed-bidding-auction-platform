@@ -5,7 +5,8 @@
 /**
  * Process events handled by the live-feed lifecycle manager.
  */
-export type ProcessLifecycleEvent = 'SIGTERM' | 'SIGINT' | 'unhandledRejection' | 'uncaughtException';
+export type ProcessLifecycleEvent =
+  'SIGTERM' | 'SIGINT' | 'unhandledRejection' | 'uncaughtException';
 
 /**
  * Reasons that can initiate a service shutdown.
@@ -100,7 +101,10 @@ export class ProcessLifecycle {
       await this.shutdown(reason, fatal);
     } catch (error) {
       this.setExitCode(1);
-      console.error('Graceful shutdown failed.', error instanceof Error ? error.name : typeof error);
+      console.error(
+        'Graceful shutdown failed.',
+        error instanceof Error ? error.name : typeof error,
+      );
     }
   }
 }

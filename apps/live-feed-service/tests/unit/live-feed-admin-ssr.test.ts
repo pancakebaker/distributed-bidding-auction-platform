@@ -3,7 +3,10 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { renderLiveFeedAdmin, serializeInitialState } from '../../src/ui/server/render-live-feed-admin.js';
+import {
+  renderLiveFeedAdmin,
+  serializeInitialState,
+} from '../../src/ui/server/render-live-feed-admin.js';
 
 const snapshot = {
   service: {
@@ -50,7 +53,9 @@ void test('SSR includes meaningful dashboard markup and safe initial state', () 
 void test('initial state escaping protects script markup characters', () => {
   const unsafe = {
     ...snapshot,
-    recentActivity: [{ ...snapshot.recentActivity[0], eventType: '</script><script>alert(1)</script>' }],
+    recentActivity: [
+      { ...snapshot.recentActivity[0], eventType: '</script><script>alert(1)</script>' },
+    ],
   };
   const serialized = serializeInitialState(unsafe);
 

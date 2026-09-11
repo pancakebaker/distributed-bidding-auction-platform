@@ -3,7 +3,10 @@
  */
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ProcessLifecycle, type ProcessLifecycleEvent } from '../../src/infrastructure/runtime/process-lifecycle.js';
+import {
+  ProcessLifecycle,
+  type ProcessLifecycleEvent,
+} from '../../src/infrastructure/runtime/process-lifecycle.js';
 
 class FakeProcessEvents {
   private readonly listeners = new Map<ProcessLifecycleEvent, Set<(...args: unknown[]) => void>>();

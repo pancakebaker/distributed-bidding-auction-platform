@@ -19,7 +19,9 @@ async function request(app: express.Express, path: string, headers: Record<strin
   try {
     return await fetch(`http://127.0.0.1:${address.port}${path}`, { headers });
   } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
   }
 }
 
@@ -34,7 +36,9 @@ void test('diagnostics stream returns ordered NDJSON and preserves HTTP context'
   ]);
   app.use(createHttpErrorHandler());
 
-  const response = await request(app, '/diagnostics/live-feed/stream', { 'x-correlation-id': 'stream-correlation' });
+  const response = await request(app, '/diagnostics/live-feed/stream', {
+    'x-correlation-id': 'stream-correlation',
+  });
   const lines = (await response.text())
     .trim()
     .split('\n')
@@ -59,6 +63,9 @@ void test('source errors use centralized safe HTTP error handling', async () => 
   const body = await response.text();
 
   assert.equal(response.status, 500);
-  assert.deepEqual(JSON.parse(body), { error: 'internal_error', message: 'Internal server error.' });
+  assert.deepEqual(JSON.parse(body), {
+    error: 'internal_error',
+    message: 'Internal server error.',
+  });
   assert.doesNotMatch(body, /private stream failure/);
 });

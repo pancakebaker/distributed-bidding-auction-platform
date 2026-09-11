@@ -7,7 +7,10 @@ import { Readable, Writable } from 'node:stream';
 import test from 'node:test';
 import { createNdjsonTransform } from '../../src/infrastructure/streams/ndjson-transform.js';
 
-function collectingWritable(chunks: Buffer[], options: ConstructorParameters<typeof Writable>[0] = {}) {
+function collectingWritable(
+  chunks: Buffer[],
+  options: ConstructorParameters<typeof Writable>[0] = {},
+) {
   return new Writable({
     ...options,
     write(chunk: Uint8Array, _encoding: BufferEncoding, callback) {
@@ -39,7 +42,11 @@ void test('pipeline preserves order while a small-buffer writable applies backpr
   const slowWritable = collectingWritable(chunks, { highWaterMark: 1 });
   const records = Array.from({ length: 8 }, (_, id) => ({ id }));
 
-  await pipeline(Readable.from(records, { objectMode: true, highWaterMark: 1 }), createNdjsonTransform(), slowWritable);
+  await pipeline(
+    Readable.from(records, { objectMode: true, highWaterMark: 1 }),
+    createNdjsonTransform(),
+    slowWritable,
+  );
 
   assert.deepEqual(
     chunks.map((chunk) => JSON.parse(chunk.toString('utf8')) as { id: number }),

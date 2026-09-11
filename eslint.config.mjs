@@ -13,7 +13,10 @@ const tsFiles = ['apps/**/*.{ts,tsx}'];
 const nodeFiles = ['apps/live-feed-service/src/**/*.ts'];
 const reactFiles = ['apps/client/resources/js/**/*.{ts,tsx}'];
 const testFiles = ['apps/**/*.test.{ts,tsx}', 'apps/**/test/**/*.{ts,tsx}'];
-const productionDocumentationFiles = ['apps/live-feed-service/src/**/*.ts', 'apps/client/resources/js/**/*.{ts,tsx}'];
+const productionDocumentationFiles = [
+  'apps/live-feed-service/src/**/*.ts',
+  'apps/client/resources/js/**/*.{ts,tsx}',
+];
 const documentationExcludedFiles = [
   'apps/**/*.test.{ts,tsx}',
   'apps/**/test/**/*.{ts,tsx}',
@@ -38,11 +41,13 @@ const documentationPlugin = {
       meta: {
         type: 'suggestion',
         docs: {
-          description: 'Require authored production modules to begin with a JSDoc responsibility block.',
+          description:
+            'Require authored production modules to begin with a JSDoc responsibility block.',
         },
         schema: [],
         messages: {
-          missing: 'Production source files must start with a JSDoc block describing the module responsibility.',
+          missing:
+            'Production source files must start with a JSDoc block describing the module responsibility.',
         },
       },
       create(context) {
@@ -67,7 +72,8 @@ const documentationPlugin = {
         schema: [],
         messages: {
           missingExport: 'Exported {{kind}} "{{name}}" must have a JSDoc summary.',
-          missingMethod: 'Public method "{{name}}" on exported class "{{className}}" must have a JSDoc summary.',
+          missingMethod:
+            'Public method "{{name}}" on exported class "{{className}}" must have a JSDoc summary.',
         },
       },
       create(context) {
@@ -193,9 +199,15 @@ export default tseslint.config(
       '@typescript-eslint/no-confusing-void-expression': ['error', { ignoreArrowShorthand: true }],
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-floating-promises': 'error',
-      '@typescript-eslint/no-misused-promises': ['error', { checksVoidReturn: { attributes: false } }],
+      '@typescript-eslint/no-misused-promises': [
+        'error',
+        { checksVoidReturn: { attributes: false } },
+      ],
       '@typescript-eslint/no-unnecessary-type-assertion': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/require-await': 'error',
       'import/no-duplicates': 'error',
     },

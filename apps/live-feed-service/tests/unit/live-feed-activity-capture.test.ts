@@ -7,7 +7,10 @@ import test from 'node:test';
 import { LiveFeedEventProcessor } from '../../src/application/processors/live-feed-event-processor.js';
 import { RecentActivityStore } from '../../src/application/diagnostics/recent-activity-store.js';
 import type { LiveFeedPublisher } from '../../src/application/ports/live-feed-publisher.js';
-import type { EventAcceptanceResult, LiveStateStore } from '../../src/application/ports/live-state-store.js';
+import type {
+  EventAcceptanceResult,
+  LiveStateStore,
+} from '../../src/application/ports/live-state-store.js';
 import type { BidAcceptedEnvelope } from '../../src/domain/events.js';
 
 function event(): BidAcceptedEnvelope {

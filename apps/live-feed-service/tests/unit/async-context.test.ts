@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getContext, getContextValue, runWithContext } from '../../src/infrastructure/runtime/async-context.js';
+import {
+  getContext,
+  getContextValue,
+  runWithContext,
+} from '../../src/infrastructure/runtime/async-context.js';
 
 void test('context survives Promise and timer boundaries', async () => {
   await runWithContext({ correlationId: 'A', eventId: 'event-a' }, async () => {
@@ -33,7 +37,9 @@ void test('nested contexts restore the outer context and errors do not leak', as
   });
 
   await assert.rejects(() =>
-    runWithContext({ correlationId: 'failed' }, () => Promise.reject(new Error('expected failure'))),
+    runWithContext({ correlationId: 'failed' }, () =>
+      Promise.reject(new Error('expected failure')),
+    ),
   );
   assert.equal(getContext(), undefined);
 });

@@ -29,6 +29,12 @@ void test('empty activity input returns empty histogram and zero percentiles', (
 });
 
 void test('invalid activity values are rejected before calculation', () => {
-  assert.throws(() => calculateAuctionActivity({ samples: [Number.NaN], iterations: 1 }), /finite and bounded/);
-  assert.throws(() => calculateAuctionActivity({ samples: [1], bucketCount: 0, iterations: 1 }), /bucket count/);
+  assert.throws(
+    () => calculateAuctionActivity({ samples: [Number.NaN], iterations: 1 }),
+    /finite and bounded/,
+  );
+  assert.throws(
+    () => calculateAuctionActivity({ samples: [1], bucketCount: 0, iterations: 1 }),
+    /bucket count/,
+  );
 });

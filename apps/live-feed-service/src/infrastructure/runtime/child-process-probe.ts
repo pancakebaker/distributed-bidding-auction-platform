@@ -31,16 +31,24 @@ export type ChildProcessProbeResult = {
 /**
  * Runs the current Node executable with a fixed, non-shell diagnostic script.
  */
-export function runChildProcessProbe(options: ChildProcessProbeOptions = {}): Promise<ChildProcessProbeResult> {
+export function runChildProcessProbe(
+  options: ChildProcessProbeOptions = {},
+): Promise<ChildProcessProbeResult> {
   const timeoutMs = options.timeoutMs ?? defaultTimeoutMs;
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > defaultTimeoutMs) {
     return Promise.reject(
-      new ApplicationError('Child-process timeout is outside the supported range.', 400, 'invalid_diagnostic_options'),
+      new ApplicationError(
+        'Child-process timeout is outside the supported range.',
+        400,
+        'invalid_diagnostic_options',
+      ),
     );
   }
 
   if (options.signal?.aborted) {
-    return Promise.reject(new ApplicationError('Child-process probe was cancelled.', 499, 'diagnostic_cancelled'));
+    return Promise.reject(
+      new ApplicationError('Child-process probe was cancelled.', 499, 'diagnostic_cancelled'),
+    );
   }
 
   return new Promise((resolve, reject) => {
@@ -52,11 +60,15 @@ export function runChildProcessProbe(options: ChildProcessProbeOptions = {}): Pr
     let stderr = '';
     let settled = false;
     const timer = setTimeout(() => {
-      finishReject(new ApplicationError('Child-process probe timed out.', 504, 'diagnostic_timeout'));
+      finishReject(
+        new ApplicationError('Child-process probe timed out.', 504, 'diagnostic_timeout'),
+      );
     }, timeoutMs);
 
     const abort = () => {
-      finishReject(new ApplicationError('Child-process probe was cancelled.', 499, 'diagnostic_cancelled'));
+      finishReject(
+        new ApplicationError('Child-process probe was cancelled.', 499, 'diagnostic_cancelled'),
+      );
     };
 
     options.signal?.addEventListener('abort', abort, { once: true });
@@ -64,17 +76,33 @@ export function runChildProcessProbe(options: ChildProcessProbeOptions = {}): Pr
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString('utf8');
       if (Buffer.byteLength(stdout, 'utf8') > maxOutputBytes) {
-        finishReject(new ApplicationError('Child-process probe output was too large.', 500, 'diagnostic_failed'));
+        finishReject(
+          new ApplicationError(
+            'Child-process probe output was too large.',
+            500,
+            'diagnostic_failed',
+          ),
+        );
       }
     });
     child.stderr.on('data', (chunk: Buffer) => {
       stderr += chunk.toString('utf8');
       if (Buffer.byteLength(stderr, 'utf8') > maxOutputBytes) {
-        finishReject(new ApplicationError('Child-process probe output was too large.', 500, 'diagnostic_failed'));
+        finishReject(
+          new ApplicationError(
+            'Child-process probe output was too large.',
+            500,
+            'diagnostic_failed',
+          ),
+        );
       }
     });
     child.once('error', (error: Error) => {
-      finishReject(new ApplicationError('Child-process probe failed.', 500, 'diagnostic_failed', { cause: error }));
+      finishReject(
+        new ApplicationError('Child-process probe failed.', 500, 'diagnostic_failed', {
+          cause: error,
+        }),
+      );
     });
     child.once('close', (code) => {
       if (settled) {
@@ -82,7 +110,13 @@ export function runChildProcessProbe(options: ChildProcessProbeOptions = {}): Pr
       }
 
       if (code !== 0) {
-        finishReject(new ApplicationError('Child-process probe exited unexpectedly.', 500, 'diagnostic_failed'));
+        finishReject(
+          new ApplicationError(
+            'Child-process probe exited unexpectedly.',
+            500,
+            'diagnostic_failed',
+          ),
+        );
         return;
       }
 
@@ -93,7 +127,11 @@ export function runChildProcessProbe(options: ChildProcessProbeOptions = {}): Pr
         finishReject(
           error instanceof ApplicationError
             ? error
-            : new ApplicationError('Child-process probe returned invalid output.', 500, 'diagnostic_failed'),
+            : new ApplicationError(
+                'Child-process probe returned invalid output.',
+                500,
+                'diagnostic_failed',
+              ),
         );
       }
     });
@@ -129,13 +167,22 @@ export function parseChildProbeOutput(stdout: string, parentPid: number): ChildP
   try {
     parsed = JSON.parse(stdout);
   } catch (error) {
-    throw new ApplicationError('Child-process probe returned invalid output.', 500, 'diagnostic_failed', {
-      cause: error,
-    });
+    throw new ApplicationError(
+      'Child-process probe returned invalid output.',
+      500,
+      'diagnostic_failed',
+      {
+        cause: error,
+      },
+    );
   }
 
   if (!isRecord(parsed)) {
-    throw new ApplicationError('Child-process probe returned invalid output.', 500, 'diagnostic_failed');
+    throw new ApplicationError(
+      'Child-process probe returned invalid output.',
+      500,
+      'diagnostic_failed',
+    );
   }
 
   const pid = parsed.pid;
@@ -144,11 +191,23 @@ export function parseChildProbeOutput(stdout: string, parentPid: number): ChildP
   const architecture = parsed.architecture;
 
   if (typeof pid !== 'number' || pid === parentPid || !Number.isInteger(pid)) {
-    throw new ApplicationError('Child-process probe returned invalid output.', 500, 'diagnostic_failed');
+    throw new ApplicationError(
+      'Child-process probe returned invalid output.',
+      500,
+      'diagnostic_failed',
+    );
   }
 
-  if (typeof nodeVersion !== 'string' || typeof platform !== 'string' || typeof architecture !== 'string') {
-    throw new ApplicationError('Child-process probe returned invalid output.', 500, 'diagnostic_failed');
+  if (
+    typeof nodeVersion !== 'string' ||
+    typeof platform !== 'string' ||
+    typeof architecture !== 'string'
+  ) {
+    throw new ApplicationError(
+      'Child-process probe returned invalid output.',
+      500,
+      'diagnostic_failed',
+    );
   }
 
   return {

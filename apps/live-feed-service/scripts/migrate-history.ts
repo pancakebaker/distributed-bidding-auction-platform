@@ -13,7 +13,10 @@ if (!config.liveFeedDatabaseUrl) {
   throw new Error('LIVE_FEED_DATABASE_URL must be configured to apply the history migration.');
 }
 
-const sql = await readFile(resolve(process.cwd(), 'migrations/001_create_live_feed_history.sql'), 'utf8');
+const sql = await readFile(
+  resolve(process.cwd(), 'migrations/001_create_live_feed_history.sql'),
+  'utf8',
+);
 const pool = new PostgresPool({
   connectionString: config.liveFeedDatabaseUrl,
   max: 1,
