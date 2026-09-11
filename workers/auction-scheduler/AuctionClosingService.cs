@@ -54,22 +54,39 @@ public sealed class AuctionClosingService(
     /// <summary>
     /// Claims and closes one expired open auction in a PostgreSQL transaction.
     /// </summary>
-    public async Task<bool> CloseNextExpiredAuctionAsync(DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task<bool> CloseNextExpiredAuctionAsync(
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
         await using var connection = await dataSource.OpenConnectionAsync(cancellationToken);
-        await using var transaction = await connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted,
+            cancellationToken);
 
         try
         {
-            var auction = await ClaimExpiredOpenAuctionAsync(connection, transaction, now, cancellationToken);
+            var auction = await ClaimExpiredOpenAuctionAsync(
+                connection,
+                transaction,
+                now,
+                cancellationToken);
             if (auction is null)
             {
                 await transaction.CommitAsync(cancellationToken);
                 return false;
             }
 
-            var winner = await FindWinningBidAsync(connection, transaction, auction, cancellationToken);
-            var newVersion = await CloseAuctionAsync(connection, transaction, auction, now, cancellationToken);
+            var winner = await FindWinningBidAsync(
+                connection,
+                transaction,
+                auction,
+                cancellationToken);
+            var newVersion = await CloseAuctionAsync(
+                connection,
+                transaction,
+                auction,
+                now,
+                cancellationToken);
             if (newVersion is null)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -81,11 +98,26 @@ public sealed class AuctionClosingService(
             }
 
             var correlationId = Guid.NewGuid().ToString();
-            await InsertAuctionClosedOutboxAsync(connection, transaction, auction, newVersion.Value, now, correlationId, cancellationToken);
+            await InsertAuctionClosedOutboxAsync(
+                connection,
+                transaction,
+                auction,
+                newVersion.Value,
+                now,
+                correlationId,
+                cancellationToken);
 
             if (winner is not null)
             {
-                await InsertWinnerSelectedOutboxAsync(connection, transaction, winner, auction.Id, newVersion.Value, now, correlationId, cancellationToken);
+                await InsertWinnerSelectedOutboxAsync(
+                    connection,
+                    transaction,
+                    winner,
+                    auction.Id,
+                    newVersion.Value,
+                    now,
+                    correlationId,
+                    cancellationToken);
             }
 
             await transaction.CommitAsync(cancellationToken);
@@ -299,7 +331,10 @@ public sealed class AuctionClosingService(
         command.Parameters.AddWithValue("aggregateVersion", aggregateVersion);
         command.Parameters.AddWithValue("occurredAtUtc", occurredAtUtc);
         command.Parameters.AddWithValue("correlationId", correlationId);
-        command.Parameters.AddWithValue("payload", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(payload, JsonOptions));
+        command.Parameters.AddWithValue(
+            "payload",
+            NpgsqlDbType.Jsonb,
+            JsonSerializer.Serialize(payload, JsonOptions));
         command.Parameters.AddWithValue("createdAtUtc", occurredAtUtc);
 
         await command.ExecuteNonQueryAsync(cancellationToken);

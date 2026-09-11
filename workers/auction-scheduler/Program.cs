@@ -8,8 +8,10 @@ using Npgsql;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
-builder.Services.Configure<ConnectionStringsOptions>(builder.Configuration.GetSection(ConnectionStringsOptions.SectionName));
-builder.Services.Configure<SchedulerOptions>(builder.Configuration.GetSection(SchedulerOptions.SectionName));
+builder.Services.Configure<ConnectionStringsOptions>(
+    builder.Configuration.GetSection(ConnectionStringsOptions.SectionName));
+builder.Services.Configure<SchedulerOptions>(
+    builder.Configuration.GetSection(SchedulerOptions.SectionName));
 
 var connectionString = builder.Configuration.GetConnectionString("BiddingDb")
     ?? throw new InvalidOperationException("ConnectionStrings:BiddingDb is required.");

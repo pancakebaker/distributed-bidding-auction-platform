@@ -22,7 +22,10 @@ public sealed class OutboxPublishingService(
     {
         var batchSize = Math.Max(1, options.Value.BatchSize);
         var maxAttempts = Math.Max(1, options.Value.MaxPublishAttempts);
-        await using var batch = await store.ClaimBatchAsync(batchSize, maxAttempts, cancellationToken);
+        await using var batch = await store.ClaimBatchAsync(
+            batchSize,
+            maxAttempts,
+            cancellationToken);
 
         var published = 0;
         foreach (var message in batch.Messages)

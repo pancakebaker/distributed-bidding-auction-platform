@@ -10,9 +10,12 @@ using outbox_publisher.RabbitMq;
 var builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
-builder.Services.Configure<ConnectionStringsOptions>(builder.Configuration.GetSection(ConnectionStringsOptions.SectionName));
-builder.Services.Configure<RabbitMqOptions>(builder.Configuration.GetSection(RabbitMqOptions.SectionName));
-builder.Services.Configure<PublisherOptions>(builder.Configuration.GetSection(PublisherOptions.SectionName));
+builder.Services.Configure<ConnectionStringsOptions>(
+    builder.Configuration.GetSection(ConnectionStringsOptions.SectionName));
+builder.Services.Configure<RabbitMqOptions>(
+    builder.Configuration.GetSection(RabbitMqOptions.SectionName));
+builder.Services.Configure<PublisherOptions>(
+    builder.Configuration.GetSection(PublisherOptions.SectionName));
 
 var connectionString = builder.Configuration.GetConnectionString("BiddingDb")
     ?? throw new InvalidOperationException("ConnectionStrings:BiddingDb is required.");

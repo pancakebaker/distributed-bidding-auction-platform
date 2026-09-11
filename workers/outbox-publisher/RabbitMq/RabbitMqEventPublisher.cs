@@ -12,7 +12,9 @@ namespace outbox_publisher.RabbitMq;
 /// <summary>
 /// Publishes confirmed integration events to RabbitMQ.
 /// </summary>
-public sealed class RabbitMqEventPublisher(IOptions<RabbitMqOptions> options, ILogger<RabbitMqEventPublisher> logger)
+public sealed class RabbitMqEventPublisher(
+    IOptions<RabbitMqOptions> options,
+    ILogger<RabbitMqEventPublisher> logger)
 {
     private const string BidAcceptedRoutingKey = "auction.bid.accepted";
     private const string AuctionClosedRoutingKey = "auction.closed";
@@ -36,12 +38,17 @@ public sealed class RabbitMqEventPublisher(IOptions<RabbitMqOptions> options, IL
     /// <summary>
     /// Publishes one event envelope to RabbitMQ using publisher confirmations.
     /// </summary>
-    public async Task PublishAsync(OutboxMessage message, string envelopeJson, CancellationToken cancellationToken)
+    public async Task PublishAsync(
+        OutboxMessage message,
+        string envelopeJson,
+        CancellationToken cancellationToken)
     {
         await using var connection = await CreateConnectionAsync(cancellationToken);
-        await using var channel = await connection.CreateChannelAsync(new CreateChannelOptions(
-            publisherConfirmationsEnabled: true,
-            publisherConfirmationTrackingEnabled: true), cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(
+            new CreateChannelOptions(
+                publisherConfirmationsEnabled: true,
+                publisherConfirmationTrackingEnabled: true),
+            cancellationToken);
 
         await DeclareTopologyAsync(channel, cancellationToken);
 
@@ -80,7 +87,8 @@ public sealed class RabbitMqEventPublisher(IOptions<RabbitMqOptions> options, IL
     public async Task DeclareTopologyAsync(CancellationToken cancellationToken)
     {
         await using var connection = await CreateConnectionAsync(cancellationToken);
-        await using var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
+        await using var channel = await connection.CreateChannelAsync(
+            cancellationToken: cancellationToken);
         await DeclareTopologyAsync(channel, cancellationToken);
     }
 
