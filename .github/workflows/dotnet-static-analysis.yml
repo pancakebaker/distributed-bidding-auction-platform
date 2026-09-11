@@ -11,6 +11,21 @@ jobs:
     name: Build .NET solution
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: auction_demo_tests
+          POSTGRES_USER: auction_app
+          POSTGRES_PASSWORD: change_me_in_local_env
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U auction_app -d auction_demo_tests"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -25,6 +40,14 @@ jobs:
 
       - name: Build with analyzers
         run: dotnet build --no-restore
+
+      - name: Create Operations Portal test database
+        env:
+          PGPASSWORD: change_me_in_local_env
+        run: >-
+          docker run --rm --network host -e PGPASSWORD="$PGPASSWORD" postgres:17
+          psql --host 127.0.0.1 --port 55432 --username auction_app
+          --dbname auction_demo_tests --command "CREATE DATABASE auction_operations;"
 
       - name: Run .NET tests
         run: dotnet test --no-build
