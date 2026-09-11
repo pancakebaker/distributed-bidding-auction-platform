@@ -33,7 +33,15 @@ header h1 {
   margin: 0 0 0.75rem;
 }
 nav a {
+  color: #ffffff;
   margin-right: 1rem;
+}
+nav a:visited {
+  color: #ffffff;
+}
+nav a:hover,
+nav a:focus-visible {
+  color: #d1d5db;
 }
 .content {
   min-height: 20rem;
@@ -70,12 +78,16 @@ nav a {
 .history-actions {
   align-items: end;
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 .history-actions button,
 .pagination button {
   font: inherit;
   padding: 0.45rem 0.8rem;
+}
+.history-actions button {
+  white-space: nowrap;
 }
 .validation-message,
 .error-message {
