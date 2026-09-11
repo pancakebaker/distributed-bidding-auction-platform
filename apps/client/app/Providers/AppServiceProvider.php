@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use App\Contracts\CmsCache;
 use App\Models\User;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,5 +24,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Gate::define('access-admin', fn (User $user): bool => (bool) $user->is_admin);
+
+        View::composer(['welcome', 'cms'], function ($view): void {
+            $view->with('publicNavigationPages', app(CmsCache::class)->getPublicNavigationPages());
+        });
     }
 }

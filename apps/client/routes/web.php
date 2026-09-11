@@ -15,7 +15,7 @@ use App\Http\Controllers\NotificationPreferenceController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome');
-Route::view('/auctions', 'welcome');
+Route::view('/auctions', 'welcome')->name('auctions.index');
 Route::view('/auctions/{auction}', 'welcome');
 
 Route::get('/faq', [PublicFaqController::class, 'index'])->name('cms.faq.index');

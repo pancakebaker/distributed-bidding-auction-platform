@@ -8,6 +8,7 @@
         @vite(['resources/css/app.css', 'resources/js/cms/PublicCmsApp.tsx'])
     </head>
     <body>
+        @include('partials.public-navigation')
         <div id="cms-app"></div>
         <script>
             window.__CMS_BOOTSTRAP__ = {{ Illuminate\Support\Js::from($cmsBootstrap) }};

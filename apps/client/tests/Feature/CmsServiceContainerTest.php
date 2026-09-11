@@ -37,6 +37,13 @@ class CmsServiceContainerTest extends TestCase
 
         $this->app->instance(CmsCache::class, new class implements CmsCache
         {
+            public function getPublicNavigationPages(): array
+            {
+                return [];
+            }
+
+            public function forgetPublicNavigationPages(): void {}
+
             public function getPage(string $slug): ?array
             {
                 return [

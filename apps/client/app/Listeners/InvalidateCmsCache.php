@@ -6,6 +6,7 @@ use App\Contracts\CmsCache;
 use App\Events\FaqCreated;
 use App\Events\FaqUpdated;
 use App\Events\PageCreated;
+use App\Events\PageDeleted;
 use App\Events\PagePublished;
 use App\Events\PageUpdated;
 
@@ -19,10 +20,11 @@ class InvalidateCmsCache
     /**
      * Forget affected public CMS cache entries after a successful CMS write.
      */
-    public function handle(PageCreated|PageUpdated|PagePublished|FaqCreated|FaqUpdated $event): void
+    public function handle(PageCreated|PageUpdated|PagePublished|PageDeleted|FaqCreated|FaqUpdated $event): void
     {
-        if ($event instanceof PageCreated || $event instanceof PagePublished) {
+        if ($event instanceof PageCreated || $event instanceof PagePublished || $event instanceof PageDeleted) {
             $this->cache->forgetPage($event->page->slug);
+            $this->cache->forgetPublicNavigationPages();
 
             return;
         }
@@ -33,6 +35,7 @@ class InvalidateCmsCache
             }
 
             $this->cache->forgetPage($event->page->slug);
+            $this->cache->forgetPublicNavigationPages();
 
             return;
         }

@@ -7,10 +7,13 @@ use App\Models\Faq;
 use App\Models\Page;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Schema;
 
 class LaravelCmsCache implements CmsCache
 {
     private const FAQ_KEY = 'cms:faqs';
+
+    private const PUBLIC_NAVIGATION_KEY = 'cms:public-navigation-pages';
 
     /**
      * Create the Laravel cache-backed CMS reader.
@@ -51,6 +54,41 @@ class LaravelCmsCache implements CmsCache
         $this->cache->put($key, $payload, Carbon::now()->addMinutes(30));
 
         return $payload;
+    }
+
+    /**
+     * Get the stable, publicly visible CMS page links for the site shell.
+     *
+     * Pages do not have an explicit navigation order, so the existing page
+     * identifier provides deterministic ordering without adding CMS fields.
+     *
+     * @return array<int, array{title: string, slug: string}>
+     */
+    public function getPublicNavigationPages(): array
+    {
+        if (! Schema::hasTable('pages')) {
+            return [];
+        }
+
+        return $this->cache->remember(self::PUBLIC_NAVIGATION_KEY, Carbon::now()->addMinutes(30), function (): array {
+            return Page::published()
+                ->orderBy('id')
+                ->get(['title', 'slug'])
+                ->map(fn (Page $page): array => [
+                    'title' => $page->title,
+                    'slug' => $page->slug,
+                ])
+                ->values()
+                ->all();
+        });
+    }
+
+    /**
+     * Remove the cached public navigation page list.
+     */
+    public function forgetPublicNavigationPages(): void
+    {
+        $this->cache->forget(self::PUBLIC_NAVIGATION_KEY);
     }
 
     /**

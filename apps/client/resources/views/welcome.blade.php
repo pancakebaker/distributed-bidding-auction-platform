@@ -8,6 +8,7 @@
         @vite(['resources/css/app.css', 'resources/js/app.tsx'])
     </head>
     <body>
+        @include('partials.public-navigation')
         <div id="app"></div>
     </body>
 </html>

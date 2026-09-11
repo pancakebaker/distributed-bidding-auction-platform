@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PageStatus;
+use App\Events\PageDeleted;
 use Database\Factories\PageFactory;
 use Illuminate\Database\Eloquent\Attributes\Scope;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,6 +40,16 @@ class Page extends Model
             'published_at' => 'datetime',
             'status' => PageStatus::class,
         ];
+    }
+
+    /**
+     * Register page lifecycle hooks that affect public CMS caches.
+     */
+    protected static function booted(): void
+    {
+        static::deleted(function (Page $page): void {
+            PageDeleted::dispatch($page, null);
+        });
     }
 
     /**
