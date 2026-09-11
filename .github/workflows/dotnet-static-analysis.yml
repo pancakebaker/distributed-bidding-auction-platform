@@ -62,6 +62,21 @@ jobs:
           cp .env.example .env
           php artisan key:generate --force
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+          cache-dependency-path: apps/client/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: apps/client
+        run: npm ci
+
+      - name: Build client assets
+        working-directory: apps/client
+        run: npm run build
+
       - name: Validate Composer configuration
         working-directory: apps/client
         run: composer validate --no-check-publish
