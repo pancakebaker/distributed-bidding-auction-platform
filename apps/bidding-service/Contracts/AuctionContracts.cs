@@ -76,6 +76,9 @@ public sealed record ApiErrorResponse(string Code, string Message, object? Detai
 /// <summary>
 /// Provides current auction values that help clients correct rejected bids.
 /// </summary>
-public sealed record BidRuleErrorDetails(decimal? CurrentBidAmount, decimal MinimumValidBid, long AuctionVersion);
+public sealed record BidRuleErrorDetails(
+    decimal? CurrentBidAmount,
+    decimal MinimumValidBid,
+    long AuctionVersion);
 
 

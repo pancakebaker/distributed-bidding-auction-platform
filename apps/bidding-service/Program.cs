@@ -8,9 +8,14 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Configuration.AddJsonFile(Path.Combine(builder.Environment.ContentRootPath, "appsettings.Development.local.json"), optional: true, reloadOnChange: true);
-builder.Services.Configure<DatabaseOptions>(builder.Configuration.GetSection(DatabaseOptions.SectionName));
-builder.Services.Configure<BidPlacementOptions>(builder.Configuration.GetSection(BidPlacementOptions.SectionName));
+builder.Configuration.AddJsonFile(
+    Path.Combine(builder.Environment.ContentRootPath, "appsettings.Development.local.json"),
+    optional: true,
+    reloadOnChange: true);
+builder.Services.Configure<DatabaseOptions>(
+    builder.Configuration.GetSection(DatabaseOptions.SectionName));
+builder.Services.Configure<BidPlacementOptions>(
+    builder.Configuration.GetSection(BidPlacementOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddDbContext<BiddingDbContext>(options =>
 {

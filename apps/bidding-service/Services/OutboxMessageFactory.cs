@@ -16,7 +16,11 @@ public static class OutboxMessageFactory
     /// <summary>
     /// Creates a BidAccepted outbox message for a committed bid.
     /// </summary>
-    public static OutboxMessage BidAccepted(Bid bid, Auction auction, string correlationId, DateTimeOffset occurredAtUtc)
+    public static OutboxMessage BidAccepted(
+        Bid bid,
+        Auction auction,
+        string correlationId,
+        DateTimeOffset occurredAtUtc)
     {
         var payload = new BidAcceptedPayload(
             bid.Id,
