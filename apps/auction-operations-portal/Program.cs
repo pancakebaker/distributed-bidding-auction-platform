@@ -14,6 +14,7 @@ using AuctionOperationsPortal.Notifications;
 using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
 using AuctionOperationsPortal.Telemetry;
+using DistributedBidding.AuthContracts;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -127,11 +128,11 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.AccessDeniedPath = "/auth/denied";
     });
 var permission = builder.Configuration[$"{LaravelAuthOptions.SectionName}:Permission"]
-    ?? "access-auction-operations";
+    ?? ApplicationPermissions.AccessAuctionOperations;
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AuctionOperationsAdmin", policy => policy
         .RequireAuthenticatedUser()
-        .RequireRole("admin")
+        .RequireRole(ApplicationRoles.Admin)
         .RequireClaim("permission", permission));
 builder.Services.AddCascadingAuthenticationState();
 if (builder.Environment.IsEnvironment("Testing"))

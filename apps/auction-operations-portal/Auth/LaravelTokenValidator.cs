@@ -6,6 +6,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.Json;
 using AuctionOperationsPortal.Options;
+using DistributedBidding.AuthContracts;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 
@@ -98,11 +99,11 @@ public sealed class LaravelTokenValidator
         var subject = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Sub)?.Value
             ?? principal.FindFirstValue(ClaimTypes.NameIdentifier);
         var jti = jwt.Claims.FirstOrDefault(c => c.Type == JwtRegisteredClaimNames.Jti)?.Value;
-        var role = jwt.Claims.FirstOrDefault(c => c.Type == "role")?.Value
+        var role = jwt.Claims.FirstOrDefault(c => c.Type == ApplicationClaimNames.Role)?.Value
             ?? principal.FindFirstValue(ClaimTypes.Role);
         var permissionValues = principal.Claims
-            .Where(c => c.Type == "permissions"
-                || c.Type.EndsWith("/permissions", StringComparison.Ordinal))
+            .Where(c => c.Type == ApplicationClaimNames.Permissions
+                || c.Type.EndsWith($"/{ApplicationClaimNames.Permissions}", StringComparison.Ordinal))
             .SelectMany(c => ReadPermissionValues(c.Value))
             .ToArray();
 
@@ -110,7 +111,7 @@ public sealed class LaravelTokenValidator
             throw new PortalTokenValidationException("missing-subject");
         if (string.IsNullOrWhiteSpace(jti))
             throw new PortalTokenValidationException("missing-jti");
-        if (!string.Equals(role, "admin", StringComparison.OrdinalIgnoreCase)
+        if (!string.Equals(role, ApplicationRoles.Admin, StringComparison.OrdinalIgnoreCase)
             || !permissionValues.Contains(options.Permission, StringComparer.Ordinal))
             throw new PortalTokenValidationException("missing-permission");
 

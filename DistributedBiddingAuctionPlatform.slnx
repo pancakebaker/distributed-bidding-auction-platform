@@ -7,6 +7,7 @@
     <Project Path="apps/bidding-service/bidding-service.csproj" />
   </Folder>
   <Folder Name="/contracts/">
+    <Project Path="contracts/auth-contracts/DistributedBidding.AuthContracts.csproj" />
     <Project Path="contracts/integration-contracts/DistributedBidding.IntegrationContracts.csproj" />
   </Folder>
   <Folder Name="/workers/">

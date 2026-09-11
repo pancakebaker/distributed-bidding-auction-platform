@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Auth\ApplicationAuth;
 use App\Models\User;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -30,8 +31,8 @@ class LiveFeedAdminTokenIssuer
         $claims = [
             'sub' => (string) $user->getAuthIdentifier(),
             'email' => (string) $user->email,
-            'role' => 'admin',
-            'permissions' => ['access-live-feed-admin'],
+            ApplicationAuth::CLAIM_ROLE => ApplicationAuth::ROLE_ADMIN,
+            ApplicationAuth::CLAIM_PERMISSIONS => [ApplicationAuth::PERMISSION_LIVE_FEED_ADMIN],
             'iss' => (string) config('live_feed.token_issuer', 'auction-client'),
             'aud' => (string) config('live_feed.token_audience', 'live-feed-admin'),
             'iat' => $issuedAt,

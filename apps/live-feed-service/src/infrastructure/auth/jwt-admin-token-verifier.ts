@@ -8,6 +8,11 @@ import type {
   AdminTokenClaims,
   AdminTokenVerifier,
 } from '../../application/ports/admin-token-verifier.js';
+import {
+  applicationClaimNames,
+  applicationPermissions,
+  applicationRoles,
+} from './application-auth.js';
 
 /** Configuration for verifying Laravel-issued admin tokens. */
 export type JwtAdminTokenVerifierOptions = {
@@ -75,7 +80,8 @@ function validateClaims(
   const exp = numberClaim(payload.exp);
   const aud = audienceClaim(payload.aud);
   const nbf = payload.nbf === undefined ? undefined : numberClaim(payload.nbf);
-  const permissions = permissionsClaim(payload.permissions);
+  const permissions = permissionsClaim(payload[applicationClaimNames.permissions]);
+  const role = stringClaim(payload[applicationClaimNames.role]);
   const jti = stringClaim(payload.jti);
 
   if (
@@ -90,7 +96,10 @@ function validateClaims(
   ) {
     throw invalidToken();
   }
-  if (payload.role !== 'admin' || !permissions.includes('access-live-feed-admin')) {
+  if (
+    role !== applicationRoles.admin ||
+    !permissions.includes(applicationPermissions.liveFeedAdmin)
+  ) {
     throw new ApplicationError(
       'Admin authorization is required.',
       403,
@@ -101,7 +110,7 @@ function validateClaims(
   return {
     sub,
     email: typeof payload.email === 'string' ? payload.email : undefined,
-    role: typeof payload.role === 'string' ? payload.role : undefined,
+    role: role || undefined,
     permissions,
     iss,
     aud: Array.isArray(payload.aud) ? aud : (aud[0] ?? ''),

@@ -1,5 +1,7 @@
 <?php
 
+use App\Auth\ApplicationAuth;
+
 return [
     'portal_url' => rtrim(
         (string) env('AUCTION_OPERATIONS_PORTAL_URL', 'http://localhost:5099'),
@@ -16,6 +18,9 @@ return [
     ),
     'token_issuer' => env('AUCTION_OPERATIONS_TOKEN_ISSUER', 'auction-client'),
     'token_audience' => env('AUCTION_OPERATIONS_TOKEN_AUDIENCE', 'auction-operations-portal'),
-    'token_permission' => env('AUCTION_OPERATIONS_TOKEN_PERMISSION', 'access-auction-operations'),
+    'token_permission' => env(
+        'AUCTION_OPERATIONS_TOKEN_PERMISSION',
+        ApplicationAuth::PERMISSION_AUCTION_OPERATIONS,
+    ),
     'token_ttl_seconds' => (int) env('AUCTION_OPERATIONS_TOKEN_TTL_SECONDS', 300),
 ];

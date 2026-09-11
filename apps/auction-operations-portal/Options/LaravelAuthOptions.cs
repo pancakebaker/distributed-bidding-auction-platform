@@ -3,6 +3,8 @@
 // </copyright>
 namespace AuctionOperationsPortal.Options;
 
+using DistributedBidding.AuthContracts;
+
 /// <summary>Configures the Laravel-to-portal administrator handoff.</summary>
 public sealed class LaravelAuthOptions
 {
@@ -13,7 +15,7 @@ public sealed class LaravelAuthOptions
     /// <summary>Gets or sets the expected token audience.</summary>
     public string Audience { get; set; } = "auction-operations-portal";
     /// <summary>Gets or sets the required administrator permission.</summary>
-    public string Permission { get; set; } = "access-auction-operations";
+    public string Permission { get; set; } = ApplicationPermissions.AccessAuctionOperations;
     /// <summary>Gets or sets the Laravel public key path.</summary>
     public string PublicKeyPath { get; set; } =
         "../live-feed-service/config/live-feed-admin-public.pem";

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Auth\ApplicationAuth;
 use App\Models\User;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -26,8 +27,8 @@ class AuctionOperationsTokenIssuer
         $claims = [
             'sub' => (string) $user->getAuthIdentifier(),
             'email' => (string) $user->email,
-            'role' => 'admin',
-            'permissions' => [(string) config('auction_operations.token_permission')],
+            ApplicationAuth::CLAIM_ROLE => ApplicationAuth::ROLE_ADMIN,
+            ApplicationAuth::CLAIM_PERMISSIONS => [(string) config('auction_operations.token_permission')],
             'iss' => (string) config('auction_operations.token_issuer'),
             'aud' => (string) config('auction_operations.token_audience'),
             'iat' => $issuedAt,
