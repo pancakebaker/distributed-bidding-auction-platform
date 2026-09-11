@@ -61,6 +61,14 @@ jobs:
           psql --host 127.0.0.1 --port 55432 --username auction_app
           --dbname auction_demo_tests --command "CREATE DATABASE auction_operations;"
 
+      - name: Apply Operations Portal migrations
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.0
+          dotnet ef database update \
+            --project apps/auction-operations-portal/AuctionOperationsPortal.csproj \
+            --startup-project apps/auction-operations-portal/AuctionOperationsPortal.csproj \
+            --no-build
+
       - name: Run .NET tests
         run: dotnet test --no-build
 
