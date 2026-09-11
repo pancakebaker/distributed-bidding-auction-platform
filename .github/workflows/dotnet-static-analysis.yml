@@ -56,6 +56,12 @@ jobs:
         working-directory: apps/client
         run: composer install --no-interaction --no-progress --prefer-dist
 
+      - name: Prepare Laravel test environment
+        working-directory: apps/client
+        run: |
+          cp .env.example .env
+          php artisan key:generate --force
+
       - name: Validate Composer configuration
         working-directory: apps/client
         run: composer validate --no-check-publish
