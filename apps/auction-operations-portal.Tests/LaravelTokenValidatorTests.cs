@@ -23,6 +23,15 @@ public sealed class LaravelTokenValidatorTests : IDisposable
     }
 
     [Fact]
+    public void DefaultPublicKeyPath_IsPortalLocal()
+    {
+        var defaultPath = new LaravelAuthOptions().PublicKeyPath;
+
+        Assert.Equal("keys/live-feed-admin-public.pem", defaultPath);
+        Assert.DoesNotContain("live-feed-service", defaultPath, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void ValidToken_IsAccepted()
     {
         var identity = Validator().Validate(CreateToken());

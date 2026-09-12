@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { resolve } from 'node:path';
 import { integrationEventRoutingKeys } from '../../src/domain/transport.js';
 import { loadConfig } from '../../src/config/config.js';
 
 const routingKeyEnvironmentNames = [
   'LIVE_FEED_RABBITMQ_ROUTING_KEY',
   'LIVE_FEED_RABBITMQ_ROUTING_KEYS',
+  'LIVE_FEED_ADMIN_TOKEN_PUBLIC_KEY_PATH',
   'RABBITMQ_EXCHANGE',
   'LIVE_FEED_RABBITMQ_QUEUE',
   'LIVE_FEED_RABBITMQ_DLX',
@@ -36,6 +38,15 @@ function withRoutingKeyEnvironment<T>(environment: RoutingKeyEnvironment, callba
   }
 }
 
+void test('configured public-key path is honored', () => {
+  const configuredPath = 'provisioned/live-feed-admin-public.pem';
+  const config = withRoutingKeyEnvironment(
+    { LIVE_FEED_ADMIN_TOKEN_PUBLIC_KEY_PATH: configuredPath },
+    () => loadConfig(),
+  );
+
+  assert.equal(config.adminTokenPublicKeyPath, resolve(process.cwd(), configuredPath));
+});
 void test('defaults to every integration routing key', () => {
   const config = withRoutingKeyEnvironment({}, () => loadConfig());
 

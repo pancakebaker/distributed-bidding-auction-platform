@@ -68,12 +68,17 @@ function Wait-ForPortal {
 }
 
 Set-Location $root
+$authKeyDirectory = Join-Path $root '.local/auth-keys'
+$privateKeyPath = Join-Path $authKeyDirectory 'live-feed-admin-private.pem'
+$publicKeyPath = Join-Path $authKeyDirectory 'live-feed-admin-public.pem'
 
 foreach ($command in @('docker', 'dotnet', 'node', 'npm', 'php')) {
     Assert-Command -Name $command
 }
 
 Assert-Path -Path (Join-Path $root '.env') -Description 'Repository-root .env file'
+Assert-Path -Path $privateKeyPath -Description 'Laravel live-feed admin private key'
+Assert-Path -Path $publicKeyPath -Description 'Live-feed and Operations Portal public key'
 Assert-Path -Path (Join-Path $root 'apps/client/.env') -Description 'Laravel apps/client/.env file'
 Assert-Path -Path (Join-Path $root 'apps/live-feed-service/node_modules') -Description 'Live Feed Node dependencies'
 Assert-Path -Path (Join-Path $root 'apps/client/vendor') -Description 'Laravel Composer dependencies'
@@ -87,8 +92,8 @@ docker compose up -d
 Start-DemoProcess -Title 'DBAP Bidding Service' -WorkingDirectory $root -Command 'dotnet run --project apps/bidding-service/bidding-service.csproj --launch-profile http'
 Start-DemoProcess -Title 'DBAP Outbox Publisher' -WorkingDirectory $root -Command 'dotnet run --project workers/outbox-publisher/outbox-publisher.csproj'
 Start-DemoProcess -Title 'DBAP Auction Scheduler' -WorkingDirectory $root -Command 'dotnet run --project workers/auction-scheduler/auction-scheduler.csproj'
-Start-DemoProcess -Title 'DBAP Live Feed Service' -WorkingDirectory (Join-Path $root 'apps/live-feed-service') -Command 'npm run dev'
-Start-DemoProcess -Title 'DBAP Laravel Client' -WorkingDirectory (Join-Path $root 'apps/client') -Command 'php artisan serve --host=127.0.0.1 --port=8000'
+Start-DemoProcess -Title 'DBAP Live Feed Service' -WorkingDirectory (Join-Path $root 'apps/live-feed-service') -Command "`$env:LIVE_FEED_ADMIN_TOKEN_PUBLIC_KEY_PATH = '$publicKeyPath'; npm run dev"
+Start-DemoProcess -Title 'DBAP Laravel Client' -WorkingDirectory (Join-Path $root 'apps/client') -Command "`$env:LIVE_FEED_ADMIN_TOKEN_PRIVATE_KEY_PATH = '$privateKeyPath'; `$env:AUCTION_OPERATIONS_TOKEN_PRIVATE_KEY_PATH = '$privateKeyPath'; php artisan serve --host=127.0.0.1 --port=8000"
 Start-DemoProcess -Title 'DBAP Laravel Vite' -WorkingDirectory (Join-Path $root 'apps/client') -Command 'npm run dev -- --host=127.0.0.1'
 
 $portalUrl = 'http://localhost:5099'
@@ -97,7 +102,7 @@ if (Test-ListeningPort -Port 5099) {
     Write-Host "Auction Operations Portal is already listening: $portalUrl"
 }
 else {
-    Start-DemoProcess -Title 'DBAP Auction Operations Portal' -WorkingDirectory $root -Command '$env:ASPNETCORE_ENVIRONMENT = ''Development''; $env:DOTNET_ENVIRONMENT = ''Development''; dotnet run --no-restore --project apps/auction-operations-portal --urls http://localhost:5099'
+    Start-DemoProcess -Title 'DBAP Auction Operations Portal' -WorkingDirectory $root -Command "`$env:ASPNETCORE_ENVIRONMENT = 'Development'; `$env:DOTNET_ENVIRONMENT = 'Development'; `$env:LaravelAuth__PublicKeyPath = '$publicKeyPath'; dotnet run --no-restore --project apps/auction-operations-portal --urls http://localhost:5099"
 }
 
 Wait-ForPortal -Url $portalHealthUrl

@@ -16,7 +16,7 @@ CREATE DATABASE auction_operations;
 
 ## Authentication boundary
 
-Laravel remains the username/password and administrator authority. The protected Laravel route `/admin/auction-operations` renders a one-time auto-submitting POST handoff to `/auth/handoff`; it never places the JWT in browser storage or a long-lived URL. Laravel signs the short-lived RS256 token with the existing Live Feed private key. The portal reads only the corresponding public key from `../live-feed-service/config/live-feed-admin-public.pem` and requires the exact issuer `auction-client`, audience `auction-operations-portal`, administrator role, `access-auction-operations` permission, expiry, and JTI.
+Laravel remains the username/password and administrator authority. The protected Laravel route `/admin/auction-operations` renders a one-time auto-submitting POST handoff to `/auth/handoff`; it never places the JWT in browser storage or a long-lived URL. Laravel signs the short-lived RS256 token with the existing Live Feed private key. The portal reads only the corresponding configured public key and requires the exact issuer `auction-client`, audience `auction-operations-portal`, administrator role, `access-auction-operations` permission, expiry, and JTI.
 
 After validation, the portal stores only minimized identity claims in its own short-lived HttpOnly cookie (`auction_operations_auth`). Logout clears that cookie and returns to the configured Laravel admin URL. The configured Laravel base URL is deployment metadata only; logout does not accept a user-controlled redirect. The current in-memory JTI replay guard is intentionally single-instance; a multi-instance deployment must move consumed-JTI storage to a shared store before scaling out. Laravel remains the only username/password authority.
 
@@ -87,7 +87,7 @@ These are development procedures only. Useful signals include GC heap size, allo
 
 ## Configuration and local run
 
-The checked-in `appsettings.json` files contain safe local development values only. The normal local configuration uses PostgreSQL at `127.0.0.1:55432`, RabbitMQ at `localhost:5672`, exchange `auction.events`, queue `auction-operations.activity`, dead-letter exchange `auction-operations.dead-letter`, and dead-letter queue `auction-operations.activity.dlq`. Laravel authentication uses issuer `auction-client`, audience `auction-operations-portal`, permission `access-auction-operations`, and the public key copied to `apps/live-feed-service/config/live-feed-admin-public.pem`; Laravel retains the private key under its storage directory.
+The checked-in `appsettings.json` files contain safe local development values only. The normal local configuration uses PostgreSQL at `127.0.0.1:55432`, RabbitMQ at `localhost:5672`, exchange `auction.events`, queue `auction-operations.activity`, dead-letter exchange `auction-operations.dead-letter`, and dead-letter queue `auction-operations.activity.dlq`. Laravel authentication uses issuer `auction-client`, audience `auction-operations-portal`, permission `access-auction-operations`, and an explicitly configured public key; Laravel retains the private key under its configured secret path.
 
 After the root infrastructure, Laravel, and Live Feed setup is complete, apply the portal migration and run it separately:
 
