@@ -426,9 +426,8 @@ app.Run();
 static bool IsSafeLocalReturnUrl(string? returnUrl) =>
     !string.IsNullOrWhiteSpace(returnUrl)
     && returnUrl.StartsWith('/')
-    && !returnUrl.StartsWith("//", StringComparison.Ordinal)
+    && (returnUrl.Length == 1 || (returnUrl[1] != '/' && returnUrl[1] != '\\'))
     && !returnUrl.Contains('\\', StringComparison.Ordinal)
-    && !Uri.TryCreate(returnUrl, UriKind.Absolute, out _)
     && !returnUrl.Contains('\r', StringComparison.Ordinal)
     && !returnUrl.Contains('\n', StringComparison.Ordinal);
 

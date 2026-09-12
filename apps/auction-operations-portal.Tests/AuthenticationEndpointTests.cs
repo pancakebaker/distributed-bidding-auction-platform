@@ -6,8 +6,8 @@ using System.Text.RegularExpressions;
 using AuctionOperationsPortal.Auth;
 using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Options;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -157,6 +157,52 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         Assert.Equal("/", response.Headers.Location?.ToString());
     }
 
+    [Theory]
+    [InlineData("https://evil.example")]
+    [InlineData("http://evil.example")]
+    [InlineData("//evil.example")]
+    [InlineData("/\\evil.example")]
+    [InlineData("\\\\evil.example")]
+    public async Task LocalSystemAdminLogin_RejectsUnsafeReturnUrlVariants(string returnUrl)
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        var login = await client.GetAsync("/login");
+        var token = ExtractAntiforgeryToken(await login.Content.ReadAsStringAsync());
+        var response = await client.PostAsync(
+            "/auth/login",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("email", "systemadmin@example.test"),
+                new KeyValuePair<string, string>("password", "system-admin-password"),
+                new KeyValuePair<string, string>("returnUrl", returnUrl),
+                new KeyValuePair<string, string>("__RequestVerificationToken", token)
+            }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/", response.Headers.Location?.ToString());
+    }
+
+    [Fact]
+    public async Task LocalSystemAdminLogin_PreservesLocalReturnUrlWithQueryString()
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        var login = await client.GetAsync("/login");
+        var token = ExtractAntiforgeryToken(await login.Content.ReadAsStringAsync());
+        var returnUrl = "/activity/history?eventType=BidAccepted";
+        var response = await client.PostAsync(
+            "/auth/login",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("email", "systemadmin@example.test"),
+                new KeyValuePair<string, string>("password", "system-admin-password"),
+                new KeyValuePair<string, string>("returnUrl", returnUrl),
+                new KeyValuePair<string, string>("__RequestVerificationToken", token)
+            }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(returnUrl, response.Headers.Location?.ToString());
+    }
+
     private static string ExtractAntiforgeryToken(string html)
     {
         var match = Regex.Match(
@@ -237,7 +283,7 @@ public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Progra
 
     private sealed class TestSystemAdminAccountService : ISystemAdminAccountService
     {
-        private readonly IPasswordHasher<SystemAdminUser> hasher = new PasswordHasher<SystemAdminUser>();
+        private readonly PasswordHasher<SystemAdminUser> hasher = new();
         private readonly SystemAdminUser user;
 
         public TestSystemAdminAccountService()
