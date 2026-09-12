@@ -12,6 +12,9 @@ public sealed class AuctionOperationsDbContext(
     /// <summary>Gets the persisted auction activities.</summary>
     public DbSet<AuctionActivity> AuctionActivities => Set<AuctionActivity>();
 
+    /// <summary>Gets the independent platform system-admin accounts.</summary>
+    public DbSet<SystemAdminUser> SystemAdminUsers => Set<SystemAdminUser>();
+
     /// <summary>Configures the activity projection schema and indexes.</summary>
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -57,5 +60,43 @@ public sealed class AuctionOperationsDbContext(
             .HasDatabaseName("ix_auction_activity_aggregate_id");
         entity.HasIndex(activity => activity.EventType)
             .HasDatabaseName("ix_auction_activity_event_type");
+
+        var systemAdmin = modelBuilder.Entity<SystemAdminUser>();
+        systemAdmin.ToTable("system_admin_users");
+        systemAdmin.HasKey(user => user.Id);
+        systemAdmin.Property(user => user.Id).UseIdentityAlwaysColumn();
+        systemAdmin.Property(user => user.SubjectId)
+            .HasColumnName("subject_id")
+            .HasMaxLength(36)
+            .IsRequired();
+        systemAdmin.HasIndex(user => user.SubjectId)
+            .IsUnique()
+            .HasDatabaseName("ux_system_admin_users_subject_id");
+        systemAdmin.Property(user => user.Email)
+            .HasMaxLength(320)
+            .IsRequired();
+        systemAdmin.Property(user => user.NormalizedEmail)
+            .HasColumnName("normalized_email")
+            .HasMaxLength(320)
+            .IsRequired();
+        systemAdmin.HasIndex(user => user.NormalizedEmail)
+            .IsUnique()
+            .HasDatabaseName("ux_system_admin_users_normalized_email");
+        systemAdmin.Property(user => user.PasswordHash)
+            .HasColumnName("password_hash")
+            .HasMaxLength(1000)
+            .IsRequired();
+        systemAdmin.Property(user => user.Role)
+            .HasMaxLength(100)
+            .IsRequired();
+        systemAdmin.Property(user => user.IsActive)
+            .HasColumnName("is_active")
+            .IsRequired();
+        systemAdmin.Property(user => user.CreatedAtUtc)
+            .HasColumnName("created_at_utc")
+            .IsRequired();
+        systemAdmin.Property(user => user.UpdatedAtUtc)
+            .HasColumnName("updated_at_utc")
+            .IsRequired();
     }
 }

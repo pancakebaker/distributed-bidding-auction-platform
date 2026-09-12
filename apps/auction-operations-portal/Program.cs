@@ -59,6 +59,33 @@ builder.Services.Configure<LaravelAuthOptions>(options =>
             Path.Combine(builder.Environment.ContentRootPath, options.PublicKeyPath));
     }
 });
+builder.Services.Configure<SystemAdminAuthOptions>(options =>
+{
+    builder.Configuration.GetSection(SystemAdminAuthOptions.SectionName).Bind(options);
+    if (!Path.IsPathRooted(options.PrivateKeyPath))
+    {
+        options.PrivateKeyPath = Path.GetFullPath(
+            Path.Combine(builder.Environment.ContentRootPath, options.PrivateKeyPath));
+    }
+});
+builder.Services.Configure<SystemAdminDemoOptions>(options =>
+    builder.Configuration.GetSection(SystemAdminDemoOptions.SectionName).Bind(options));
+builder.Services.PostConfigure<SystemAdminDemoOptions>(options =>
+{
+    var configuredPassword = builder.Configuration["SYSTEM_ADMIN_DEMO_PASSWORD"];
+    if (!string.IsNullOrWhiteSpace(configuredPassword))
+        options.Password = configuredPassword;
+});
+var systemAdminAuthOptions = builder.Configuration
+    .GetSection(SystemAdminAuthOptions.SectionName)
+    .Get<SystemAdminAuthOptions>() ?? new();
+if (!Path.IsPathRooted(systemAdminAuthOptions.PrivateKeyPath))
+{
+    systemAdminAuthOptions.PrivateKeyPath = Path.GetFullPath(
+        Path.Combine(builder.Environment.ContentRootPath, systemAdminAuthOptions.PrivateKeyPath));
+}
+systemAdminAuthOptions.Validate(
+    builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
 builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection(RabbitMqOptions.SectionName));
 builder.Services.PostConfigure<RabbitMqOptions>(options =>
@@ -108,6 +135,10 @@ if (observabilityOptions.Enabled)
     });
 }
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<Microsoft.AspNetCore.Identity.IPasswordHasher<SystemAdminUser>, Microsoft.AspNetCore.Identity.PasswordHasher<SystemAdminUser>>();
+builder.Services.AddScoped<ISystemAdminAccountService, SystemAdminAccountService>();
+builder.Services.AddScoped<SystemAdminSeeder>();
+builder.Services.AddSingleton<ISystemAdminTokenIssuer, SystemAdminTokenIssuer>();
 builder.Services.AddSingleton<PortalReplayProtection>();
 builder.Services.AddSingleton<LaravelTokenValidator>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -175,6 +206,13 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
 var app = builder.Build();
+if (app.Environment.IsDevelopment())
+{
+    using var scope = app.Services.CreateScope();
+    var demoOptions = scope.ServiceProvider.GetRequiredService<IOptions<SystemAdminDemoOptions>>();
+    if (demoOptions.Value.Enabled)
+        await scope.ServiceProvider.GetRequiredService<SystemAdminSeeder>().SeedAsync();
+}
 if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"))
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);

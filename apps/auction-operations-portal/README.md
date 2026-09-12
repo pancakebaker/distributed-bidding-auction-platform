@@ -20,6 +20,14 @@ Laravel remains the username/password and administrator authority. The protected
 
 After validation, the portal stores only minimized identity claims in its own short-lived HttpOnly cookie (`auction_operations_auth`). Logout clears that cookie and returns to the configured Laravel admin URL. The configured Laravel base URL is deployment metadata only; logout does not accept a user-controlled redirect. The current in-memory JTI replay guard is intentionally single-instance; a multi-instance deployment must move consumed-JTI storage to a shared store before scaling out. Laravel remains the only username/password authority.
 
+## System-admin identity foundation
+
+SYS1 adds a separate `system_admin_users` account store owned by this Operations/System Admin side. It is intentionally not connected to the Laravel tenant-user table or the Bidding Service database. Accounts use salted adaptive ASP.NET password hashes, stable opaque `SubjectId` values, and the dedicated `SystemAdministrator` role. That role derives only `system.monitor`, `livefeed.admin`, and `system.diagnostics`; it does not imply the tenant-side `auction.manage`, `auction.bid`, or `auction.buy` permissions.
+
+The independent `SystemAdminAuth` configuration is a future RS256 issuer foundation. It uses a configurable issuer, explicit `KeyId`, private-key path, service-specific audience allow-list, and a 60–600 second token lifetime. Private signing keys remain on the system-admin side; future Live Feed or other consumers receive public verification material only. Non-development startup fails when required issuer configuration or the private key is missing. SYS1 does not replace the current Laravel handoff at `/auth/handoff`, `/admin/live-feed`, or `/admin/auction-operations`; that migration is deferred to later SYS phases.
+
+Development startup can seed `systemadmin@example.test` when `SystemAdminDemo:Enabled` is true. The demo password is read from `SystemAdminDemo:Password` (for example, `SYSTEM_ADMIN_DEMO_PASSWORD` mapped through deployment configuration) and otherwise uses the local-only fallback `system-admin-password`. Demo seeding is disabled outside Development and never runs in production. There is no system-admin signup, password reset, or account-management UI.
+
 ## Live activity
 
 The protected `/activity/live` page uses the authenticated `/hubs/activity` ASP.NET Core SignalR hub for best-effort server-to-browser notifications. The RabbitMQ consumer validates and persists an event before publishing a safe `ActivityNotification` projection; only then is the RabbitMQ message acknowledged. A transient SignalR failure is logged and does not undo the durable `auction_activity` row or requeue an already-persisted event. The browser client runtime is vendored at `wwwroot/lib/signalr.min.js` from `@microsoft/signalr` 10.0.0 so local development does not depend on a CDN.

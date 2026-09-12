@@ -3,6 +3,7 @@ using System;
 using AuctionOperationsPortal.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace AuctionOperationsPortal.Migrations
 {
     [DbContext(typeof(AuctionOperationsDbContext))]
-    partial class AuctionOperationsDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260912134119_AddSystemAdminUsers")]
+    partial class AddSystemAdminUsers
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
