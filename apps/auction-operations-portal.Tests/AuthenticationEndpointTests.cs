@@ -157,6 +157,37 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         Assert.Equal("/", response.Headers.Location?.ToString());
     }
 
+    [Fact]
+    public async Task LocalSystemAdmin_CanInitiateServerSideLiveFeedHandoff()
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        var login = await client.GetAsync("/login");
+        var token = ExtractAntiforgeryToken(await login.Content.ReadAsStringAsync());
+        var loginResponse = await client.PostAsync(
+            "/auth/login",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("email", "systemadmin@example.test"),
+                new KeyValuePair<string, string>("password", "system-admin-password"),
+                new KeyValuePair<string, string>("__RequestVerificationToken", token)
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, loginResponse.StatusCode);
+
+        var home = await client.GetAsync("/");
+        var handoffToken = ExtractAntiforgeryToken(await home.Content.ReadAsStringAsync());
+        var response = await client.PostAsync(
+            "/admin/live-feed/access",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("__RequestVerificationToken", handoffToken)
+            }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal(
+            "http://localhost:3001/admin/auth/handoff?code=test-handoff-code",
+            response.Headers.Location?.ToString());
+    }
+
     [Theory]
     [InlineData("https://evil.example")]
     [InlineData("http://evil.example")]
@@ -273,12 +304,32 @@ public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Progra
         {
             services.RemoveAll<ISystemAdminAccountService>();
             services.AddScoped<ISystemAdminAccountService, TestSystemAdminAccountService>();
+            services.RemoveAll<ISystemAdminTokenIssuer>();
+            services.AddSingleton<ISystemAdminTokenIssuer, TestSystemAdminTokenIssuer>();
+            services.RemoveAll<ILiveFeedAdminHandoffClient>();
+            services.AddSingleton<ILiveFeedAdminHandoffClient, TestLiveFeedAdminHandoffClient>();
         });
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             [$"{LaravelAuthOptions.SectionName}:PublicKeyPath"] = publicKeyPath,
             [$"{LaravelAuthOptions.SectionName}:LaravelAdminUrl"] = "http://localhost:8000/admin"
         }));
+    }
+
+    private sealed class TestSystemAdminTokenIssuer : ISystemAdminTokenIssuer
+    {
+        public string Issue(SystemAdminUser user, string audience) =>
+            user.SubjectId == "system-admin-test-subject" && audience == "live-feed-admin"
+                ? "test-system-admin-token"
+                : throw new InvalidOperationException();
+    }
+
+    private sealed class TestLiveFeedAdminHandoffClient : ILiveFeedAdminHandoffClient
+    {
+        public Task<string> CreateHandoffAsync(string systemAdminToken, CancellationToken cancellationToken = default) =>
+            Task.FromResult(systemAdminToken == "test-system-admin-token"
+                ? "test-handoff-code"
+                : throw new InvalidOperationException());
     }
 
     private sealed class TestSystemAdminAccountService : ISystemAdminAccountService
@@ -305,6 +356,14 @@ public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Progra
         public Task<SystemAdminUser?> FindActiveByEmailAsync(string email, CancellationToken cancellationToken = default) =>
             Task.FromResult<SystemAdminUser?>(
                 SystemAdminAccountService.NormalizeEmail(email) == user.NormalizedEmail && user.IsActive
+                    ? user
+                    : null);
+
+        public Task<SystemAdminUser?> FindActiveBySubjectIdAsync(
+            string subjectId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<SystemAdminUser?>(
+                string.Equals(subjectId, user.SubjectId, StringComparison.Ordinal) && user.IsActive
                     ? user
                     : null);
 

@@ -13,6 +13,11 @@ public interface ISystemAdminAccountService
     /// <summary>Finds an active account by login email.</summary>
     Task<SystemAdminUser?> FindActiveByEmailAsync(string email, CancellationToken cancellationToken = default);
 
+    /// <summary>Finds an active account by its stable subject identifier.</summary>
+    Task<SystemAdminUser?> FindActiveBySubjectIdAsync(
+        string subjectId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>Verifies a password without exposing password storage details to callers.</summary>
     PasswordVerificationResult VerifyPassword(SystemAdminUser user, string password);
 }
@@ -33,6 +38,14 @@ public sealed class SystemAdminAccountService(
                 user => user.NormalizedEmail == normalized && user.IsActive,
                 cancellationToken);
     }
+
+    /// <inheritdoc />
+    public Task<SystemAdminUser?> FindActiveBySubjectIdAsync(
+        string subjectId,
+        CancellationToken cancellationToken = default) =>
+        db.SystemAdminUsers.SingleOrDefaultAsync(
+            user => user.SubjectId == subjectId && user.IsActive,
+            cancellationToken);
 
     /// <inheritdoc />
     public PasswordVerificationResult VerifyPassword(SystemAdminUser user, string password) =>

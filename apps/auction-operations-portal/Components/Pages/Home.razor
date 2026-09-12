@@ -12,6 +12,14 @@
             </strong>
         </p>
         <p>The portal foundation is ready to receive and persist auction activity events.</p>
+        @if (authState.User.IsInRole("SystemAdministrator")
+            && authState.User.HasClaim("permission", "livefeed.admin"))
+        {
+            <form method="post" action="/admin/live-feed/access">
+                <AntiforgeryToken />
+                <button type="submit">Open Live Feed administration</button>
+            </form>
+        }
         <form method="post" action="/auth/logout">
             <AntiforgeryToken />
             <button type="submit">Sign out</button>

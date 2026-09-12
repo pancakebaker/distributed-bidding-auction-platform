@@ -14,6 +14,10 @@ import type {
   AdminTokenClaims,
   AdminTokenVerifier,
 } from '../../src/application/ports/admin-token-verifier.js';
+import type {
+  AdminHandoffClaims,
+  AdminHandoffStore,
+} from '../../src/application/ports/admin-handoff-store.js';
 import type { LiveFeedDashboardSnapshot } from '../../src/application/diagnostics/get-live-feed-dashboard.js';
 
 const snapshot: LiveFeedDashboardSnapshot = {
@@ -77,6 +81,22 @@ class TestAdminTokenReplayConsumer implements AdminTokenReplayConsumer {
     this.calls.push({ jti, expiresAt });
     if (this.error) return Promise.reject(this.error);
     return Promise.resolve(this.outcome);
+  }
+}
+
+class TestAdminHandoffStore implements AdminHandoffStore {
+  public created: AdminHandoffClaims | undefined;
+  public consumed = false;
+
+  public async create(claims: AdminHandoffClaims): Promise<string> {
+    this.created = claims;
+    return 'opaque-handoff-code';
+  }
+
+  public async consume(code: string): Promise<AdminHandoffClaims | undefined> {
+    if (code !== 'opaque-handoff-code' || this.consumed) return undefined;
+    this.consumed = true;
+    return this.created;
   }
 }
 
@@ -263,4 +283,56 @@ void test('admin handoff paths remain stable', () => {
     liveFeed: '/admin/live-feed',
     tokenExchange: '/admin/auth/token',
   });
+});
+
+void test('system-admin exchange creates an opaque one-time browser handoff without returning a JWT', async () => {
+  const app = express();
+  const handoffStore = new TestAdminHandoffStore();
+  const systemClaims: AdminTokenClaims = {
+    sub: 'system-admin-subject',
+    role: 'SystemAdministrator',
+    permissions: ['system.monitor', 'livefeed.admin', 'system.diagnostics'],
+    iss: 'dbap-system-admin',
+    aud: 'live-feed-admin',
+    iat: 1,
+    exp: 9_999_999_999,
+    jti: 'system-jti',
+  };
+  registerAdminRoutes(app, {
+    auth: new AdminAuth({ secret: 'test-secret', secure: false }),
+    tokenVerifier: verifier,
+    systemTokenVerifier: { verify: () => systemClaims },
+    replayConsumer: new TestAdminTokenReplayConsumer(),
+    handoffStore,
+    clientOrigin: 'http://localhost:8000',
+    assetDirectory: 'dist/ui',
+    publicAdminDirectory: 'public/admin',
+    getSnapshot: () => snapshot,
+  });
+  const server = await startApp(app);
+  try {
+    const exchange = await fetch(server.baseUrl + '/admin/auth/system-token', {
+      method: 'POST',
+      headers: { authorization: 'Bearer system-token' },
+    });
+    assert.equal(exchange.status, 200);
+    const body = (await exchange.json()) as { handoffCode?: string; token?: string };
+    assert.equal(body.handoffCode, 'opaque-handoff-code');
+    assert.equal(body.token, undefined);
+
+    const handoff = await fetch(server.baseUrl + '/admin/auth/handoff?code=opaque-handoff-code', {
+      redirect: 'manual',
+    });
+    assert.equal(handoff.status, 302);
+    assert.match(handoff.headers.get('set-cookie') ?? '', /HttpOnly/);
+    assert.equal(handoff.headers.get('location'), '/admin/live-feed');
+
+    const replay = await fetch(server.baseUrl + '/admin/auth/handoff?code=opaque-handoff-code', {
+      redirect: 'manual',
+    });
+    assert.equal(replay.status, 302);
+    assert.equal(replay.headers.get('set-cookie'), null);
+  } finally {
+    await server.close();
+  }
 });

@@ -2,6 +2,7 @@
  * Small signed-cookie session boundary for the Laravel-authorized live-feed operations page.
  */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import type { AdminHandoffClaims } from '../../../application/ports/admin-handoff-store.js';
 
 /**
  * Configuration for the short-lived local Node admin session.
@@ -35,9 +36,12 @@ export class AdminAuth {
   /**
    * Creates a signed local session after an upstream Laravel admin token is verified.
    */
-  public createSession(): string {
+  public createSession(claims?: AdminHandoffClaims): string {
     const expiresAt = Math.floor(this.now() / 1000) + this.sessionLifetimeSeconds;
-    const payload = String(expiresAt) + '.' + randomBytes(12).toString('hex');
+    const session = claims
+      ? Buffer.from(JSON.stringify({ ...claims, exp: expiresAt })).toString('base64url')
+      : String(expiresAt);
+    const payload = session + '.' + randomBytes(12).toString('hex');
     const signature = this.sign(payload);
     const secure = this.secure ? '; Secure' : '';
 
@@ -59,8 +63,8 @@ export class AdminAuth {
     const token = readCookie(cookieHeader, 'live_feed_admin');
     if (!token) return false;
 
-    const [expiresText, nonce, signature] = token.split('.');
-    const expiresAt = Number(expiresText);
+    const [sessionText, nonce, signature] = token.split('.');
+    const expiresAt = Number(sessionText) || readSessionExpiry(sessionText);
     if (
       !Number.isInteger(expiresAt) ||
       !nonce ||
@@ -69,7 +73,7 @@ export class AdminAuth {
     )
       return false;
 
-    const expected = this.sign(expiresText + '.' + nonce);
+    const expected = this.sign(sessionText + '.' + nonce);
     const providedBytes = Buffer.from(signature);
     const expectedBytes = Buffer.from(expected);
     return (
@@ -86,6 +90,19 @@ export class AdminAuth {
 
   private sign(payload: string): string {
     return createHmac('sha256', this.secret).update(payload).digest('base64url');
+  }
+}
+
+function readSessionExpiry(sessionText: string): number {
+  try {
+    const value: unknown = JSON.parse(Buffer.from(sessionText, 'base64url').toString('utf8'));
+    return value &&
+      typeof value === 'object' &&
+      typeof (value as { exp?: unknown }).exp === 'number'
+      ? (value as { exp: number }).exp
+      : Number.NaN;
+  } catch {
+    return Number.NaN;
   }
 }
 

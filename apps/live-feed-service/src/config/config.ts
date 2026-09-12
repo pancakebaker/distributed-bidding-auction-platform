@@ -2,6 +2,7 @@
  * Environment-backed configuration for the live-feed service runtime and integration dependencies.
  */
 import { dirname, isAbsolute, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { integrationEventRoutingKeys } from '../domain/transport.js';
 
@@ -28,6 +29,12 @@ export type LiveFeedConfig = {
   adminTokenPublicKeyPath: string;
   adminTokenIssuer: string;
   adminTokenAudience: string;
+  systemAdminTokenPublicKeyPath: string;
+  systemAdminTokenIssuer: string;
+  systemAdminTokenAudience: string;
+  systemAdminTokenKid: string;
+  enableLegacyLaravelAdminAuth: boolean;
+  enableSystemAdminAuth: boolean;
 };
 
 function numberFromEnv(name: string, fallback: number): number {
@@ -86,7 +93,7 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
   const serviceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
   const configuredPublicKeyPath = process.env.LIVE_FEED_ADMIN_TOKEN_PUBLIC_KEY_PATH;
 
-  return {
+  const config: LiveFeedConfig = {
     port: numberFromEnv('PORT', 3001),
     clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:8000',
     redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
@@ -109,6 +116,29 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
       : resolve(serviceRoot, 'config/live-feed-admin-public.pem'),
     adminTokenIssuer: process.env.LIVE_FEED_ADMIN_TOKEN_ISSUER ?? 'auction-client',
     adminTokenAudience: process.env.LIVE_FEED_ADMIN_TOKEN_AUDIENCE ?? 'live-feed-admin',
+    systemAdminTokenPublicKeyPath: resolve(
+      serviceRoot,
+      process.env.SYSTEM_ADMIN_TOKEN_PUBLIC_KEY_PATH ?? 'config/system-admin-public.pem',
+    ),
+    systemAdminTokenIssuer: process.env.SYSTEM_ADMIN_TOKEN_ISSUER ?? 'dbap-system-admin',
+    systemAdminTokenAudience: process.env.SYSTEM_ADMIN_TOKEN_AUDIENCE ?? 'live-feed-admin',
+    systemAdminTokenKid: process.env.SYSTEM_ADMIN_TOKEN_KID ?? 'system-admin-development-1',
+    enableLegacyLaravelAdminAuth: process.env.ENABLE_LEGACY_LARAVEL_ADMIN_AUTH !== 'false',
+    enableSystemAdminAuth: process.env.ENABLE_SYSTEM_ADMIN_AUTH !== 'false',
     ...overrides,
   };
+
+  if (process.env.NODE_ENV === 'production' && config.enableSystemAdminAuth) {
+    if (
+      !config.systemAdminTokenIssuer ||
+      !config.systemAdminTokenAudience ||
+      !config.systemAdminTokenKid ||
+      !isAbsolute(config.systemAdminTokenPublicKeyPath) ||
+      !existsSync(config.systemAdminTokenPublicKeyPath)
+    ) {
+      throw new Error('System-admin Live Feed authentication configuration is incomplete.');
+    }
+  }
+
+  return config;
 }

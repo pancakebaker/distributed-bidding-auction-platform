@@ -73,6 +73,8 @@ builder.Services.Configure<SystemAdminDemoOptions>(options =>
     builder.Configuration.GetSection(SystemAdminDemoOptions.SectionName).Bind(options));
 builder.Services.Configure<SystemAdminSessionOptions>(options =>
     builder.Configuration.GetSection(SystemAdminSessionOptions.SectionName).Bind(options));
+builder.Services.Configure<LiveFeedAdminOptions>(options =>
+    builder.Configuration.GetSection(LiveFeedAdminOptions.SectionName).Bind(options));
 builder.Services.PostConfigure<SystemAdminDemoOptions>(options =>
 {
     var configuredPassword = builder.Configuration["SYSTEM_ADMIN_DEMO_PASSWORD"];
@@ -93,6 +95,11 @@ var systemAdminSessionOptions = builder.Configuration
     .GetSection(SystemAdminSessionOptions.SectionName)
     .Get<SystemAdminSessionOptions>() ?? new();
 systemAdminSessionOptions.Validate(
+    builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
+var liveFeedAdminOptions = builder.Configuration
+    .GetSection(LiveFeedAdminOptions.SectionName)
+    .Get<LiveFeedAdminOptions>() ?? new();
+liveFeedAdminOptions.Validate(
     builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
 builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection(RabbitMqOptions.SectionName));
@@ -147,6 +154,11 @@ builder.Services.AddSingleton<Microsoft.AspNetCore.Identity.IPasswordHasher<Syst
 builder.Services.AddScoped<ISystemAdminAccountService, SystemAdminAccountService>();
 builder.Services.AddScoped<SystemAdminSeeder>();
 builder.Services.AddSingleton<ISystemAdminTokenIssuer, SystemAdminTokenIssuer>();
+builder.Services.AddHttpClient<ILiveFeedAdminHandoffClient, LiveFeedAdminHandoffClient>(client =>
+{
+    client.BaseAddress = new Uri(liveFeedAdminOptions.BaseUrl, UriKind.Absolute);
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 builder.Services.AddSingleton<PortalReplayProtection>();
 builder.Services.AddSingleton<LaravelTokenValidator>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -174,6 +186,11 @@ builder.Services.AddAuthorizationBuilder()
                 && context.User.HasClaim("permission", permission))
             || (context.User.IsInRole(SystemAdminRoles.SystemAdministrator)
                 && context.User.HasClaim("permission", SystemAdminPermissions.Monitor))));
+builder.Services.AddAuthorizationBuilder()
+    .AddPolicy("SystemAdminLiveFeed", policy => policy
+        .RequireAuthenticatedUser()
+        .RequireRole(SystemAdminRoles.SystemAdministrator)
+        .RequireClaim("permission", SystemAdminPermissions.LiveFeedAdmin));
 builder.Services.AddCascadingAuthenticationState();
 if (builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
@@ -213,7 +230,7 @@ builder.Services.AddRateLimiter(options =>
         context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
         _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 10,
+            PermitLimit = builder.Environment.IsEnvironment("Testing") ? 1_000 : 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
@@ -311,6 +328,43 @@ app.MapPost(
         return Results.Redirect(IsSafeLocalReturnUrl(returnUrl) ? returnUrl : "/");
     })
     .RequireRateLimiting("SystemAdminLogin")
+    .WithMetadata(new RequireAntiforgeryTokenAttribute());
+app.MapPost(
+    "/admin/live-feed/access",
+    async (
+        HttpContext context,
+        ISystemAdminAccountService accounts,
+        ISystemAdminTokenIssuer tokenIssuer,
+        ILiveFeedAdminHandoffClient handoffClient,
+        IOptions<LiveFeedAdminOptions> options,
+        ILogger<Program> logger) =>
+    {
+        var subjectId = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(subjectId))
+            return Results.Forbid();
+
+        var user = await accounts.FindActiveBySubjectIdAsync(subjectId, context.RequestAborted);
+        if (user is null)
+            return Results.Forbid();
+
+        try
+        {
+            var token = tokenIssuer.Issue(user, "live-feed-admin");
+            var code = await handoffClient.CreateHandoffAsync(token, context.RequestAborted);
+            var destination = new Uri(
+                new Uri(options.Value.BaseUrl, UriKind.Absolute),
+                options.Value.BrowserHandoffEndpoint + "?code=" + Uri.EscapeDataString(code));
+            return Results.Redirect(destination.ToString());
+        }
+        catch (LiveFeedAdminHandoffException exception)
+        {
+            logger.LogWarning(exception, "Live Feed system-admin handoff was unavailable.");
+            return Results.Problem(
+                "Live Feed admin access is temporarily unavailable.",
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    })
+    .RequireAuthorization("SystemAdminLiveFeed")
     .WithMetadata(new RequireAntiforgeryTokenAttribute());
 app.MapPost(
     "/auth/handoff",

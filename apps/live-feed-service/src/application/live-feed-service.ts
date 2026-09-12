@@ -19,6 +19,7 @@ import { auctionRoom, parseAuctionSubscription } from '../transport/websocket/ro
 import { adminSocketEvents, adminSocketRooms, auctionSocketEvents } from '../domain/transport.js';
 import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
 import { RedisAdminTokenReplayConsumer } from '../infrastructure/cache/redis-admin-token-replay-consumer.js';
+import { RedisAdminHandoffStore } from '../infrastructure/cache/redis-admin-handoff-store.js';
 import { SocketIoLiveFeedPublisher } from '../transport/websocket/socketio-live-feed-publisher.js';
 import { EventLoopMonitor } from '../infrastructure/runtime/event-loop-monitor.js';
 import { getProcessMetrics } from '../infrastructure/runtime/process-metrics.js';
@@ -34,6 +35,7 @@ import { registerAdminRoutes } from '../transport/http/admin/admin-route.js';
 import { registerAdminHistoryRoutes } from '../transport/http/admin/admin-history-route.js';
 import { AdminAuth } from '../transport/http/admin/admin-auth.js';
 import { JwtAdminTokenVerifier } from '../infrastructure/auth/jwt-admin-token-verifier.js';
+import { SystemAdminJwtTokenVerifier } from '../infrastructure/auth/system-admin-jwt-token-verifier.js';
 import { getLiveFeedDashboard } from './diagnostics/get-live-feed-dashboard.js';
 import { RecentActivityStore } from './diagnostics/recent-activity-store.js';
 import {
@@ -88,6 +90,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const redisSub = redis.duplicate() as RedisClientType;
   const stateStore = new LiveFeedStateStore(redis, config.idempotencyTtlSeconds);
   const adminTokenReplayConsumer = new RedisAdminTokenReplayConsumer(redis);
+  const adminHandoffStore = new RedisAdminHandoffStore(redis);
   const publisher = new SocketIoLiveFeedPublisher(io);
   const recentActivity = new RecentActivityStore(50);
   const adminPublisher = new SocketIoAdminLiveFeedPublisher(io);
@@ -103,6 +106,12 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     publicKeyPath: config.adminTokenPublicKeyPath,
     issuer: config.adminTokenIssuer,
     audience: config.adminTokenAudience,
+  });
+  const systemAdminTokenVerifier = new SystemAdminJwtTokenVerifier({
+    publicKeyPath: config.systemAdminTokenPublicKeyPath,
+    issuer: config.systemAdminTokenIssuer,
+    audience: config.systemAdminTokenAudience,
+    expectedKid: config.systemAdminTokenKid,
   });
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
   const eventLoopMonitor = new EventLoopMonitor();
@@ -168,6 +177,10 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     clientOrigin: config.clientOrigin,
     assetDirectory: adminAssetDirectory,
     publicAdminDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../../public/admin'),
+    systemTokenVerifier: systemAdminTokenVerifier,
+    handoffStore: adminHandoffStore,
+    enableLegacyLaravelAdminAuth: config.enableLegacyLaravelAdminAuth,
+    enableSystemAdminAuth: config.enableSystemAdminAuth,
     getSnapshot: () =>
       getLiveFeedDashboard({
         eventLoopMonitor,

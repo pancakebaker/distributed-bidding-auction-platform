@@ -288,6 +288,15 @@ Useful local URLs:
 - Bidding Service Swagger: `http://localhost:5000/swagger`
 - Live Feed health: `http://localhost:3001/health`
 
+The Operations Portal's **Open Live Feed administration** action uses the local
+SystemAdministrator session to issue a short-lived server-side `live-feed-admin`
+JWT. Live Feed validates the independent `dbap-system-admin` issuer, audience,
+explicit key ID, role, permission, and signature, then returns a one-time opaque
+handoff code. Only that code crosses the browser boundary; the JWT remains
+server-to-server. The legacy Laravel Live Feed handoff remains available during
+SYS3 and is scheduled for removal in SYS4. Public auction Socket.IO rooms remain
+anonymous.
+
 The PostgreSQL initialization creates `auction_operations` on a fresh volume. For an existing volume created before the portal was added, create that database idempotently with the documented PostgreSQL setup; do not destroy the volume to rerun initialization.
 
 ## Testing and Validation
