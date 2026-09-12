@@ -20,6 +20,7 @@ class LiveFeedAdminController extends Controller
     {
         return view('admin.live-feed-redirect', [
             'serviceUrl' => (string) config('live_feed.service_url'),
+            'tokenExchangePath' => (string) config('live_feed.token_exchange_path'),
             'token' => $this->tokenIssuer->issue($request->user()),
         ]);
     }

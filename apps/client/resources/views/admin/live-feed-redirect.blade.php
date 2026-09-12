@@ -9,7 +9,7 @@
     <main>
         <h1>Opening Live Feed Operations</h1>
         <p>Your Laravel admin session is being exchanged for a short-lived Live Feed session.</p>
-        <form id="live-feed-token-exchange" method="post" action="{{ $serviceUrl }}/admin/auth/token">
+        <form id="live-feed-token-exchange" method="post" action="{{ $serviceUrl }}{{ $tokenExchangePath }}">
             <input type="hidden" name="token" value="{{ $token['token'] }}">
             <noscript><button type="submit">Continue</button></noscript>
         </form>

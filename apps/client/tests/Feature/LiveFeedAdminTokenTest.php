@@ -52,6 +52,17 @@ class LiveFeedAdminTokenTest extends TestCase
         $this->assertArrayNotHasKey('password', $payload);
     }
 
+    public function test_handoff_form_uses_configured_service_and_token_exchange_path(): void
+    {
+        $admin = User::factory()->admin()->create();
+        config(['live_feed.service_url' => 'https://live-feed.example.test']);
+
+        $this->actingAs($admin)
+            ->get('/admin/live-feed')
+            ->assertOk()
+            ->assertSee('action="https://live-feed.example.test/admin/auth/token"', false);
+    }
+
     public function test_non_admin_and_guest_cannot_request_a_token(): void
     {
         $this->actingAs(User::factory()->create())->postJson('/admin/live-feed/token')->assertForbidden();

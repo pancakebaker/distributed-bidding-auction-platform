@@ -10,6 +10,7 @@ import type { LiveFeedDashboardSnapshot } from '../../../application/diagnostics
 import { renderLiveFeedAdmin } from '../../../ui/server/render-live-feed-admin.js';
 import type { AdminAuth } from './admin-auth.js';
 import { applyAdminSecurityHeaders } from './admin-security.js';
+import { adminRoutes } from './admin-routes.js';
 
 /**
  * Dependencies for the protected operational dashboard routes.
@@ -32,16 +33,16 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
   app.use('/admin', express.static(dependencies.publicAdminDirectory));
 
   app.get('/admin/login', (_request, response) => {
-    response.redirect(dependencies.clientOrigin + '/admin/live-feed');
+    response.redirect(dependencies.clientOrigin + adminRoutes.liveFeed);
   });
 
-  app.options('/admin/auth/token', (_request, response) => {
+  app.options(adminRoutes.tokenExchange, (_request, response) => {
     applyTokenExchangeCors(_request, response, dependencies.clientOrigin);
     response.status(204).end();
   });
 
   app.post(
-    '/admin/auth/token',
+    adminRoutes.tokenExchange,
     express.urlencoded({ extended: false }),
     async (request, response) => {
       applyTokenExchangeCors(request, response, dependencies.clientOrigin);
@@ -82,7 +83,7 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
         }
 
         response.setHeader('Set-Cookie', dependencies.auth.createSession());
-        response.redirect('/admin/live-feed');
+        response.redirect(adminRoutes.liveFeed);
       } catch (error) {
         const statusCode = error instanceof ApplicationError ? error.statusCode : 401;
         response.status(statusCode).json({
@@ -100,7 +101,7 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
     response.redirect('/admin/login');
   });
 
-  app.get('/admin/live-feed', (request, response, next) => {
+  app.get(adminRoutes.liveFeed, (request, response, next) => {
     applyAdminSecurityHeaders(response);
 
     if (!dependencies.auth.isAuthorizedCookie(request.get('cookie'))) {

@@ -9,4 +9,5 @@ return [
     'token_audience' => env('LIVE_FEED_ADMIN_TOKEN_AUDIENCE', 'live-feed-admin'),
     'token_ttl_seconds' => (int) env('LIVE_FEED_ADMIN_TOKEN_TTL_SECONDS', 600),
     'service_url' => rtrim(env('LIVE_FEED_SERVICE_URL', 'http://localhost:3001'), '/'),
+    'token_exchange_path' => '/admin/auth/token',
 ];

@@ -5,6 +5,7 @@ import test from 'node:test';
 import express from 'express';
 import { AdminAuth } from '../../src/transport/http/admin/admin-auth.js';
 import { registerAdminRoutes } from '../../src/transport/http/admin/admin-route.js';
+import { adminRoutes } from '../../src/transport/http/admin/admin-routes.js';
 import type {
   AdminTokenReplayConsumer,
   AdminTokenReplayConsumeResult,
@@ -255,4 +256,11 @@ void test('exchange passes validated JTI expiry and accepts independent JTIs', a
   } finally {
     await server.close();
   }
+});
+
+void test('admin handoff paths remain stable', () => {
+  assert.deepEqual(adminRoutes, {
+    liveFeed: '/admin/live-feed',
+    tokenExchange: '/admin/auth/token',
+  });
 });
