@@ -28,10 +28,11 @@ internal static class JwtTestKeys
         string audience = "dbap-bidding-service",
         DateTimeOffset? expiresAt = null,
         string[]? permissions = null,
-        RSA? signingKey = null)
+        RSA? signingKey = null,
+        string keyId = "bidding-service-v1")
     {
         var now = DateTimeOffset.UtcNow;
-        var header = Encode(new { alg = "RS256", typ = "JWT", kid = "bidding-service-v1" });
+        var header = Encode(new { alg = "RS256", typ = "JWT", kid = keyId });
         var payload = Encode(new
         {
             iss = issuer,

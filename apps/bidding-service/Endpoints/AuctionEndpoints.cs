@@ -951,7 +951,12 @@ public static class AuctionEndpoints
     private static string ResolveCorrelationId(HttpContext httpContext)
     {
         var incoming = httpContext.Request.Headers[CorrelationIdHeader].FirstOrDefault();
-        return string.IsNullOrWhiteSpace(incoming) ? Guid.NewGuid().ToString("N") : incoming.Trim();
+        var normalized = incoming?.Trim();
+        return string.IsNullOrWhiteSpace(normalized)
+            || normalized.Length > 128
+            || normalized.Any(char.IsControl)
+            ? Guid.NewGuid().ToString("N")
+            : normalized;
     }
 
     private sealed record BidValidationError(int StatusCode, ApiErrorResponse Error);

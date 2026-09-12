@@ -112,6 +112,14 @@ The client never decides whether a bid is valid. It submits commands to the Bidd
 Client-side version checks protect the view from stale live events. Lower versions are ignored. `BidAccepted` must advance the current version, while distinct lifecycle sibling events at the same version are allowed because one transition may produce `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased`. This improves UI resilience but does not make browser state authoritative.
 
 Browser countdowns are visual only. Server-side UTC validation in the Bidding Service remains the source of truth for scheduled, open, and closed auction behavior.
+
+### Authentication boundary hardening
+
+Human command identity is established by the Laravel session and conveyed to the Bidding Service only through a short-lived, server-issued RS256 bearer token. Laravel keeps the private signing key; the Bidding Service validates the signature, configured `kid`, issuer, audience, lifetime, and permission claims using public verification material. `sub` is the actor identity, while permissions are derived from trusted Laravel user state. Browsers do not receive or store these downstream tokens, and CSRF protects browser-to-Laravel state changes.
+
+Public auction reads and public Socket.IO auction events remain anonymous. All human state-changing commands use the Laravel BFF; the Bidding Service remains the final policy boundary (`AuctionBid`, `AuctionBuy`, and `AuctionManage`). Current tenant ownership/resource matching and tenant claims are not implemented; future multi-tenancy must add tenant context without overloading `sub`. System-administration and live-feed-admin authentication remain separate SYS0+ work.
+
+Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority
 
 The Bidding Service is authoritative for:

@@ -89,6 +89,18 @@ public sealed class BiddingAuthenticationTests : IClassFixture<AuctionApiFactory
     }
 
     [Fact]
+    public async Task UnknownSigningKeyIdIsRejected()
+    {
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTestKeys.CreateToken(keyId: "unknown-key"));
+
+        var response = await client.GetAsync("/testing/authenticated-sub");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task BidEndpointRequiresAuthenticatedBidder()
     {
         client.DefaultRequestHeaders.Authorization = null;

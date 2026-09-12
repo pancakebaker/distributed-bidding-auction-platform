@@ -64,8 +64,8 @@ builder.Services
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = signingKey,
-            IssuerSigningKeys = [signingKey],
+            IssuerSigningKeyResolver = (_, _, kid, _) =>
+                kid == authenticationOptions.KeyId ? [signingKey] : [],
             ValidateIssuer = true,
             ValidIssuer = authenticationOptions.Issuer,
             ValidateAudience = true,
