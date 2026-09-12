@@ -14,6 +14,8 @@ builder.Services.Configure<ConnectionStringsOptions>(
     builder.Configuration.GetSection(ConnectionStringsOptions.SectionName));
 builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection(RabbitMqOptions.SectionName));
+builder.Services.PostConfigure<RabbitMqOptions>(options =>
+    RabbitMqOptions.ApplyEnvironmentOverrides(options, builder.Configuration));
 builder.Services.Configure<PublisherOptions>(
     builder.Configuration.GetSection(PublisherOptions.SectionName));
 

@@ -61,6 +61,8 @@ builder.Services.Configure<LaravelAuthOptions>(options =>
 });
 builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection(RabbitMqOptions.SectionName));
+builder.Services.PostConfigure<RabbitMqOptions>(options =>
+    RabbitMqOptions.ApplyEnvironmentOverrides(options, builder.Configuration));
 builder.Services.AddDbContext<AuctionOperationsDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("AuctionOperationsDb")
