@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Support\AdminNavigation;
 use App\Support\AdminResponse;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
@@ -17,7 +18,7 @@ class AdminAuctionController extends Controller
     {
         return AdminResponse::make($request, [
             'page' => 'auctions',
-            'navigation' => \App\Support\AdminNavigation::for('auctions'),
+            'navigation' => AdminNavigation::for('auctions'),
             'props' => [],
         ]);
     }
