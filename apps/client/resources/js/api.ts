@@ -7,6 +7,8 @@ import type {
     AuctionSummary,
     Bid,
     BuyNowResponse,
+    CreateAuctionRequest,
+    UpdateAuctionRequest,
     PlaceBidResponse,
 } from './types';
 
@@ -75,6 +77,32 @@ function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
  */
 export function getAuctions(): Promise<AuctionSummary[]> {
     return request<AuctionSummary[]>('/api/auctions');
+}
+
+/** Creates an auction through the authoritative Bidding Service management API. */
+export function createAuction(payload: CreateAuctionRequest): Promise<AuctionDetail> {
+    return request<AuctionDetail>('/api/auctions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+}
+
+/** Updates an eligible auction with its expected aggregate version. */
+export function updateAuction(
+    auctionId: string,
+    update: UpdateAuctionRequest,
+): Promise<AuctionDetail> {
+    return request<AuctionDetail>(`/api/auctions/${auctionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(update),
+    });
+}
+
+/** Deletes an untouched future Scheduled auction when the server permits it. */
+export function deleteAuction(auctionId: string): Promise<void> {
+    return request<void>(`/api/auctions/${auctionId}`, { method: 'DELETE' });
 }
 
 /**

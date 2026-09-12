@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminAuditLogController;
+use App\Http\Controllers\Admin\AdminAuctionController;
 use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\Admin\AdminExportController;
 use App\Http\Controllers\Admin\AdminFaqController;
@@ -52,6 +53,7 @@ Route::middleware(['auth', 'can:access-admin'])
         Route::get('/exports', [AdminExportController::class, 'index'])->name('exports.index');
         Route::get('/exports/{export}/download', [AdminExportController::class, 'download'])
             ->name('exports.download');
+        Route::get('/auctions', AdminAuctionController::class)->name('auctions');
 
         Route::get('/pages', [AdminPageController::class, 'index'])->name('pages.index');
         Route::get('/pages/create', [AdminPageController::class, 'create'])->name('pages.create');

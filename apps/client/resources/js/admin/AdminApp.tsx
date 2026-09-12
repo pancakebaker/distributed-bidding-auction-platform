@@ -4,6 +4,7 @@
 import React, { StrictMode, useCallback, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
 import { createRoot } from 'react-dom/client';
+import { AuctionManagementPage } from './AuctionManagementPage';
 
 type AdminPage =
     | 'dashboard'
@@ -12,7 +13,8 @@ type AdminPage =
     | 'faqs'
     | 'audit-logs'
     | 'exports'
-    | 'notification-preferences';
+    | 'notification-preferences'
+    | 'auctions';
 
 type AdminNavigationItem = {
     label: string;
@@ -198,6 +200,12 @@ type NotificationPreferencesBootstrap = {
     };
 };
 
+type AuctionsBootstrap = {
+    page: 'auctions';
+    navigation: AdminNavigationItem[];
+    props: Record<string, never>;
+};
+
 type AdminBootstrap =
     | DashboardBootstrap
     | UsersBootstrap
@@ -205,7 +213,8 @@ type AdminBootstrap =
     | FaqsBootstrap
     | AuditLogsBootstrap
     | ExportsBootstrap
-    | NotificationPreferencesBootstrap;
+    | NotificationPreferencesBootstrap
+    | AuctionsBootstrap;
 type AdminNavigationState = {
     bootstrap: AdminBootstrap;
     error: string | null;
@@ -430,6 +439,7 @@ export function AdminApp({ bootstrap }: { bootstrap: AdminBootstrap }) {
             {navigation.bootstrap.page === 'notification-preferences' && (
                 <NotificationPreferencesPage {...navigation.bootstrap.props} />
             )}
+            {navigation.bootstrap.page === 'auctions' && <AuctionManagementPage />}
         </AdminLayout>
     );
 }
@@ -504,6 +514,7 @@ function AdminHeader({ page }: { page: AdminPage }) {
         'audit-logs': 'Audit Log',
         exports: 'Exports',
         'notification-preferences': 'Notification Preferences',
+        auctions: 'Auction Management',
     };
 
     return (

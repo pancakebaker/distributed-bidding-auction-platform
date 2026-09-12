@@ -18,6 +18,7 @@ class AdminNavigation
             ['label' => 'FAQs', 'href' => route('admin.faqs.index'), 'active' => $activePage === 'faqs'],
             ['label' => 'Audit Log', 'href' => route('admin.audit-logs.index'), 'active' => $activePage === 'audit-logs'],
             ['label' => 'Exports', 'href' => route('admin.exports.index'), 'active' => $activePage === 'exports'],
+            ['label' => 'Auction Management', 'href' => route('admin.auctions'), 'active' => $activePage === 'auctions'],
             [
                 'label' => 'Live Feed Operations ↗',
                 'href' => route('admin.live-feed'),

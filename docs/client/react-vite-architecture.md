@@ -185,3 +185,19 @@ Phase 17 adds a focused cleanup test for the live-feed Socket.IO subscription. I
 ## Bidding Boundary
 
 The client keeps Laravel as the Blade/web boundary and does not own authoritative auction behavior. Buy Now is an explicit action and is never inferred from a bid amount; ordinary bids remain strictly below BuyNowPrice. CurrentBid* represents ordinary bidding, while Final* represents terminal outcome. Conflict responses refresh authoritative state without automatically replaying a purchase command.
+
+## Auction Management Boundary
+
+The `/admin/auctions` page writes auction configuration through the Bidding
+Service management API. Laravel/React does not write BiddingDb directly, and
+the existing live operations surface remains an event-consumer/read-only view.
+Only untouched future `Scheduled` auctions are presented as editable or
+deletable; the Bidding Service remains authoritative when lifecycle state has
+changed since the page loaded.
+
+Sale-mode forms use `BuyNowPrice` as the authoritative Buy Now value. For
+`BuyNowOnly`, a persisted `StartingPrice` equal to `BuyNowPrice` is a schema
+compatibility detail rather than a second purchase price. Management API
+authorization remains a production hardening requirement because the current
+repository does not yet provide a dedicated authenticated Bidding Service
+management principal.

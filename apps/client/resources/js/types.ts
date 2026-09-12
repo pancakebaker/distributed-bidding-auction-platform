@@ -22,7 +22,25 @@ export type AuctionSummary = {
     version: number;
 };
 
+/** Enumerates the server-authoritative sale modes. */
 export type SaleMode = 'AuctionOnly' | 'BuyNowOnly' | 'AuctionAndBuyNow';
+
+/** Fields accepted by the Bidding Service auction creation endpoint. */
+export type CreateAuctionRequest = {
+    title: string;
+    description: string;
+    saleMode: SaleMode;
+    startingPrice: number;
+    minimumBidIncrement: number;
+    buyNowPrice: number | null;
+    startTimeUtc: string;
+    endTimeUtc: string;
+};
+
+/** Fields accepted by the Bidding Service auction update endpoint. */
+export type UpdateAuctionRequest = CreateAuctionRequest & {
+    version: number;
+};
 
 /**
  * Detailed auction state used by the bidding screen and REST reconciliation after
@@ -61,6 +79,7 @@ export type PlaceBidResponse = {
     correlationId: string;
 };
 
+/** Successful response returned after an atomic Buy Now purchase. */
 export type BuyNowResponse = {
     auctionId: string;
     bidderId: string;
@@ -126,6 +145,7 @@ export type LiveWinnerSelected = {
     correlationId: string | null;
 };
 
+/** Client-facing live event for an explicit terminal purchase. */
 export type LiveAuctionPurchased = {
     auctionId: string;
     bidderId: string;

@@ -964,6 +964,96 @@ button:disabled {
     justify-content: flex-end;
 }
 
+.auction-management-panel {
+    max-width: 1280px;
+}
+
+.auction-management-table {
+    min-width: 980px;
+}
+
+.auction-management-table td,
+.auction-management-table th {
+    vertical-align: top;
+}
+
+.auction-management-table td small,
+.auction-management-table td strong {
+    display: block;
+    margin-bottom: 5px;
+}
+
+.auction-management-table td small {
+    color: #62716c;
+    font-size: 12px;
+}
+
+.admin-action-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.admin-secondary-button,
+.admin-danger-button {
+    border: 1px solid #c9d6ce;
+    border-radius: 6px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    padding: 8px 10px;
+}
+
+.admin-secondary-button {
+    background: #eef5ef;
+    color: #1f5d51;
+}
+
+.admin-danger-button {
+    background: #fff1ee;
+    border-color: #e6b9ae;
+    color: #9b321f;
+}
+
+.admin-secondary-button:disabled,
+.admin-danger-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.admin-management-note,
+.admin-management-error {
+    margin: 18px 18px 0;
+    padding: 12px;
+}
+
+.admin-management-note {
+    background: #edf5ef;
+    border-left: 4px solid #1f5d51;
+    color: #40564d;
+}
+
+.admin-management-error {
+    background: #fff1ee;
+    border: 1px solid #e6b9ae;
+    border-radius: 6px;
+    color: #9b321f;
+    font-weight: 800;
+}
+
+.auction-management-form-panel {
+    max-width: 900px;
+}
+
+.sr-only {
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    position: absolute;
+    width: 1px;
+    clip: rect(0, 0, 0, 0);
+}
+
 .cms-public-shell {
     background: #f5f7f4;
     color: #17201d;
