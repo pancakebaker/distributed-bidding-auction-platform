@@ -16,6 +16,7 @@ import type {
 import type {
   AuctionClosedEnvelope,
   AuctionPurchasedEnvelope,
+  AuctionCancelledEnvelope,
   BidAcceptedEnvelope,
 } from '../../src/domain/events.js';
 
@@ -78,6 +79,19 @@ function closedEvent(auctionId: string): AuctionClosedEnvelope {
       finalBidderId: 'buyer-123',
       auctionVersion: 12,
     },
+  };
+}
+
+function cancelledEvent(auctionId = randomUUID()): AuctionCancelledEnvelope {
+  return {
+    eventId: randomUUID(),
+    eventType: 'AuctionCancelled',
+    occurredAtUtc: new Date().toISOString(),
+    aggregateType: 'Auction',
+    aggregateId: auctionId,
+    aggregateVersion: 13,
+    correlationId: 'cancel-correlation',
+    payload: { auctionId },
   };
 }
 
@@ -167,18 +181,39 @@ void test('same-version purchase and close siblings are both published in either
       },
     );
 
-    const events = order === 'purchase-first'
-      ? [purchaseEvent(auctionId), closedEvent(auctionId)]
-      : [closedEvent(auctionId), purchaseEvent(auctionId)];
+    const events =
+      order === 'purchase-first'
+        ? [purchaseEvent(auctionId), closedEvent(auctionId)]
+        : [closedEvent(auctionId), purchaseEvent(auctionId)];
     await processor.process(events[0]);
     await processor.process(events[1]);
 
-    assert.deepEqual(updates.map((update) => update.eventName).sort(), [
-      'auction:purchased',
-      'auction:closed',
-    ].sort());
+    assert.deepEqual(
+      updates.map((update) => update.eventName).sort(),
+      ['auction:purchased', 'auction:closed'].sort(),
+    );
     assert.equal(updates.length, 2);
   }
+});
+
+void test('AuctionCancelled publishes the cancellation event without terminal outcome data', async () => {
+  const updates: LiveFeedUpdate[] = [];
+  const envelope = cancelledEvent();
+  const processor = new LiveFeedEventProcessor(
+    { publish: (update) => updates.push(update) },
+    stateStore({ status: 'accepted', previousVersion: 12 }),
+  );
+
+  await processor.process(envelope);
+
+  assert.equal(updates[0]?.eventName, 'auction:cancelled');
+  assert.deepEqual(updates[0]?.payload, {
+    auctionId: envelope.aggregateId,
+    status: 'Cancelled',
+    auctionVersion: 13,
+    occurredAtUtc: envelope.occurredAtUtc,
+    correlationId: envelope.correlationId,
+  });
 });
 
 void test('state-store errors propagate through the application boundary', async () => {

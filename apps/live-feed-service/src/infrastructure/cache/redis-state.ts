@@ -55,6 +55,8 @@ if numericCurrentVersion then
       redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
     elseif eventType == 'AuctionPurchased' then
       redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice, 'purchasedAtUtc', occurredAtUtc)
+    elseif eventType == 'AuctionCancelled' then
+      redis.call('HSET', projectionKey, 'status', 'Cancelled')
     end
     return {'same-version', currentVersion}
   end
@@ -83,6 +85,8 @@ elseif eventType == 'WinnerSelected' then
   redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
 elseif eventType == 'AuctionPurchased' then
   redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice, 'purchasedAtUtc', occurredAtUtc)
+elseif eventType == 'AuctionCancelled' then
+  redis.call('HSET', projectionKey, 'status', 'Cancelled')
 end
 
 return {status, currentVersion or ''}
@@ -147,7 +151,8 @@ export class LiveFeedStateStore implements LiveStateStore {
     return {
       auctionId,
       aggregateVersion: Number(values.aggregateVersion),
-      status: values.status === 'Closed' ? 'Closed' : undefined,
+      status:
+        values.status === 'Closed' || values.status === 'Cancelled' ? values.status : undefined,
       currentBidAmount: values.currentBidAmount ? Number(values.currentBidAmount) : undefined,
       currentBidderId: values.currentBidderId || undefined,
       finalWinnerId: values.finalWinnerId || undefined,
@@ -196,6 +201,10 @@ export class LiveFeedStateStore implements LiveStateStore {
 
     if (envelope.eventType === integrationEventTypes.winnerSelected) {
       return ['', '', envelope.payload.winnerId, String(envelope.payload.amount), ''];
+    }
+
+    if (envelope.eventType === integrationEventTypes.auctionCancelled) {
+      return ['', '', '', '', ''];
     }
 
     return [

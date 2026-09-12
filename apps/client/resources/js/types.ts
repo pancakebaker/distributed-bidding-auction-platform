@@ -155,3 +155,12 @@ export type LiveAuctionPurchased = {
     occurredAtUtc: string;
     correlationId: string | null;
 };
+
+/** Socket.IO event payload broadcast when an auction is explicitly cancelled. */
+export type LiveAuctionCancelled = {
+    auctionId: string;
+    status: 'Cancelled';
+    auctionVersion: number;
+    occurredAtUtc: string;
+    correlationId: string | null;
+};

@@ -137,7 +137,8 @@ function socketEventName(
   | typeof auctionSocketEvents.bidAccepted
   | typeof auctionSocketEvents.auctionClosed
   | typeof auctionSocketEvents.winnerSelected
-  | typeof auctionSocketEvents.auctionPurchased {
+  | typeof auctionSocketEvents.auctionPurchased
+  | typeof auctionSocketEvents.auctionCancelled {
   if (eventType === integrationEventTypes.bidAccepted) {
     return auctionSocketEvents.bidAccepted;
   }
@@ -148,6 +149,10 @@ function socketEventName(
 
   if (eventType === integrationEventTypes.winnerSelected) {
     return auctionSocketEvents.winnerSelected;
+  }
+
+  if (eventType === integrationEventTypes.auctionCancelled) {
+    return auctionSocketEvents.auctionCancelled;
   }
 
   return auctionSocketEvents.auctionPurchased;

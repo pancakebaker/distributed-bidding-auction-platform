@@ -104,7 +104,7 @@ resources/js/liveFeed.ts
 Live Feed Service
 ```
 
-This path is used for real-time auction updates through Socket.IO, including `auction:purchased`, `auction:closed`, `auction:winner-selected`, and `auction:bid-accepted`. The React component treats live events as presentation updates and still reconciles state with the authoritative Bidding API when needed. A purchase updates FinalWinnerId/FinalPrice and never rewrites CurrentBidAmount/CurrentBidderId. Lower aggregate versions are ignored, while distinct same-version `auction:purchased` and `auction:closed` events are merged in either order.
+This path is used for real-time auction updates through Socket.IO, including `auction:purchased`, `auction:cancelled`, `auction:closed`, `auction:winner-selected`, and `auction:bid-accepted`. The React component treats live events as presentation updates and still reconciles state with the authoritative Bidding API when needed. A purchase updates FinalWinnerId/FinalPrice and never rewrites CurrentBidAmount/CurrentBidderId. Cancellation preserves ordinary bid history without inventing a terminal winner. Lower aggregate versions are ignored, while distinct same-version `auction:purchased` and `auction:closed` events are merged in either order.
 
 React Query or SWR was not introduced. Laravel already caches public CMS reads server-side, auction state comes from the Bidding Service and Live Feed Service, and admin pages receive server-prepared bootstrap payloads. A client cache layer would duplicate invalidation responsibilities at this scale.
 

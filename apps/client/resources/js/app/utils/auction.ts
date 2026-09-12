@@ -7,6 +7,7 @@ import type {
     AuctionSummary,
     LiveAuctionClosed,
     LiveAuctionPurchased,
+    LiveAuctionCancelled,
     LiveStatus,
 } from '../../types';
 
@@ -128,6 +129,23 @@ export function applyAuctionPurchased(
         finalPrice: event.finalPrice,
         version: Math.max(current.version, event.auctionVersion),
         updatedAtUtc: event.purchasedAtUtc,
+    };
+}
+
+/** Applies an explicit cancellation without inventing terminal outcome fields. */
+export function applyAuctionCancelled(
+    current: AuctionDetail | null,
+    event: LiveAuctionCancelled,
+): AuctionDetail | null {
+    if (!current || event.auctionVersion < current.version) {
+        return current;
+    }
+
+    return {
+        ...current,
+        status: 'Cancelled',
+        version: Math.max(current.version, event.auctionVersion),
+        updatedAtUtc: event.occurredAtUtc,
     };
 }
 

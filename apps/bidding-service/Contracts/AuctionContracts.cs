@@ -67,6 +67,11 @@ public sealed record PlaceBidRequest(string BidderId, decimal Amount);
 public sealed record BuyNowRequest(string BidderId);
 
 /// <summary>
+/// Carries the expected auction version for an explicit cancellation command.
+/// </summary>
+public sealed record CancelAuctionRequest(long Version);
+
+/// <summary>
 /// Describes the accepted bid and resulting auction state.
 /// </summary>
 public sealed record PlaceBidResponse(

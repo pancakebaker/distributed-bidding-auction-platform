@@ -20,7 +20,7 @@ export type EventAcceptanceResult = {
 export type LiveAuctionProjection = {
   auctionId: string;
   aggregateVersion: number;
-  status?: 'Closed';
+  status?: 'Closed' | 'Cancelled';
   currentBidAmount?: number;
   currentBidderId?: string;
   finalWinnerId?: string;

@@ -43,6 +43,24 @@ export function appearsEditable(
     );
 }
 
+/** Returns whether the current list state appears cancellable. */
+export function appearsCancellable(
+    auction:
+        | Pick<
+              AuctionDetail | AuctionSummary,
+              'status' | 'currentBidAmount' | 'currentBidderId' | 'finalWinnerId' | 'finalPrice'
+          >
+        | null
+        | undefined,
+) {
+    return Boolean(
+        auction &&
+        (auction.status === 'Scheduled' || auction.status === 'Open') &&
+        auction.finalWinnerId === null &&
+        auction.finalPrice === null,
+    );
+}
+
 /** Converts stable management API errors into actionable admin copy. */
 export function describeManagementError(code: string | undefined, fallback: string) {
     switch (code) {
@@ -53,6 +71,10 @@ export function describeManagementError(code: string | undefined, fallback: stri
             return 'Only an untouched future Scheduled auction can be edited.';
         case 'auction_not_deletable':
             return 'This auction cannot be permanently deleted because it has started, history, or terminal state.';
+        case 'auction_already_cancelled':
+            return 'This auction is already cancelled.';
+        case 'auction_not_cancellable':
+            return 'Closed or purchased auctions cannot be cancelled.';
         case 'invalid_auction_time_window':
             return 'Choose a future end time after the start time.';
         case 'invalid_buy_now_price':

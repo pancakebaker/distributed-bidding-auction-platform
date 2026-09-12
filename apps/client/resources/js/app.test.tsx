@@ -9,6 +9,7 @@ import type {
     AuctionSummary,
     Bid,
     LiveAuctionPurchased,
+    LiveAuctionCancelled,
     LiveAuctionClosed,
     LiveBidAccepted,
     LiveWinnerSelected,
@@ -203,6 +204,10 @@ function liveWinner(event: LiveWinnerSelected) {
 
 function livePurchased(event: LiveAuctionPurchased) {
     socketHandlers.get(liveFeedSocketEvents.auctionPurchased)?.(event);
+}
+
+function liveCancelled(event: LiveAuctionCancelled) {
+    socketHandlers.get(liveFeedSocketEvents.auctionCancelled)?.(event);
 }
 describe('auction UI', () => {
     beforeEach(() => {
@@ -476,6 +481,33 @@ describe('auction UI', () => {
         expect(screen.getAllByText('Winner: erin').length).toBeGreaterThan(0);
     });
 
+    it('auction:cancelled preserves history and disables actions without a winner', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        liveCancelled({
+            auctionId: macBook.id,
+            status: 'Cancelled',
+            auctionVersion: 10,
+            occurredAtUtc: new Date().toISOString(),
+            correlationId: 'cancel-test',
+        });
+
+        expect(
+            await screen.findByText(
+                'This auction was cancelled and is no longer accepting activity.',
+            ),
+        ).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Auction cancelled' })).toBeDisabled();
+        expect(screen.getByLabelText('Bid amount')).toBeDisabled();
+        expect(
+            screen.getByText('Bidding and Buy Now are no longer available.'),
+        ).toBeInTheDocument();
+        expect(
+            screen.getByText('Existing bid history is preserved; no winner was selected.'),
+        ).toBeInTheDocument();
+    });
+
     it('winner:selected displays winner state for the acting bidder', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
@@ -599,7 +631,7 @@ describe('auction UI', () => {
     it('Buy Now requires confirmation and sends only bidder identity', async () => {
         const user = userEvent.setup();
         const fetchMock = vi.mocked(fetch);
-        fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        fetchMock.mockImplementation((input: RequestInfo | URL, _init?: RequestInit) => {
             const url = String(input);
             if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
             if (url.endsWith(`/api/auctions/${macBook.id}/buy-now`)) {
@@ -682,7 +714,7 @@ describe('auction UI', () => {
             version: 10,
             endTimeUtc: new Date(Date.now() - 1000).toISOString(),
         } satisfies AuctionDetail;
-        fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+        fetchMock.mockImplementation((input: RequestInfo | URL, _init?: RequestInit) => {
             const url = String(input);
             if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
             if (url.endsWith(`/api/auctions/${macBook.id}/buy-now`)) {

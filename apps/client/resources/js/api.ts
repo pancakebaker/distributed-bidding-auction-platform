@@ -105,6 +105,14 @@ export function deleteAuction(auctionId: string): Promise<void> {
     return request<void>(`/api/auctions/${auctionId}`, { method: 'DELETE' });
 }
 
+/** Cancels an eligible auction using its expected aggregate version. */
+export function cancelAuction(auctionId: string, version: number): Promise<AuctionDetail> {
+    return request<AuctionDetail>(`/api/auctions/${auctionId}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ version }),
+    });
+}
+
 /**
  * Loads one auction detail record for REST reconciliation and initial page state.
  */

@@ -5,6 +5,7 @@ import { io, type Socket } from 'socket.io-client';
 import type {
     LiveAuctionClosed,
     LiveAuctionPurchased,
+    LiveAuctionCancelled,
     LiveBidAccepted,
     LiveWinnerSelected,
 } from './types';
@@ -20,6 +21,7 @@ export type LiveFeedHandlers = {
     onAuctionClosed: (event: LiveAuctionClosed) => void;
     onWinnerSelected: (event: LiveWinnerSelected) => void;
     onAuctionPurchased: (event: LiveAuctionPurchased) => void;
+    onAuctionCancelled: (event: LiveAuctionCancelled) => void;
     onStatus: (status: 'connected' | 'reconnecting' | 'offline') => void;
 };
 
@@ -44,6 +46,7 @@ export function connectAuctionFeed(auctionId: string, handlers: LiveFeedHandlers
     socket.on(liveFeedSocketEvents.auctionClosed, handlers.onAuctionClosed);
     socket.on(liveFeedSocketEvents.winnerSelected, handlers.onWinnerSelected);
     socket.on(liveFeedSocketEvents.auctionPurchased, handlers.onAuctionPurchased);
+    socket.on(liveFeedSocketEvents.auctionCancelled, handlers.onAuctionCancelled);
 
     return socket;
 }

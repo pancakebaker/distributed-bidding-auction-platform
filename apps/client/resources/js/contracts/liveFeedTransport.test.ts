@@ -7,6 +7,7 @@ describe('live-feed Socket.IO transport contract', () => {
             bidAccepted: 'bid:accepted',
             auctionClosed: 'auction:closed',
             auctionPurchased: 'auction:purchased',
+            auctionCancelled: 'auction:cancelled',
             winnerSelected: 'winner:selected',
             subscribe: 'auction:subscribe',
             unsubscribe: 'auction:unsubscribe',

@@ -3,6 +3,7 @@
  */
 import type {
   AuctionPurchasedSocketPayload,
+  AuctionCancelledSocketPayload,
   AuctionClosedSocketPayload,
   BidAcceptedSocketPayload,
   WinnerSelectedSocketPayload,
@@ -16,7 +17,8 @@ export type LiveFeedSocketEvent =
   | typeof auctionSocketEvents.bidAccepted
   | typeof auctionSocketEvents.auctionClosed
   | typeof auctionSocketEvents.winnerSelected
-  | typeof auctionSocketEvents.auctionPurchased;
+  | typeof auctionSocketEvents.auctionPurchased
+  | typeof auctionSocketEvents.auctionCancelled;
 
 /**
  * Existing browser-facing live-feed payload union.
@@ -25,7 +27,8 @@ export type LiveFeedSocketPayload =
   | BidAcceptedSocketPayload
   | AuctionClosedSocketPayload
   | WinnerSelectedSocketPayload
-  | AuctionPurchasedSocketPayload;
+  | AuctionPurchasedSocketPayload
+  | AuctionCancelledSocketPayload;
 
 /**
  * Update passed from application processing to a transport publisher.

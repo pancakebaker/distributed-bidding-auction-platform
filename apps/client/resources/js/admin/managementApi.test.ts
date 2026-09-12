@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAuction, deleteAuction, updateAuction } from '../api';
+import { cancelAuction, createAuction, deleteAuction, updateAuction } from '../api';
 
 const payload = {
     title: 'Test auction',
@@ -42,17 +42,25 @@ describe('auction management API client', () => {
             .mockResolvedValueOnce(
                 new Response(JSON.stringify({ id: 'auction-1' }), { status: 200 }),
             )
-            .mockResolvedValueOnce(new Response(null, { status: 204 }));
+            .mockResolvedValueOnce(new Response(null, { status: 204 }))
+            .mockResolvedValueOnce(
+                new Response(JSON.stringify({ id: 'auction-1', status: 'Cancelled' }), {
+                    status: 200,
+                }),
+            );
         vi.stubGlobal('fetch', fetchMock);
 
         await updateAuction('auction-1', { ...payload, version: 4 });
         await deleteAuction('auction-1');
+        await cancelAuction('auction-1', 4);
 
         const calls = fetchMock.mock.calls as Array<[string, RequestInit | undefined]>;
         expect(calls[0][0]).toContain('/api/auctions/auction-1');
         expect((JSON.parse(String(calls[0][1]?.body)) as { version: number }).version).toBe(4);
         expect(calls[1][0]).toContain('/api/auctions/auction-1');
         expect(calls[1][1]?.method).toBe('DELETE');
+        expect(calls[2][0]).toContain('/api/auctions/auction-1/cancel');
+        expect(JSON.parse(String(calls[2][1]?.body))).toEqual({ version: 4 });
     });
 
     it('preserves structured API errors', async () => {

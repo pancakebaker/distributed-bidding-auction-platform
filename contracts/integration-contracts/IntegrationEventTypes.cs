@@ -17,4 +17,7 @@ public static class IntegrationEventTypes
 
     /// <summary>Identifies an explicit Buy Now purchase event.</summary>
     public const string AuctionPurchased = "AuctionPurchased";
+
+    /// <summary>Identifies an explicit auction cancellation event.</summary>
+    public const string AuctionCancelled = "AuctionCancelled";
 }

@@ -23,6 +23,7 @@ casually renamed:
 - `AuctionClosed`
 - `WinnerSelected`
 - `AuctionPurchased`
+- `AuctionCancelled`
 
 ### Aggregate type
 
@@ -34,6 +35,7 @@ casually renamed:
 - `auction.closed`
 - `auction.winner.selected`
 - `auction.purchased`
+- `auction.cancelled`
 
 The RabbitMQ exchange name, `auction.events`, is deliberately not owned here.
 It remains deployment and service configuration because environments may
@@ -45,7 +47,8 @@ The contract is not owned by the bidding service, scheduler, outbox publisher,
 or Operations Portal individually. It represents the protocol boundary between
 producers and consumers:
 
-- the bidding service produces `BidAccepted`;
+- the bidding service produces `BidAccepted`, `AuctionPurchased`, and
+  `AuctionCancelled`;
 - the scheduler produces `AuctionClosed` and `WinnerSelected`;
 - the outbox publisher transports those events;
 - the Operations Portal and live-feed service consume them.
@@ -66,6 +69,11 @@ describe one atomic terminal transition, share the resulting aggregate
 version, and have distinct event IDs. Consumers must ignore lower versions,
 ignore duplicate event IDs, and accept a new event ID at an equal version as a
 valid sibling regardless of sibling delivery order.
+
+`AuctionCancelled` represents an explicit lifecycle cancellation, not a bid or
+sale. Its payload contains the auction ID; envelope fields carry the resulting
+aggregate version, occurrence time, correlation ID, and unique event ID. It
+uses `auction.cancelled` and must not be interpreted as `AuctionClosed`.
 
 ## What belongs here
 

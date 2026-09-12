@@ -44,6 +44,12 @@ public static class AuctionEndpoints
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
             .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
 
+        group.MapPost("/{id:guid}/cancel", CancelAuction)
+            .WithName("CancelAuction")
+            .Produces<AuctionDetailResponse>()
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
+            .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
+
         group.MapGet("/", GetAuctions)
             .WithName("GetAuctions")
             .Produces<IReadOnlyList<AuctionSummaryResponse>>();
@@ -263,6 +269,80 @@ public static class AuctionEndpoints
         }
 
         return TypedResults.NoContent();
+    }
+
+    private static async Task<IResult> CancelAuction(
+        Guid id,
+        CancelAuctionRequest request,
+        BiddingDbContext db,
+        TimeProvider timeProvider,
+        ILoggerFactory loggerFactory,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("AuctionCancellation");
+        var correlationId = ResolveCorrelationId(httpContext);
+        httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
+
+        var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (auction is null)
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
+
+        var now = timeProvider.GetUtcNow();
+        if (auction.Status == AuctionStatus.Cancelled)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_already_cancelled",
+                "Auction is already cancelled."));
+        }
+
+        if (auction.Status is AuctionStatus.Closed)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_not_cancellable",
+                "Closed or purchased auctions cannot be cancelled."));
+        }
+
+        if (request.Version != auction.Version)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_concurrency_conflict",
+                "Auction state changed. Refresh before cancelling again."));
+        }
+
+        auction.Status = AuctionStatus.Cancelled;
+        auction.Version += 1;
+        auction.UpdatedAtUtc = now;
+        var cancelledMessage = OutboxMessageFactory.AuctionCancelled(auction, correlationId, now);
+        db.OutboxMessages.Add(cancelledMessage);
+
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            logger.LogInformation(
+                "Cancelled auction {AuctionId}. Version advanced to {AuctionVersion}. EventId: {EventId}. CorrelationId: {CorrelationId}",
+                auction.Id,
+                auction.Version,
+                cancelledMessage.Id,
+                correlationId);
+            return TypedResults.Ok(ToDetailResponse(auction));
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await transaction.RollbackAsync(cancellationToken);
+            db.ChangeTracker.Clear();
+            logger.LogWarning(
+                "Auction cancellation concurrency conflict for {AuctionId}. CorrelationId: {CorrelationId}",
+                id,
+                correlationId);
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_concurrency_conflict",
+                "Auction state changed. Refresh before cancelling again."));
+        }
     }
 
     private static ApiErrorResponse? ValidateBasicFields(string? title, string? description)

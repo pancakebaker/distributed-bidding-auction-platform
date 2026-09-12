@@ -243,6 +243,63 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     [Fact]
+    public async Task CancelScheduledAuctionCommitsOneVersionAndEvent()
+    {
+        var createdResponse = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Cancellable scheduled", "Retained after cancellation.", "AuctionOnly", 100m, 10m, null,
+            TestAuctionData.Now.AddHours(1), TestAuctionData.Now.AddHours(3)));
+        var created = await createdResponse.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+
+        var response = await CancelAuctionAsync(created!.Id, created.Version);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var cancelled = await response.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.Equal("Cancelled", cancelled?.Status);
+        Assert.Equal(2, cancelled?.Version);
+        Assert.Null(cancelled?.FinalWinnerId);
+        Assert.Null(cancelled?.FinalPrice);
+        var messages = await GetOutboxMessagesAsync(created.Id);
+        Assert.Single(messages);
+        Assert.Equal(IntegrationEventTypes.AuctionCancelled, messages[0].EventType);
+    }
+
+    [Fact]
+    public async Task CancelOpenBidBearingAuctionPreservesBidsAndRejectsLaterCommands()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.AuctionAndBuyNow, startingPrice: 100m, minimumBidIncrement: 10m, buyNowPrice: 500m);
+        var bid = await PlaceBidAsync(auctionId, "bidder-1", 100m);
+        Assert.Equal(HttpStatusCode.Created, bid.StatusCode);
+        var before = await GetAuctionAsync(auctionId);
+
+        var response = await CancelAuctionAsync(auctionId, before.Version);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var cancelled = await GetAuctionAsync(auctionId);
+        Assert.Equal("Cancelled", cancelled.Status);
+        Assert.Equal(before.CurrentBidAmount, cancelled.CurrentBidAmount);
+        Assert.Equal(before.CurrentBidderId, cancelled.CurrentBidderId);
+        Assert.Null(cancelled.FinalWinnerId);
+        Assert.Null(cancelled.FinalPrice);
+        Assert.Single(await GetBidsAsync(auctionId));
+        await AssertBuyNowRejectedAsync(await BuyNowAsync(auctionId, "buyer-1"), "auction_not_open");
+        await AssertBidRejectedAsync(await PlaceBidAsync(auctionId, "bidder-2", 120m), "auction_not_open");
+    }
+
+    [Fact]
+    public async Task CancelClosedAuctionAndStaleCancellationAreRejected()
+    {
+        var stale = await AddBuyNowAuctionAsync(SaleMode.AuctionOnly, buyNowPrice: null);
+        var staleState = await GetAuctionAsync(stale);
+        await AssertManagementRejectedAsync(await CancelAuctionAsync(stale, 0), "auction_concurrency_conflict");
+        Assert.Equal(1, (await GetAuctionAsync(stale)).Version);
+        var accepted = await CancelAuctionAsync(stale, staleState.Version);
+        Assert.Equal(HttpStatusCode.OK, accepted.StatusCode);
+
+        await AssertManagementRejectedAsync(await CancelAuctionAsync(stale, staleState.Version), "auction_already_cancelled");
+        await AssertManagementRejectedAsync(await CancelAuctionAsync(TestAuctionData.ClosedAuctionId, 2), "auction_not_cancellable");
+    }
+
+    [Fact]
     public async Task CreatedBuyNowModesRemainCompatibleWithExistingCommands()
     {
         var buyNowOnly = await CreateAuctionAsync(new CreateAuctionRequest(
@@ -993,6 +1050,11 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         return _client.PutAsJsonAsync($"/api/auctions/{auctionId}", request, JsonOptions);
     }
 
+    private Task<HttpResponseMessage> CancelAuctionAsync(Guid auctionId, long version)
+    {
+        return _client.PostAsJsonAsync($"/api/auctions/{auctionId}/cancel", new CancelAuctionRequest(version), JsonOptions);
+    }
+
     private Task<HttpResponseMessage> BuyNowAsync(Guid auctionId, string bidderId, string? correlationId = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{auctionId}/buy-now")
@@ -1036,7 +1098,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         SaleMode saleMode,
         decimal startingPrice = 1000m,
         decimal minimumBidIncrement = 50m,
-        decimal buyNowPrice = 1500m,
+        decimal? buyNowPrice = 1500m,
         decimal? currentBidAmount = null,
         string? currentBidderId = null,
         long version = 1,

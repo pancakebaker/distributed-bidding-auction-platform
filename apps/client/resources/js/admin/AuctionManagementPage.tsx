@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
     ApiClientError,
+    cancelAuction,
     createAuction,
     deleteAuction,
     getAuction,
@@ -20,6 +21,7 @@ import type {
 import { formatMoney } from '../app/utils/auction';
 import {
     appearsEditable,
+    appearsCancellable,
     describeManagementError,
     localInputToUtc,
     type AuctionFormState,
@@ -196,6 +198,31 @@ export function AuctionManagementPage() {
         }
     }
 
+    async function cancel(auction: AuctionSummary) {
+        const warning =
+            auction.currentBidAmount !== null ? ' Existing bid history will be preserved.' : '';
+        if (
+            !window.confirm(
+                `Cancel auction ${auction.id}? It will stop accepting bids and Buy Now purchases, remain in history as Cancelled, and cannot be undone.${warning}`,
+            )
+        ) {
+            return;
+        }
+
+        setBusy(true);
+        setError(null);
+        try {
+            await cancelAuction(auction.id, auction.version);
+            setMessage('Auction cancelled.');
+            await refresh();
+        } catch (cancelError) {
+            setError(errorMessage(cancelError));
+            await refresh();
+        } finally {
+            setBusy(false);
+        }
+    }
+
     if (mode !== 'list') {
         return (
             <AuctionForm
@@ -254,6 +281,7 @@ export function AuctionManagementPage() {
                     <tbody>
                         {auctions.map((auction) => {
                             const editable = appearsEditable(auction);
+                            const cancellable = appearsCancellable(auction);
                             return (
                                 <tr key={auction.id}>
                                     <td>
@@ -294,7 +322,19 @@ export function AuctionManagementPage() {
                                                 Delete
                                             </button>
                                         )}
-                                        {!editable && <small>Lifecycle locked</small>}
+                                        {cancellable && (
+                                            <button
+                                                className="admin-secondary-button"
+                                                disabled={busy}
+                                                onClick={() => void cancel(auction)}
+                                                type="button"
+                                            >
+                                                Cancel
+                                            </button>
+                                        )}
+                                        {!editable && !cancellable && (
+                                            <small>Lifecycle locked</small>
+                                        )}
                                     </td>
                                 </tr>
                             );

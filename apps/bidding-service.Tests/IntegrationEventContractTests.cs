@@ -16,11 +16,13 @@ public sealed class IntegrationEventContractTests
         Assert.Equal("AuctionClosed", IntegrationEventTypes.AuctionClosed);
         Assert.Equal("WinnerSelected", IntegrationEventTypes.WinnerSelected);
         Assert.Equal("AuctionPurchased", IntegrationEventTypes.AuctionPurchased);
+        Assert.Equal("AuctionCancelled", IntegrationEventTypes.AuctionCancelled);
         Assert.Equal("Auction", AggregateTypes.Auction);
         Assert.Equal("auction.bid.accepted", IntegrationEventRoutingKeys.BidAccepted);
         Assert.Equal("auction.closed", IntegrationEventRoutingKeys.AuctionClosed);
         Assert.Equal("auction.winner.selected", IntegrationEventRoutingKeys.WinnerSelected);
         Assert.Equal("auction.purchased", IntegrationEventRoutingKeys.AuctionPurchased);
+        Assert.Equal("auction.cancelled", IntegrationEventRoutingKeys.AuctionCancelled);
     }
 
     [Fact]
@@ -63,5 +65,27 @@ public sealed class IntegrationEventContractTests
         Assert.Equal("correlation-123", purchased.CorrelationId);
         Assert.Equal("correlation-123", closed.CorrelationId);
         Assert.NotEqual(purchased.Id, closed.Id);
+    }
+
+    [Fact]
+    public void AuctionCancelledPayloadUsesTheAggregateVersionAndNoTerminalOutcome()
+    {
+        var auction = new Auction
+        {
+            Id = Guid.NewGuid(),
+            Title = "Cancellation contract auction",
+            Description = "Contract test",
+            Version = 4
+        };
+        var message = OutboxMessageFactory.AuctionCancelled(
+            auction,
+            "correlation-cancel",
+            DateTimeOffset.UtcNow);
+        var payload = JsonSerializer.Deserialize<AuctionCancelledPayload>(message.Payload, JsonOptions);
+
+        Assert.NotNull(payload);
+        Assert.Equal(auction.Id, payload.AuctionId);
+        Assert.Equal(IntegrationEventTypes.AuctionCancelled, message.EventType);
+        Assert.Equal(4, message.AggregateVersion);
     }
 }

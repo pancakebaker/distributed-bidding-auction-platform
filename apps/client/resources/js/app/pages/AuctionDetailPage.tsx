@@ -11,6 +11,7 @@ import { useNow } from '../hooks/useNow';
 import { navigateTo } from '../utils/navigation';
 import {
     applyAuctionClosed,
+    applyAuctionCancelled,
     applyAuctionPurchased,
     describeBidError,
     describeBuyNowError,
@@ -208,12 +209,24 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                     ].slice(0, 4),
                 );
             },
+            onAuctionCancelled: (event) => {
+                if (event.auctionId !== auctionId) {
+                    return;
+                }
+
+                setAuction((current) => applyAuctionCancelled(current, event));
+                setFormMessage({
+                    tone: 'error',
+                    text: 'This auction was cancelled and is no longer accepting activity.',
+                });
+                setActivity((current) => ['Auction cancelled', ...current].slice(0, 4));
+            },
         });
 
         return () => {
             socket.disconnect();
         };
-    }, [auctionId]);
+    }, [auctionId, bidderId]);
 
     const minimumBid = auction?.minimumValidBid ?? 0;
     const countdown = auction ? getCountdown(auction, now) : '';
@@ -236,6 +249,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         auction.buyNowPrice === null ||
         auction.finalWinnerId !== null ||
         auction.finalPrice !== null;
+    const terminal = auction?.status === 'Closed' || auction?.status === 'Cancelled';
     const displayedWinner =
         winner ??
         (auction?.status === 'Closed' &&
@@ -396,10 +410,14 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
                         <div className="price-panel">
                             <span>
-                                {auction.status === 'Closed'
+                                {terminal
                                     ? auction.saleMode === 'AuctionOnly'
-                                        ? 'Final bid'
-                                        : 'Final price'
+                                        ? auction.status === 'Cancelled'
+                                            ? 'Auction cancelled'
+                                            : 'Final bid'
+                                        : auction.status === 'Cancelled'
+                                          ? 'Auction cancelled'
+                                          : 'Final price'
                                     : auction.currentBidAmount === null
                                       ? auction.saleMode === 'BuyNowOnly'
                                           ? 'Buy Now price'
@@ -408,7 +426,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                             </span>
                             <strong>
                                 {formatMoney(
-                                    auction.status === 'Closed'
+                                    terminal
                                         ? (auction.finalPrice ?? auction.currentBidAmount)
                                         : auction.saleMode === 'BuyNowOnly'
                                           ? auction.buyNowPrice
@@ -426,16 +444,26 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                             </small>
                         </div>
 
-                        {auction.status === 'Closed' && (
+                        {terminal && (
                             <section className="closed-panel" aria-label="Auction closed summary">
-                                <span>Auction closed</span>
+                                <span>
+                                    {auction.status === 'Cancelled'
+                                        ? 'Auction cancelled'
+                                        : 'Auction closed'}
+                                </span>
                                 <strong>
-                                    {auction.finalPrice === null &&
-                                    auction.currentBidAmount === null
-                                        ? 'No bids were placed.'
-                                        : `${auction.saleMode === 'AuctionOnly' ? 'Final bid' : 'Final price'} ${formatMoney(auction.finalPrice ?? auction.currentBidAmount)}`}
+                                    {auction.status === 'Cancelled'
+                                        ? 'Bidding and Buy Now are no longer available.'
+                                        : auction.finalPrice === null &&
+                                            auction.currentBidAmount === null
+                                          ? 'No bids were placed.'
+                                          : `${auction.saleMode === 'AuctionOnly' ? 'Final bid' : 'Final price'} ${formatMoney(auction.finalPrice ?? auction.currentBidAmount)}`}
                                 </strong>
-                                {displayedWinner ? (
+                                {auction.status === 'Cancelled' ? (
+                                    <p>
+                                        Existing bid history is preserved; no winner was selected.
+                                    </p>
+                                ) : displayedWinner ? (
                                     <p>
                                         {displayedWinner.winnerId.toLowerCase() ===
                                         bidderId.toLowerCase()
@@ -449,7 +477,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         )}
 
                         <dl className="detail-metrics">
-                            {auction.status !== 'Closed' && auction.saleMode !== 'BuyNowOnly' && (
+                            {!terminal && auction.saleMode !== 'BuyNowOnly' && (
                                 <div>
                                     <dt>Next minimum</dt>
                                     <dd>{formatMoney(minimumBid)}</dd>
@@ -459,7 +487,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                 <dt>Sale mode</dt>
                                 <dd>{auction.saleMode}</dd>
                             </div>
-                            {auction.buyNowPrice !== null && auction.status !== 'Closed' && (
+                            {auction.buyNowPrice !== null && !terminal && (
                                 <div>
                                     <dt>Buy Now price</dt>
                                     <dd>{formatMoney(auction.buyNowPrice)}</dd>
@@ -507,8 +535,10 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                 {auction.saleMode === 'BuyNowOnly'
                                     ? 'Immediate purchase'
                                     : biddingUnavailable
-                                      ? auction.status === 'Closed'
-                                          ? 'Auction closed'
+                                      ? terminal
+                                          ? auction.status === 'Cancelled'
+                                              ? 'Auction cancelled'
+                                              : 'Auction closed'
                                           : 'Bidding unavailable'
                                       : 'Place bid'}
                             </h2>
@@ -550,8 +580,10 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                         {biddingUnavailable
                                             ? biddingAtCeiling
                                                 ? 'Bidding ceiling reached'
-                                                : auction.status === 'Closed'
-                                                  ? 'Auction closed'
+                                                : terminal
+                                                  ? auction.status === 'Cancelled'
+                                                      ? 'Auction cancelled'
+                                                      : 'Auction closed'
                                                   : 'Bidding unavailable'
                                             : submitting
                                               ? 'Placing bid...'

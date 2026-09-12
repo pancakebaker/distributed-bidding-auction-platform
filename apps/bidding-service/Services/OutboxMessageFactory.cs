@@ -95,6 +95,24 @@ public static class OutboxMessageFactory
             payload);
     }
 
+    /// <summary>
+    /// Creates an AuctionCancelled outbox message for an explicit lifecycle transition.
+    /// </summary>
+    public static OutboxMessage AuctionCancelled(
+        Auction auction,
+        string correlationId,
+        DateTimeOffset occurredAtUtc)
+    {
+        var payload = new AuctionCancelledPayload(auction.Id);
+
+        return CreateLifecycleMessage(
+            IntegrationEventTypes.AuctionCancelled,
+            auction,
+            correlationId,
+            occurredAtUtc,
+            payload);
+    }
+
     private static OutboxMessage CreateLifecycleMessage<TPayload>(
         string eventType,
         Auction auction,
@@ -150,3 +168,6 @@ public sealed record AuctionClosedPayload(
     decimal? FinalBidAmount,
     string? FinalBidderId,
     long AuctionVersion);
+
+/// <summary>Represents an explicit auction cancellation event payload.</summary>
+public sealed record AuctionCancelledPayload(Guid AuctionId);

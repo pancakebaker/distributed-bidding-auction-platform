@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { AuctionManagementPage } from './AuctionManagementPage';
 
 const api = vi.hoisted(() => ({
+    cancelAuction: vi.fn(),
     createAuction: vi.fn(),
     deleteAuction: vi.fn(),
     getAuction: vi.fn(),
@@ -80,6 +81,7 @@ describe('auction management page', () => {
         api.createAuction.mockResolvedValue({ ...auctions[0] });
         api.updateAuction.mockResolvedValue({ ...auctions[0] });
         api.deleteAuction.mockResolvedValue(undefined);
+        api.cancelAuction.mockResolvedValue({ ...auctions[0], status: 'Cancelled', version: 2 });
     });
 
     afterEach(() => {
@@ -95,7 +97,7 @@ describe('auction management page', () => {
 
         expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
-        expect(screen.getAllByText('Lifecycle locked')).toHaveLength(2);
+        expect(screen.getAllByText('Lifecycle locked')).toHaveLength(1);
 
         await user.click(screen.getByRole('button', { name: 'Create auction' }));
         expect(screen.getByText('Starting price')).toBeInTheDocument();
@@ -138,6 +140,20 @@ describe('auction management page', () => {
 
         await user.click(screen.getByRole('button', { name: 'Delete' }));
         expect(api.deleteAuction).not.toHaveBeenCalled();
+    });
+
+    it('shows cancellation for open auctions and sends the current version', async () => {
+        const user = userEvent.setup();
+        vi.stubGlobal(
+            'confirm',
+            vi.fn(() => true),
+        );
+        render(<AuctionManagementPage />);
+        await screen.findByText('Scheduled auction');
+
+        expect(screen.getAllByRole('button', { name: 'Cancel' })).toHaveLength(2);
+        await user.click(screen.getAllByRole('button', { name: 'Cancel' })[1]);
+        expect(api.cancelAuction).toHaveBeenCalledWith('open-1', 2);
     });
 
     it('validates before creating and sends canonical fields on a valid submit', async () => {

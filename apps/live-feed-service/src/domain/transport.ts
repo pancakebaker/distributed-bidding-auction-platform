@@ -4,6 +4,7 @@ export const integrationEventRoutingKeys = {
   auctionClosed: 'auction.closed',
   winnerSelected: 'auction.winner.selected',
   auctionPurchased: 'auction.purchased',
+  auctionCancelled: 'auction.cancelled',
 } as const;
 
 /** Browser-facing auction Socket.IO events and subscription controls. */
@@ -12,6 +13,7 @@ export const auctionSocketEvents = {
   auctionClosed: 'auction:closed',
   winnerSelected: 'winner:selected',
   auctionPurchased: 'auction:purchased',
+  auctionCancelled: 'auction:cancelled',
   subscribe: 'auction:subscribe',
   unsubscribe: 'auction:unsubscribe',
 } as const;

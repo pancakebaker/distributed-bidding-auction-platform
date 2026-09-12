@@ -11,6 +11,7 @@ import { createLiveFeedService } from '../../src/application/live-feed-service.j
 import type {
   AuctionPurchasedEnvelope,
   AuctionPurchasedSocketPayload,
+  AuctionCancelledEnvelope,
   AuctionClosedEnvelope,
   AuctionClosedSocketPayload,
   BidAcceptedEnvelope,
@@ -31,6 +32,7 @@ const routingKeys = {
   AuctionClosed: integrationEventRoutingKeys.auctionClosed,
   WinnerSelected: integrationEventRoutingKeys.winnerSelected,
   AuctionPurchased: integrationEventRoutingKeys.auctionPurchased,
+  AuctionCancelled: integrationEventRoutingKeys.auctionCancelled,
 } as const;
 
 type TestContext = {
@@ -138,7 +140,9 @@ function winnerSelected(overrides: Partial<WinnerSelectedEnvelope> = {}): Winner
   };
 }
 
-function auctionPurchased(overrides: Partial<AuctionPurchasedEnvelope> = {}): AuctionPurchasedEnvelope {
+function auctionPurchased(
+  overrides: Partial<AuctionPurchasedEnvelope> = {},
+): AuctionPurchasedEnvelope {
   const auctionId = overrides.aggregateId ?? randomUUID();
   const aggregateVersion = overrides.aggregateVersion ?? 12;
 
@@ -166,6 +170,24 @@ function auctionPurchased(overrides: Partial<AuctionPurchasedEnvelope> = {}): Au
       auctionVersion: aggregateVersion,
       ...overrides.payload,
     },
+  };
+}
+
+function auctionCancelled(
+  overrides: Partial<AuctionCancelledEnvelope> = {},
+): AuctionCancelledEnvelope {
+  const auctionId = overrides.aggregateId ?? randomUUID();
+  return {
+    eventId: randomUUID(),
+    eventType: 'AuctionCancelled',
+    occurredAtUtc: new Date().toISOString(),
+    aggregateType: 'Auction',
+    aggregateId: auctionId,
+    aggregateVersion: overrides.aggregateVersion ?? 3,
+    correlationId: randomUUID(),
+    payload: { auctionId },
+    ...overrides,
+    payload: { auctionId, ...overrides.payload },
   };
 }
 
@@ -384,6 +406,42 @@ void test('AuctionClosed and WinnerSelected events broadcast to the correct auct
   }
 });
 
+void test('AuctionCancelled is consumed, projected, and delivered without terminal outcome', async () => {
+  const context = await createContext();
+  const auctionId = randomUUID();
+  const client = await connectClient(context, auctionId);
+
+  try {
+    const received = once<{
+      auctionId: string;
+      status: string;
+      auctionVersion: number;
+      occurredAtUtc: string;
+      correlationId: string | null;
+    }>(
+      client,
+      'auction:cancelled',
+      1500,
+    );
+    publish(context, auctionCancelled({ aggregateId: auctionId }));
+    const payload = await received;
+    assert.deepEqual(payload, {
+      auctionId,
+      status: 'Cancelled',
+      auctionVersion: 3,
+      occurredAtUtc: payload.occurredAtUtc,
+      correlationId: payload.correlationId,
+    });
+    const projection = await context.redis.hGetAll(`live-feed:auction:${auctionId}`);
+    assert.equal(projection.status, 'Cancelled');
+    assert.equal(projection.aggregateVersion, '3');
+    assert.equal('finalPrice' in projection, false);
+  } finally {
+    client.disconnect();
+    await cleanup(context);
+  }
+});
+
 void test('AuctionPurchased is consumed, projected, and delivered to the auction room', async () => {
   const context = await createContext();
   const purchased = auctionPurchased();
@@ -403,14 +461,20 @@ void test('AuctionPurchased is consumed, projected, and delivered to the auction
     publish(context, purchased);
     await delay(400);
     assert.equal(seen.length, 1);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${purchased.aggregateId}`), '12');
-    assert.deepEqual({ ...(await context.redis.hGetAll(`live-feed:auction:${purchased.aggregateId}`)) }, {
-      aggregateVersion: '12',
-      finalPrice: '1000',
-      finalWinnerId: 'buyer-123',
-      purchasedAtUtc: purchased.payload.purchasedAtUtc,
-      status: 'Closed',
-    });
+    assert.equal(
+      await context.redis.get(`live-feed:auction-version:${purchased.aggregateId}`),
+      '12',
+    );
+    assert.deepEqual(
+      { ...(await context.redis.hGetAll(`live-feed:auction:${purchased.aggregateId}`)) },
+      {
+        aggregateVersion: '12',
+        finalPrice: '1000',
+        finalWinnerId: 'buyer-123',
+        purchasedAtUtc: purchased.payload.purchasedAtUtc,
+        status: 'Closed',
+      },
+    );
   } finally {
     client.disconnect();
     await cleanup(context);
@@ -445,13 +509,16 @@ void test('same-version purchase and close siblings both emit in either order an
       await waitFor(() => assert.equal(seen.length, 2));
 
       assert.deepEqual(seen.sort(), ['closed', 'purchase']);
-      assert.deepEqual({ ...(await context.redis.hGetAll(`live-feed:auction:${auctionId}`)) }, {
-        aggregateVersion: '12',
-        finalPrice: '1000',
-        finalWinnerId: 'buyer-123',
-        purchasedAtUtc: purchase.payload.purchasedAtUtc,
-        status: 'Closed',
-      });
+      assert.deepEqual(
+        { ...(await context.redis.hGetAll(`live-feed:auction:${auctionId}`)) },
+        {
+          aggregateVersion: '12',
+          finalPrice: '1000',
+          finalWinnerId: 'buyer-123',
+          purchasedAtUtc: purchase.payload.purchasedAtUtc,
+          status: 'Closed',
+        },
+      );
     } finally {
       client.disconnect();
       await cleanup(context);
@@ -474,13 +541,16 @@ void test('stale bid after purchase is ignored without regressing ordinary or te
     await delay(400);
 
     assert.deepEqual(seen, ['purchase']);
-    assert.deepEqual({ ...(await context.redis.hGetAll(`live-feed:auction:${purchase.aggregateId}`)) }, {
-      aggregateVersion: '12',
-      finalPrice: '1000',
-      finalWinnerId: 'buyer-123',
-      purchasedAtUtc: purchase.payload.purchasedAtUtc,
-      status: 'Closed',
-    });
+    assert.deepEqual(
+      { ...(await context.redis.hGetAll(`live-feed:auction:${purchase.aggregateId}`)) },
+      {
+        aggregateVersion: '12',
+        finalPrice: '1000',
+        finalWinnerId: 'buyer-123',
+        purchasedAtUtc: purchase.payload.purchasedAtUtc,
+        status: 'Closed',
+      },
+    );
   } finally {
     client.disconnect();
     await cleanup(context);

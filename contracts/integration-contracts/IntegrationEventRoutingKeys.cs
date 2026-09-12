@@ -17,4 +17,7 @@ public static class IntegrationEventRoutingKeys
 
     /// <summary>Routes explicit Buy Now purchase events.</summary>
     public const string AuctionPurchased = "auction.purchased";
+
+    /// <summary>Routes explicit auction cancellation events.</summary>
+    public const string AuctionCancelled = "auction.cancelled";
 }

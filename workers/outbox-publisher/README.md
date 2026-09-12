@@ -11,5 +11,6 @@ Supported routing keys:
 | BidAccepted | `auction.bid.accepted` |
 | AuctionClosed | `auction.closed` |
 | WinnerSelected | `auction.winner.selected` |
+| AuctionCancelled | `auction.cancelled` |
 
 The worker provides at-least-once publication semantics. Duplicate delivery remains possible if the process crashes after RabbitMQ confirms a message but before PostgreSQL records `PublishedAtUtc`, so consumers must deduplicate by `eventId`.

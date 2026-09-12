@@ -404,7 +404,7 @@ Sale-mode configuration remains authoritative as follows:
 
 Only future, untouched `Scheduled` auctions are editable. Their expected
 `Version` is required, and a successful update increments it exactly once.
-`Open`, `Closed`, and `Cancelled` auctions are immutable in AM1; an auction
+`Open`, `Closed`, and `Cancelled` auctions are configuration-immutable; an auction
 whose persisted status is stale relative to its start time is treated as
 started and is not edited. There is no generic patch/overposting path.
 
@@ -413,14 +413,22 @@ Management failures use the stable codes `invalid_sale_mode_configuration`,
 `invalid_bid_increment`, `invalid_buy_now_price`, `auction_not_found`,
 `auction_already_started`, `auction_not_editable`, `auction_not_deletable`,
 and `auction_concurrency_conflict` as applicable.
+Cancellation additionally uses `auction_already_cancelled` and
+`auction_not_cancellable` for lifecycle-specific rejection.
 
 `DELETE` is intentionally narrow: it physically removes only a future,
 untouched `Scheduled` auction with no bids, terminal outcome, or outbox history.
 Open, bid-bearing, closed, cancelled, or purchased auctions return
-`auction_not_deletable`. AM1 does not introduce a cancellation endpoint or
-`AuctionCancelled` event; explicit cancellation semantics and lifecycle-event
-propagation remain future work. This preserves historical and outbox integrity
-and ensures the expiry scheduler never sees a deleted or cancelled auction.
+`auction_not_deletable`. Physical deletion remains restricted to untouched
+future `Scheduled` auctions with no bid, terminal, or outbox history.
+Cancellation is a separate explicit `POST /api/auctions/{id}/cancel`
+transition. Scheduled or Open auctions may be cancelled with an expected
+`Version`; cancellation preserves bids and `CurrentBid*`, leaves `Final*`
+null, increments `Version` once, and emits the transactional-outbox
+`AuctionCancelled` event on `auction.cancelled`. Closed, purchased, and
+already-cancelled auctions are not cancellable. Cancelled auctions are not
+claimed by expiry scheduling, and clients must reconcile from HTTP state when
+realtime delivery is missed.
 
 Management APIs currently have no authentication or authorization middleware in
 the Bidding Service. They are therefore a local/demo management boundary, not
