@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class LocalBidderSeeder extends Seeder
@@ -27,14 +28,13 @@ class LocalBidderSeeder extends Seeder
             ['email' => 'bidder2@example.test', 'name' => 'Bidder Two'],
             ['email' => 'bidder3@example.test', 'name' => 'Bidder Three'],
         ] as $bidder) {
-            User::query()->updateOrCreate(
-                ['email' => $bidder['email']],
-                [
-                    'name' => $bidder['name'],
-                    'password' => Hash::make($password),
-                    'is_admin' => false,
-                ],
-            );
+            $user = User::query()->firstOrNew(['email' => $bidder['email']]);
+            $user->forceFill([
+                'name' => $bidder['name'],
+                'password' => Hash::make($password),
+                'is_admin' => false,
+                'subject_id' => $user->subject_id ?: (string) Str::uuid(),
+            ])->save();
         }
     }
 }

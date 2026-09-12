@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
+use RuntimeException;
 
 class DemoAdminSeeder extends Seeder
 {
@@ -19,6 +20,10 @@ class DemoAdminSeeder extends Seeder
      */
     public function run(): void
     {
+        if (! app()->environment(['local', 'testing'])) {
+            throw new RuntimeException('DemoAdminSeeder may only run in the local or testing environment.');
+        }
+
         $user = User::query()->firstOrNew([
             'email' => env('DEMO_ADMIN_EMAIL', self::DEFAULT_EMAIL),
         ]);

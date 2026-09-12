@@ -253,23 +253,28 @@ From the repository root:
 ```powershell
 Copy-Item .env.example .env
 Copy-Item apps/client/.env.example apps/client/.env
+New-Item -ItemType File -Path apps/client/database/database.sqlite -Force
 dotnet restore
 npm ci
 npm ci --prefix apps/live-feed-service
 npm ci --prefix apps/client
 composer install --working-dir=apps/client
 php apps/client/artisan key:generate
-$env:LOCAL_ADMIN_NAME="Local Admin"
-$env:LOCAL_ADMIN_EMAIL="local-admin@example.test"
-$env:LOCAL_ADMIN_PASSWORD="choose-a-local-only-password"
 ./scripts/generate-system-admin-keys.ps1
-./scripts/start-infrastructure.ps1
 php apps/client/artisan migrate
-php apps/client/artisan db:seed --class=Database\\Seeders\\LocalAdminSeeder
+php apps/client/artisan db:seed
 npm run migrate:history --prefix apps/live-feed-service
 dotnet ef database update --project apps/auction-operations-portal --startup-project apps/auction-operations-portal
 ./scripts/start-demo.ps1
 ```
+
+The copied `apps/client/.env` provides local-only demo values for
+`LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD`, and `DEMO_BIDDER_PASSWORD`.
+Change them before using any non-local environment. `db:seed` is the canonical
+local bootstrap: it creates the CMS demo content, the configured tenant admin,
+and the three demo bidders. It is safe to run again; the configured local
+admin password is refreshed while each user's stable `subject_id` is retained.
+The seeders refuse to run outside local/testing environments.
 
 The existing `start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, Vite/client, and Auction Operations Portal in separate PowerShell windows. The portal uses `dotnet run --no-restore`, checks its restored assets before launch, skips a duplicate when port `5099` is already listening, and waits for `/health` before printing the startup summary:
 
@@ -279,13 +284,43 @@ dotnet run --no-restore --project apps/auction-operations-portal --urls http://l
 
 Useful local URLs:
 
-- Laravel/React client: `http://localhost:8000`
-- portal login: `http://localhost:5099/login`
-- portal live activity: `http://localhost:5099/activity/live`
+- Client: `http://localhost:8000/auctions`
+- Laravel tenant admin: `http://localhost:8000/admin`
+- Operations Portal login: `http://localhost:5099/login`
+- Operations live activity: `http://localhost:5099/activity/live`
 - portal history: `http://localhost:5099/activity/history`
 - portal health: `http://localhost:5099/health`
 - Bidding Service Swagger: `http://localhost:5000/swagger`
 - Live Feed health: `http://localhost:3001/health`
+- RabbitMQ management: `http://localhost:15672`
+
+### Development/demo accounts
+
+#### Laravel tenant administrator
+
+Use `local-admin@example.test` (or the configured `LOCAL_ADMIN_EMAIL`) and the
+`LOCAL_ADMIN_PASSWORD` value for `/admin`, `/admin/auctions`, CMS, and
+tenant/business management. This is a Laravel tenant administrator, not the
+Operations Portal SystemAdministrator.
+
+#### Demo bidders
+
+Use `bidder1@example.test`, `bidder2@example.test`, or
+`bidder3@example.test` with `DEMO_BIDDER_PASSWORD` for bidding and Buy Now.
+There is no public bidder signup; these accounts are development/demo only.
+
+#### System Administrator
+
+Use `systemadmin@example.test` with `SYSTEM_ADMIN_DEMO_PASSWORD` (or the
+development fallback `system-admin-password`) at the Operations Portal login.
+This identity belongs to the Operations Portal and is used for system
+monitoring and live activity. It is not created in Laravel's `users` table.
+
+`start-demo.ps1` checks the fixed-name Redis, RabbitMQ, and PostgreSQL
+containers before starting Compose. Compatible existing containers are reused
+with a warning, which allows multiple checkouts to share local infrastructure;
+that also means they share the same persistent data. Use `docker compose down`
+when a fully isolated stack is required.
 
 The Operations Portal's **Open Live Feed administration** action uses the local
 SystemAdministrator session to issue a short-lived server-side `live-feed-admin`

@@ -67,6 +67,19 @@ class AuthFoundationTest extends TestCase
         ));
     }
 
+    public function test_seeded_bidder_can_login_but_cannot_access_admin(): void
+    {
+        $this->seed(LocalBidderSeeder::class);
+        $password = (string) env('DEMO_BIDDER_PASSWORD', LocalBidderSeeder::DEFAULT_PASSWORD);
+
+        $this->post('/login', [
+            'email' => 'bidder1@example.test',
+            'password' => $password,
+        ])->assertRedirect('/auctions');
+
+        $this->get('/admin')->assertForbidden();
+    }
+
     public function test_bidding_service_token_uses_stable_subject_and_server_permissions(): void
     {
         $bidder = User::factory()->create(['is_admin' => false]);

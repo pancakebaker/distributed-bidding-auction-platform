@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class LocalAdminSeeder extends Seeder
@@ -25,13 +26,12 @@ class LocalAdminSeeder extends Seeder
             throw new RuntimeException('Set LOCAL_ADMIN_EMAIL and LOCAL_ADMIN_PASSWORD before running LocalAdminSeeder.');
         }
 
-        User::query()->updateOrCreate(
-            ['email' => $email],
-            [
-                'name' => env('LOCAL_ADMIN_NAME', 'Local Admin'),
-                'password' => Hash::make($password),
-                'is_admin' => true,
-            ],
-        );
+        $user = User::query()->firstOrNew(['email' => $email]);
+        $user->forceFill([
+            'name' => env('LOCAL_ADMIN_NAME', 'Local Admin'),
+            'password' => Hash::make($password),
+            'is_admin' => true,
+            'subject_id' => $user->subject_id ?: (string) Str::uuid(),
+        ])->save();
     }
 }

@@ -95,7 +95,10 @@ Local/demo bidder accounts are seeded as `bidder1@example.test`, `bidder2@exampl
 
 Each user has an opaque UUID `subject_id`. Laravel's session remains the current human-authentication authority. The `BiddingServiceTokenIssuer` can issue a short-lived RS256 token for the Bidding Service with issuer `dbap-laravel`, audience `dbap-bidding-service`, the user subject as `sub`, and server-derived permissions. The private key remains Laravel-side; the Bidding Service validates only the public key, issuer, audience, signature, and lifetime. The current bidder-id request fallback remains transitional until AUTH2 migrates bid and Buy Now commands; management enforcement and BFF routing remain AUTH3 work.
 
-For local manual testing, create an admin with explicit environment values:
+For local manual testing, the repository-root bootstrap uses `php artisan db:seed`
+after copying `.env.example`; that command also runs `LocalAdminSeeder` when
+`LOCAL_ADMIN_EMAIL` and `LOCAL_ADMIN_PASSWORD` are configured. To run it alone
+from `apps/client`, use:
 
 ```powershell
 $env:LOCAL_ADMIN_EMAIL="admin@example.test"
@@ -104,7 +107,8 @@ $env:LOCAL_ADMIN_NAME="Local Admin"
 php artisan db:seed --class=LocalAdminSeeder
 ```
 
-`LocalAdminSeeder` only runs in the local environment and does not ship a default password.
+The repository `.env.example` supplies local-only demo values for this seeder;
+replace them before using any non-local environment.
 
 ## Demo CMS Seed Data
 
@@ -115,7 +119,12 @@ php artisan migrate
 php artisan db:seed
 ```
 
-`db:seed` creates or updates a development demo administrator, four published pages (`about`, `how-it-works`, `terms`, and `privacy`), and six published FAQs. The default demo admin uses `DEMO_ADMIN_EMAIL`, `DEMO_ADMIN_NAME`, and `DEMO_ADMIN_PASSWORD` when set, falling back to `admin@example.test`, `Demo Admin`, and `password` for local/demo convenience. Use `LocalAdminSeeder` with explicit `LOCAL_ADMIN_*` values when you want a separately controlled local administrator.
+`db:seed` creates or updates a development demo administrator, the configured
+local tenant administrator when `LOCAL_ADMIN_*` values are present, four
+published pages (`about`, `how-it-works`, `terms`, and `privacy`), and six
+published FAQs. The default demo admin uses `DEMO_ADMIN_EMAIL`,
+`DEMO_ADMIN_NAME`, and `DEMO_ADMIN_PASSWORD` when set, falling back to
+`admin@example.test`, `Demo Admin`, and `password` for local/demo convenience.
 
 The page and FAQ seeders are idempotent and clear the relevant public CMS cache entries after updating seeded content.
 

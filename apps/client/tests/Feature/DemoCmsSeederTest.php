@@ -81,4 +81,26 @@ class DemoCmsSeederTest extends TestCase
             ->assertSee('How do I place a bid?')
             ->assertSee('How do live auction updates work?');
     }
+
+    public function test_database_seeder_creates_configured_local_admin_in_local_environment(): void
+    {
+        config(['app.env' => 'local']);
+        putenv('LOCAL_ADMIN_EMAIL=local-admin@example.test');
+        putenv('LOCAL_ADMIN_PASSWORD=local-admin-password');
+        $_ENV['LOCAL_ADMIN_EMAIL'] = 'local-admin@example.test';
+        $_ENV['LOCAL_ADMIN_PASSWORD'] = 'local-admin-password';
+
+        try {
+            $this->seed(DatabaseSeeder::class);
+
+            $this->assertDatabaseHas('users', [
+                'email' => 'local-admin@example.test',
+                'is_admin' => true,
+            ]);
+        } finally {
+            putenv('LOCAL_ADMIN_EMAIL');
+            putenv('LOCAL_ADMIN_PASSWORD');
+            unset($_ENV['LOCAL_ADMIN_EMAIL'], $_ENV['LOCAL_ADMIN_PASSWORD']);
+        }
+    }
 }

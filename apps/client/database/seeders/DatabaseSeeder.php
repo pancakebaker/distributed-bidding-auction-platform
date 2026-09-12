@@ -14,11 +14,19 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        if (! app()->environment(['local', 'testing'])) {
+            return;
+        }
+
         $this->call([
             DemoAdminSeeder::class,
             LocalBidderSeeder::class,
             PageSeeder::class,
             FaqSeeder::class,
         ]);
+
+        if (filled(env('LOCAL_ADMIN_EMAIL')) && filled(env('LOCAL_ADMIN_PASSWORD'))) {
+            $this->call(LocalAdminSeeder::class);
+        }
     }
 }

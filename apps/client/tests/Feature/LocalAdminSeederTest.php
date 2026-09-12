@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -96,5 +97,50 @@ class LocalAdminSeederTest extends TestCase
         $this->assertSame('Manual Admin', $admin->name);
         $this->assertTrue($admin->is_admin);
         $this->assertTrue(password_verify('local-password', $admin->password));
+    }
+
+    public function test_local_admin_seeder_is_idempotent_and_updates_the_configured_password(): void
+    {
+        config(['app.env' => 'local']);
+
+        $this->withLocalAdminEnvironment([
+            'LOCAL_ADMIN_EMAIL' => 'local-admin@example.com',
+            'LOCAL_ADMIN_PASSWORD' => 'first-password',
+        ], function (): void {
+            $this->artisan('db:seed', ['--class' => 'LocalAdminSeeder'])->assertSuccessful();
+        });
+
+        $subjectId = User::query()->where('email', 'local-admin@example.com')->value('subject_id');
+
+        $this->withLocalAdminEnvironment([
+            'LOCAL_ADMIN_EMAIL' => 'local-admin@example.com',
+            'LOCAL_ADMIN_PASSWORD' => 'second-password',
+        ], function (): void {
+            $this->artisan('db:seed', ['--class' => 'LocalAdminSeeder'])->assertSuccessful();
+        });
+
+        $admin = User::query()->where('email', 'local-admin@example.com')->firstOrFail();
+        $this->assertSame($subjectId, $admin->subject_id);
+        $this->assertTrue(Hash::check('second-password', $admin->password));
+        $this->assertFalse(Hash::check('first-password', $admin->password));
+    }
+
+    public function test_seeded_local_admin_can_login_and_access_admin(): void
+    {
+        config(['app.env' => 'local']);
+
+        $this->withLocalAdminEnvironment([
+            'LOCAL_ADMIN_EMAIL' => 'local-admin@example.com',
+            'LOCAL_ADMIN_PASSWORD' => 'local-password',
+        ], function (): void {
+            $this->artisan('db:seed', ['--class' => 'LocalAdminSeeder'])->assertSuccessful();
+        });
+
+        $this->post('/login', [
+            'email' => 'local-admin@example.com',
+            'password' => 'local-password',
+        ])->assertRedirect('/admin');
+
+        $this->get('/admin')->assertOk();
     }
 }
