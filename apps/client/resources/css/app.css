@@ -297,6 +297,23 @@ button:disabled {
     background: #184b42;
 }
 
+.secondary-button {
+    align-items: center;
+    background: #f1e0d4;
+    border: 1px solid #d8a98f;
+    border-radius: 6px;
+    color: #7b351f;
+    display: inline-flex;
+    font-weight: 800;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 16px;
+}
+
+.secondary-button:hover {
+    background: #ecd3c3;
+}
+
 .back-button {
     margin-bottom: 18px;
     width: auto;
@@ -417,6 +434,39 @@ button:disabled {
 .bid-sidepanel form {
     display: grid;
     gap: 14px;
+}
+
+.buy-now-panel,
+.confirmation-panel {
+    background: #fff7ef;
+    border: 1px solid #e6cbbd;
+    border-radius: 8px;
+    display: grid;
+    gap: 10px;
+    padding: 16px;
+}
+
+.buy-now-panel h3,
+.buy-now-panel p,
+.confirmation-panel p {
+    margin: 0;
+}
+
+.buy-now-panel h3 {
+    color: #7b351f;
+    font-size: 15px;
+    text-transform: uppercase;
+}
+
+.buy-now-panel strong {
+    color: #35231b;
+    font-size: 28px;
+}
+
+.confirmation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
 }
 
 .bid-sidepanel label {

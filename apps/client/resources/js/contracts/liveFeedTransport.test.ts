@@ -6,6 +6,7 @@ describe('live-feed Socket.IO transport contract', () => {
         expect(liveFeedSocketEvents).toEqual({
             bidAccepted: 'bid:accepted',
             auctionClosed: 'auction:closed',
+            auctionPurchased: 'auction:purchased',
             winnerSelected: 'winner:selected',
             subscribe: 'auction:subscribe',
             unsubscribe: 'auction:unsubscribe',

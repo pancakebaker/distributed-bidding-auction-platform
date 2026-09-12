@@ -94,7 +94,7 @@ resources/js/api.ts
 Bidding Service
 ```
 
-This path is used for auction discovery, auction detail, bid history, and bid commands. The Bidding Service remains authoritative for bid validation, ordering, aggregate versions, concurrency, and auction state.
+This path is used for auction discovery, auction detail, bid history, ordinary bid commands, and the explicit Buy Now command. The Bidding Service remains authoritative for sale mode, BuyNowPrice, bid validation, ordering, aggregate versions, concurrency, and auction state. SaleMode controls which actions render: AuctionOnly shows bidding, BuyNowOnly shows only Buy Now, and AuctionAndBuyNow shows both distinct actions. BuyNowPrice is authoritative for purchase display; the browser never sends a purchase price.
 
 ```text
 React browser
@@ -104,7 +104,7 @@ resources/js/liveFeed.ts
 Live Feed Service
 ```
 
-This path is used for real-time auction updates through Socket.IO. The React component treats live events as presentation updates and still reconciles state with the authoritative Bidding API when needed.
+This path is used for real-time auction updates through Socket.IO, including `auction:purchased`, `auction:closed`, `auction:winner-selected`, and `auction:bid-accepted`. The React component treats live events as presentation updates and still reconciles state with the authoritative Bidding API when needed. A purchase updates FinalWinnerId/FinalPrice and never rewrites CurrentBidAmount/CurrentBidderId. Lower aggregate versions are ignored, while distinct same-version `auction:purchased` and `auction:closed` events are merged in either order.
 
 React Query or SWR was not introduced. Laravel already caches public CMS reads server-side, auction state comes from the Bidding Service and Live Feed Service, and admin pages receive server-prepared bootstrap payloads. A client cache layer would duplicate invalidation responsibilities at this scale.
 
@@ -184,4 +184,4 @@ Phase 17 adds a focused cleanup test for the live-feed Socket.IO subscription. I
 
 ## Bidding Boundary
 
-No Phase 17 React/Vite changes alter Bidding Service or Live Feed Service contracts. Laravel still does not own authoritative bid behavior, and the browser's existing `api.ts` and `liveFeed.ts` integration boundaries remain intact.
+The client keeps Laravel as the Blade/web boundary and does not own authoritative auction behavior. Buy Now is an explicit action and is never inferred from a bid amount; ordinary bids remain strictly below BuyNowPrice. CurrentBid* represents ordinary bidding, while Final* represents terminal outcome. Conflict responses refresh authoritative state without automatically replaying a purchase command.

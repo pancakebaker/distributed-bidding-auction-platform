@@ -62,9 +62,23 @@ export function AuctionListPage() {
                             <div>
                                 <dt>Current bid</dt>
                                 <dd>
-                                    {formatMoney(auction.currentBidAmount ?? auction.startingPrice)}
+                                    {auction.currentBidAmount === null
+                                        ? auction.saleMode === 'BuyNowOnly'
+                                            ? 'Buy Now only'
+                                            : formatMoney(auction.startingPrice)
+                                        : formatMoney(auction.currentBidAmount)}
                                 </dd>
                             </div>
+                            <div>
+                                <dt>Sale mode</dt>
+                                <dd>{auction.saleMode}</dd>
+                            </div>
+                            {auction.buyNowPrice !== null && (
+                                <div>
+                                    <dt>Buy Now</dt>
+                                    <dd>{formatMoney(auction.buyNowPrice)}</dd>
+                                </div>
+                            )}
                             <div>
                                 <dt>Minimum increment</dt>
                                 <dd>{formatMoney(auction.minimumBidIncrement)}</dd>

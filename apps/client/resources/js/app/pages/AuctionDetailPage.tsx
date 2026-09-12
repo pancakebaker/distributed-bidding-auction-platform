@@ -3,7 +3,7 @@
  */
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ApiClientError, getAuction, getAuctionBids, placeBid } from '../../api';
+import { ApiClientError, buyNow, getAuction, getAuctionBids, placeBid } from '../../api';
 import { connectAuctionFeed } from '../../liveFeed';
 import type { AuctionDetail, Bid, LiveStatus } from '../../types';
 import { LiveIndicator, Shell, StateMessage } from '../components/PublicComponents';
@@ -11,11 +11,14 @@ import { useNow } from '../hooks/useNow';
 import { navigateTo } from '../utils/navigation';
 import {
     applyAuctionClosed,
+    applyAuctionPurchased,
     describeBidError,
+    describeBuyNowError,
     formatDate,
     formatLiveStatus,
     formatMoney,
     getCountdown,
+    shouldRefreshAfterConflict,
     statusTone,
 } from '../utils/auction';
 
@@ -39,6 +42,8 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     const [bidderId, setBidderId] = useState(bidders[0]);
     const [amount, setAmount] = useState('');
     const [submitting, setSubmitting] = useState(false);
+    const [purchasing, setPurchasing] = useState(false);
+    const [confirmingPurchase, setConfirmingPurchase] = useState(false);
     const [formMessage, setFormMessage] = useState<{
         tone: 'success' | 'error';
         text: string;
@@ -58,11 +63,11 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                 setAmount(String(auctionResponse.minimumValidBid));
                 setWinner(
                     auctionResponse.status === 'Closed' &&
-                        auctionResponse.currentBidderId &&
-                        auctionResponse.currentBidAmount !== null
+                        auctionResponse.finalWinnerId &&
+                        auctionResponse.finalPrice !== null
                         ? {
-                              winnerId: auctionResponse.currentBidderId,
-                              amount: auctionResponse.currentBidAmount,
+                              winnerId: auctionResponse.finalWinnerId,
+                              amount: auctionResponse.finalPrice,
                               auctionVersion: auctionResponse.version,
                           }
                         : null,
@@ -146,6 +151,8 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         ...current,
                         currentBidAmount: event.amount,
                         currentBidderId: event.winnerId,
+                        finalWinnerId: event.winnerId,
+                        finalPrice: event.amount,
                         status: 'Closed',
                         minimumValidBid: event.amount + current.minimumBidIncrement,
                         version: Math.max(current.version, event.auctionVersion),
@@ -169,6 +176,38 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                     [`Winner selected: ${event.winnerId}`, ...current].slice(0, 4),
                 );
             },
+            onAuctionPurchased: (event) => {
+                if (event.auctionId !== auctionId) {
+                    return;
+                }
+
+                setAuction((current) => applyAuctionPurchased(current, event));
+                setWinner((current) => {
+                    if (current && event.auctionVersion < current.auctionVersion) {
+                        return current;
+                    }
+
+                    return {
+                        winnerId: event.bidderId,
+                        amount: event.finalPrice,
+                        selectedAtUtc: event.purchasedAtUtc,
+                        auctionVersion: event.auctionVersion,
+                    };
+                });
+                setFormMessage({
+                    tone: 'error',
+                    text:
+                        event.bidderId.toLowerCase() === bidderId.toLowerCase()
+                            ? 'Your Buy Now purchase was completed.'
+                            : 'This auction was purchased by another buyer.',
+                });
+                setActivity((current) =>
+                    [
+                        `Purchased by ${event.bidderId}: ${formatMoney(event.finalPrice)}`,
+                        ...current,
+                    ].slice(0, 4),
+                );
+            },
         });
 
         return () => {
@@ -178,15 +217,33 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
     const minimumBid = auction?.minimumValidBid ?? 0;
     const countdown = auction ? getCountdown(auction, now) : '';
-    const biddingUnavailable = !auction || auction.status !== 'Open' || countdown === 'Closed';
+    const timeEligible =
+        !!auction &&
+        auction.status === 'Open' &&
+        now >= new Date(auction.startTimeUtc).getTime() &&
+        now < new Date(auction.endTimeUtc).getTime();
+    const biddingAtCeiling =
+        auction?.saleMode === 'AuctionAndBuyNow' &&
+        auction.buyNowPrice !== null &&
+        minimumBid >= auction.buyNowPrice;
+    const biddingUnavailable =
+        !auction || !timeEligible || auction.status !== 'Open' || biddingAtCeiling;
+    const buyNowUnavailable =
+        !auction ||
+        !timeEligible ||
+        auction.status !== 'Open' ||
+        !['BuyNowOnly', 'AuctionAndBuyNow'].includes(auction.saleMode) ||
+        auction.buyNowPrice === null ||
+        auction.finalWinnerId !== null ||
+        auction.finalPrice !== null;
     const displayedWinner =
         winner ??
         (auction?.status === 'Closed' &&
-        auction.currentBidderId &&
-        auction.currentBidAmount !== null
+        (auction.finalWinnerId || auction.currentBidderId) &&
+        (auction.finalPrice !== null || auction.currentBidAmount !== null)
             ? {
-                  winnerId: auction.currentBidderId,
-                  amount: auction.currentBidAmount,
+                  winnerId: auction.finalWinnerId ?? auction.currentBidderId!,
+                  amount: auction.finalPrice ?? auction.currentBidAmount!,
                   auctionVersion: auction.version,
               }
             : null);
@@ -205,6 +262,18 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         const numericAmount = Number(amount);
         if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
             setFormMessage({ tone: 'error', text: 'Enter a positive bid amount.' });
+            return;
+        }
+
+        if (
+            auction.saleMode === 'AuctionAndBuyNow' &&
+            auction.buyNowPrice !== null &&
+            numericAmount >= auction.buyNowPrice
+        ) {
+            setFormMessage({
+                tone: 'error',
+                text: 'Ordinary bids must be below the Buy Now price.',
+            });
             return;
         }
 
@@ -239,12 +308,61 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
             if (
                 apiError?.details?.minimumValidBid !== undefined ||
-                apiError?.code === 'auction_concurrency_conflict'
+                shouldRefreshAfterConflict(apiError?.code)
             ) {
                 refresh();
             }
         } finally {
             setSubmitting(false);
+        }
+    }
+
+    async function onBuyNowConfirm() {
+        if (!auction || buyNowUnavailable || !auction.buyNowPrice) {
+            setFormMessage({ tone: 'error', text: 'Buy Now is not available right now.' });
+            setConfirmingPurchase(false);
+            return;
+        }
+
+        setPurchasing(true);
+        setFormMessage(null);
+
+        try {
+            const response = await buyNow(auction.id, bidderId);
+            setAuction((current) =>
+                current
+                    ? {
+                          ...current,
+                          status: 'Closed',
+                          finalWinnerId: response.bidderId,
+                          finalPrice: response.finalPrice,
+                          version: response.auctionVersion,
+                          updatedAtUtc: response.purchasedAtUtc,
+                      }
+                    : current,
+            );
+            setWinner({
+                winnerId: response.bidderId,
+                amount: response.finalPrice,
+                selectedAtUtc: response.purchasedAtUtc,
+                auctionVersion: response.auctionVersion,
+            });
+            setFormMessage({ tone: 'success', text: 'Your Buy Now purchase was completed.' });
+            setActivity((current) =>
+                [`Purchased: ${formatMoney(response.finalPrice)}`, ...current].slice(0, 4),
+            );
+        } catch (caught) {
+            const apiError = caught instanceof ApiClientError ? caught.error : null;
+            setFormMessage({
+                tone: 'error',
+                text: describeBuyNowError(apiError, caught),
+            });
+            if (apiError && shouldRefreshAfterConflict(apiError.code)) {
+                refresh();
+            }
+        } finally {
+            setPurchasing(false);
+            setConfirmingPurchase(false);
         }
     }
 
@@ -277,14 +395,34 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         <p className="description">{auction.description}</p>
 
                         <div className="price-panel">
-                            <span>{auction.status === 'Closed' ? 'Final bid' : 'Current bid'}</span>
+                            <span>
+                                {auction.status === 'Closed'
+                                    ? auction.saleMode === 'AuctionOnly'
+                                        ? 'Final bid'
+                                        : 'Final price'
+                                    : auction.currentBidAmount === null
+                                      ? auction.saleMode === 'BuyNowOnly'
+                                          ? 'Buy Now price'
+                                          : 'Starting bid'
+                                      : 'Current bid'}
+                            </span>
                             <strong>
-                                {formatMoney(auction.currentBidAmount ?? auction.startingPrice)}
+                                {formatMoney(
+                                    auction.status === 'Closed'
+                                        ? (auction.finalPrice ?? auction.currentBidAmount)
+                                        : auction.saleMode === 'BuyNowOnly'
+                                          ? auction.buyNowPrice
+                                          : (auction.currentBidAmount ?? auction.startingPrice),
+                                )}
                             </strong>
                             <small>
-                                {auction.currentBidderId
-                                    ? `${auction.status === 'Closed' ? 'Winner' : 'Highest bidder'}: ${auction.currentBidderId}`
-                                    : 'No accepted bidder yet'}
+                                {auction.status === 'Closed' && auction.finalWinnerId
+                                    ? `Winner: ${auction.finalWinnerId}`
+                                    : auction.currentBidderId
+                                      ? `Highest bidder: ${auction.currentBidderId}`
+                                      : auction.saleMode === 'BuyNowOnly'
+                                        ? 'Immediate purchase closes this auction'
+                                        : 'No accepted bidder yet'}
                             </small>
                         </div>
 
@@ -292,9 +430,10 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                             <section className="closed-panel" aria-label="Auction closed summary">
                                 <span>Auction closed</span>
                                 <strong>
-                                    {auction.currentBidAmount === null
+                                    {auction.finalPrice === null &&
+                                    auction.currentBidAmount === null
                                         ? 'No bids were placed.'
-                                        : `Final bid ${formatMoney(auction.currentBidAmount)}`}
+                                        : `${auction.saleMode === 'AuctionOnly' ? 'Final bid' : 'Final price'} ${formatMoney(auction.finalPrice ?? auction.currentBidAmount)}`}
                                 </strong>
                                 {displayedWinner ? (
                                     <p>
@@ -310,10 +449,20 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         )}
 
                         <dl className="detail-metrics">
-                            {auction.status !== 'Closed' && (
+                            {auction.status !== 'Closed' && auction.saleMode !== 'BuyNowOnly' && (
                                 <div>
                                     <dt>Next minimum</dt>
                                     <dd>{formatMoney(minimumBid)}</dd>
+                                </div>
+                            )}
+                            <div>
+                                <dt>Sale mode</dt>
+                                <dd>{auction.saleMode}</dd>
+                            </div>
+                            {auction.buyNowPrice !== null && auction.status !== 'Closed' && (
+                                <div>
+                                    <dt>Buy Now price</dt>
+                                    <dd>{formatMoney(auction.buyNowPrice)}</dd>
                                 </div>
                             )}
                             <div>
@@ -354,44 +503,118 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
 
                     <aside className="bid-sidepanel">
                         <form onSubmit={onSubmit}>
-                            <h2>{biddingUnavailable ? 'Auction closed' : 'Place bid'}</h2>
-                            <label>
-                                Acting as
-                                <select
-                                    disabled={biddingUnavailable}
-                                    value={bidderId}
-                                    onChange={(event) => setBidderId(event.target.value)}
-                                >
-                                    {bidders.map((bidder) => (
-                                        <option key={bidder} value={bidder.toLowerCase()}>
-                                            {bidder}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
-                            <label>
-                                Bid amount
-                                <input
-                                    min="1"
-                                    step="1"
-                                    inputMode="decimal"
-                                    value={biddingUnavailable ? '' : amount}
-                                    placeholder={biddingUnavailable ? 'Bidding closed' : undefined}
-                                    disabled={biddingUnavailable}
-                                    onChange={(event) => setAmount(event.target.value)}
-                                />
-                            </label>
-                            <button
-                                className="primary-button"
-                                disabled={submitting || biddingUnavailable}
-                                type="submit"
-                            >
-                                {biddingUnavailable
-                                    ? 'Auction closed'
-                                    : submitting
-                                      ? 'Placing bid...'
+                            <h2>
+                                {auction.saleMode === 'BuyNowOnly'
+                                    ? 'Immediate purchase'
+                                    : biddingUnavailable
+                                      ? auction.status === 'Closed'
+                                          ? 'Auction closed'
+                                          : 'Bidding unavailable'
                                       : 'Place bid'}
-                            </button>
+                            </h2>
+                            {auction.saleMode !== 'BuyNowOnly' && (
+                                <>
+                                    <label>
+                                        Acting as
+                                        <select
+                                            disabled={biddingUnavailable}
+                                            value={bidderId}
+                                            onChange={(event) => setBidderId(event.target.value)}
+                                        >
+                                            {bidders.map((bidder) => (
+                                                <option key={bidder} value={bidder.toLowerCase()}>
+                                                    {bidder}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                    <label>
+                                        Bid amount
+                                        <input
+                                            min="1"
+                                            step="1"
+                                            inputMode="decimal"
+                                            value={biddingUnavailable ? '' : amount}
+                                            placeholder={
+                                                biddingUnavailable ? 'Bidding closed' : undefined
+                                            }
+                                            disabled={biddingUnavailable}
+                                            onChange={(event) => setAmount(event.target.value)}
+                                        />
+                                    </label>
+                                    <button
+                                        className="primary-button"
+                                        disabled={submitting || biddingUnavailable}
+                                        type="submit"
+                                    >
+                                        {biddingUnavailable
+                                            ? biddingAtCeiling
+                                                ? 'Bidding ceiling reached'
+                                                : auction.status === 'Closed'
+                                                  ? 'Auction closed'
+                                                  : 'Bidding unavailable'
+                                            : submitting
+                                              ? 'Placing bid...'
+                                              : 'Place bid'}
+                                    </button>
+                                    {biddingAtCeiling && (
+                                        <p className="muted">
+                                            No legal ordinary bid remains below the Buy Now price.
+                                        </p>
+                                    )}
+                                </>
+                            )}
+                            {auction.saleMode === 'BuyNowOnly' && (
+                                <p className="muted">
+                                    This item is available by explicit purchase only. The Buy Now
+                                    price is authoritative.
+                                </p>
+                            )}
+                            {auction.saleMode !== 'AuctionOnly' && (
+                                <section className="buy-now-panel" aria-label="Buy Now">
+                                    <h3>Buy Now</h3>
+                                    <strong>{formatMoney(auction.buyNowPrice)}</strong>
+                                    <p>Purchase immediately and close the auction.</p>
+                                    {!confirmingPurchase ? (
+                                        <button
+                                            className="secondary-button"
+                                            disabled={purchasing || buyNowUnavailable}
+                                            onClick={() => setConfirmingPurchase(true)}
+                                            type="button"
+                                        >
+                                            {buyNowUnavailable ? 'Buy Now unavailable' : 'Buy Now'}
+                                        </button>
+                                    ) : (
+                                        <div className="confirmation-panel">
+                                            <p>
+                                                Confirm purchase of {auction.title} for{' '}
+                                                {formatMoney(auction.buyNowPrice)}. This immediately
+                                                closes the auction.
+                                            </p>
+                                            <div className="confirmation-actions">
+                                                <button
+                                                    className="secondary-button"
+                                                    disabled={purchasing}
+                                                    onClick={() => setConfirmingPurchase(false)}
+                                                    type="button"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    className="primary-button"
+                                                    disabled={purchasing}
+                                                    onClick={onBuyNowConfirm}
+                                                    type="button"
+                                                >
+                                                    {purchasing
+                                                        ? 'Purchasing...'
+                                                        : 'Confirm Buy Now'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </section>
+                            )}
                             {formMessage && (
                                 <p className={`form-message ${formMessage.tone}`}>
                                     {formMessage.text}

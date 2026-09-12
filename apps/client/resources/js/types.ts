@@ -8,15 +8,21 @@ export type AuctionSummary = {
     id: string;
     title: string;
     startingPrice: number;
+    saleMode: SaleMode;
+    buyNowPrice: number | null;
     minimumBidIncrement: number;
     currentBidAmount: number | null;
     currentBidderId: string | null;
+    finalWinnerId: string | null;
+    finalPrice: number | null;
     minimumValidBid: number;
     status: string;
     startTimeUtc: string;
     endTimeUtc: string;
     version: number;
 };
+
+export type SaleMode = 'AuctionOnly' | 'BuyNowOnly' | 'AuctionAndBuyNow';
 
 /**
  * Detailed auction state used by the bidding screen and REST reconciliation after
@@ -55,6 +61,15 @@ export type PlaceBidResponse = {
     correlationId: string;
 };
 
+export type BuyNowResponse = {
+    auctionId: string;
+    bidderId: string;
+    finalPrice: number;
+    auctionVersion: number;
+    purchasedAtUtc: string;
+    correlationId: string;
+};
+
 /**
  * Structured Bidding API error payload surfaced as user-friendly bid feedback.
  */
@@ -65,6 +80,7 @@ export type ApiErrorResponse = {
         currentBidAmount?: number | null;
         minimumValidBid?: number;
         auctionVersion?: number;
+        buyNowPrice?: number | null;
     } | null;
 };
 
@@ -107,5 +123,15 @@ export type LiveWinnerSelected = {
     amount: number;
     selectedAtUtc: string;
     auctionVersion: number;
+    correlationId: string | null;
+};
+
+export type LiveAuctionPurchased = {
+    auctionId: string;
+    bidderId: string;
+    finalPrice: number;
+    auctionVersion: number;
+    purchasedAtUtc: string;
+    occurredAtUtc: string;
     correlationId: string | null;
 };

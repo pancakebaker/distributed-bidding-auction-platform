@@ -6,6 +6,7 @@ import type {
     AuctionDetail,
     AuctionSummary,
     Bid,
+    BuyNowResponse,
     PlaceBidResponse,
 } from './types';
 
@@ -108,5 +109,21 @@ export function placeBid(
             'X-Correlation-ID': correlationId,
         },
         body: JSON.stringify({ bidderId, amount }),
+    });
+}
+
+/**
+ * Executes the explicit Buy Now command. The server owns the authoritative price.
+ */
+export function buyNow(auctionId: string, bidderId: string): Promise<BuyNowResponse> {
+    const correlationId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
+
+    return request<BuyNowResponse>(`/api/auctions/${auctionId}/buy-now`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Correlation-ID': correlationId,
+        },
+        body: JSON.stringify({ bidderId }),
     });
 }

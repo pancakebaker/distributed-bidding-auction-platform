@@ -6,6 +6,7 @@ import type {
     AuctionDetail,
     AuctionSummary,
     LiveAuctionClosed,
+    LiveAuctionPurchased,
     LiveStatus,
 } from '../../types';
 
@@ -88,8 +89,17 @@ export function applyAuctionClosed(
 
     return {
         ...current,
-        currentBidAmount: event.finalBidAmount,
-        currentBidderId: event.finalBidderId,
+        currentBidAmount:
+            current.finalPrice !== null && current.finalWinnerId !== null
+                ? current.currentBidAmount
+                : event.finalBidAmount,
+        currentBidderId:
+            current.finalPrice !== null && current.finalWinnerId !== null
+                ? current.currentBidderId
+                : event.finalBidderId,
+        finalWinnerId:
+            current.finalWinnerId ?? (event.finalBidderId !== null ? event.finalBidderId : null),
+        finalPrice: current.finalPrice ?? event.finalBidAmount,
         minimumValidBid:
             event.finalBidAmount === null
                 ? current.minimumValidBid
@@ -97,6 +107,27 @@ export function applyAuctionClosed(
         status: 'Closed',
         version: Math.max(current.version, event.auctionVersion),
         updatedAtUtc: event.closedAtUtc,
+    };
+}
+
+/**
+ * Applies an explicit purchase without converting it into ordinary bid state.
+ */
+export function applyAuctionPurchased(
+    current: AuctionDetail | null,
+    event: LiveAuctionPurchased,
+): AuctionDetail | null {
+    if (!current || event.auctionVersion < current.version) {
+        return current;
+    }
+
+    return {
+        ...current,
+        status: 'Closed',
+        finalWinnerId: event.bidderId,
+        finalPrice: event.finalPrice,
+        version: Math.max(current.version, event.auctionVersion),
+        updatedAtUtc: event.purchasedAtUtc,
     };
 }
 
@@ -128,7 +159,56 @@ export function describeBidError(apiError: ApiErrorResponse | null, caught: unkn
         return 'Auction state changed while bidding. Refreshing latest state.';
     }
 
+    if (apiError.code === 'bidding_not_available') {
+        return 'Ordinary bidding is not available for this auction.';
+    }
+
+    if (apiError.code === 'bid_at_or_above_buy_now_price') {
+        return 'Ordinary bids must be below the Buy Now price.';
+    }
+
     return apiError.message;
+}
+
+/**
+ * Converts Buy Now command failures into concise, actionable UI feedback.
+ */
+export function describeBuyNowError(apiError: ApiErrorResponse | null, caught: unknown) {
+    if (!apiError) {
+        return caught instanceof Error ? caught.message : 'Buy Now failed.';
+    }
+
+    switch (apiError.code) {
+        case 'invalid_bidder':
+            return 'Choose a valid buyer identity before purchasing.';
+        case 'auction_not_found':
+            return 'This auction is no longer available.';
+        case 'auction_not_started':
+            return 'Buy Now will be available when the auction starts.';
+        case 'auction_ended':
+            return 'This auction has ended.';
+        case 'auction_not_open':
+            return 'This auction is no longer open.';
+        case 'buy_now_not_available':
+            return 'Buy Now is no longer available for this auction.';
+        case 'auction_concurrency_conflict':
+            return 'Auction state changed while purchasing. Showing the latest state.';
+        default:
+            return apiError.message;
+    }
+}
+
+/**
+ * Returns whether a command response means the browser must reconcile state.
+ */
+export function shouldRefreshAfterConflict(code: string | undefined) {
+    return new Set([
+        'auction_not_open',
+        'auction_not_started',
+        'auction_ended',
+        'buy_now_not_available',
+        'auction_concurrency_conflict',
+    ]).has(code ?? '');
 }
 
 /**

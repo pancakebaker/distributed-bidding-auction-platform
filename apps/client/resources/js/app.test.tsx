@@ -8,6 +8,7 @@ import type {
     AuctionDetail,
     AuctionSummary,
     Bid,
+    LiveAuctionPurchased,
     LiveAuctionClosed,
     LiveBidAccepted,
     LiveWinnerSelected,
@@ -38,9 +39,13 @@ const macBook: AuctionDetail = {
     title: 'MacBook Pro',
     description: 'Developer laptop demo auction.',
     startingPrice: 1000,
+    saleMode: 'AuctionOnly',
+    buyNowPrice: null,
     minimumBidIncrement: 50,
     currentBidAmount: 1500,
     currentBidderId: 'erin',
+    finalWinnerId: null,
+    finalPrice: null,
     minimumValidBid: 1550,
     status: 'Open',
     startTimeUtc: new Date(Date.now() - 60_000).toISOString(),
@@ -56,9 +61,13 @@ const auctions: AuctionSummary[] = [
         id: '22222222-2222-2222-2222-222222222222',
         title: 'Camera',
         startingPrice: 500,
+        saleMode: 'AuctionOnly',
+        buyNowPrice: null,
         minimumBidIncrement: 25,
         currentBidAmount: null,
         currentBidderId: null,
+        finalWinnerId: null,
+        finalPrice: null,
         minimumValidBid: 500,
         status: 'Scheduled',
         startTimeUtc: new Date(Date.now() + 3_600_000).toISOString(),
@@ -69,9 +78,13 @@ const auctions: AuctionSummary[] = [
         id: '33333333-3333-3333-3333-333333333333',
         title: 'Gaming Console',
         startingPrice: 300,
+        saleMode: 'AuctionOnly',
+        buyNowPrice: null,
         minimumBidIncrement: 20,
         currentBidAmount: 380,
         currentBidderId: 'diana',
+        finalWinnerId: 'diana',
+        finalPrice: 380,
         minimumValidBid: 400,
         status: 'Closed',
         startTimeUtc: new Date(Date.now() - 7_200_000).toISOString(),
@@ -89,6 +102,36 @@ const bids: Bid[] = [
         createdAtUtc: new Date(Date.now() - 30_000).toISOString(),
     },
 ];
+
+const buyNowOnlyAuction: AuctionDetail = {
+    ...macBook,
+    saleMode: 'BuyNowOnly',
+    buyNowPrice: 2000,
+    currentBidAmount: null,
+    currentBidderId: null,
+    finalWinnerId: null,
+    finalPrice: null,
+    minimumValidBid: 1000,
+};
+
+const auctionAndBuyNowAtCeiling: AuctionDetail = {
+    ...macBook,
+    saleMode: 'AuctionAndBuyNow',
+    buyNowPrice: 1000,
+    currentBidAmount: 990,
+    currentBidderId: 'erin',
+    finalWinnerId: null,
+    finalPrice: null,
+    minimumValidBid: 1015,
+};
+
+const auctionAndBuyNowWithBid: AuctionDetail = {
+    ...macBook,
+    saleMode: 'AuctionAndBuyNow',
+    buyNowPrice: 2000,
+    finalWinnerId: null,
+    finalPrice: null,
+};
 
 function json(data: unknown, status = 200) {
     return Promise.resolve(
@@ -156,6 +199,10 @@ function liveClosed(event: LiveAuctionClosed) {
 
 function liveWinner(event: LiveWinnerSelected) {
     socketHandlers.get(liveFeedSocketEvents.winnerSelected)?.(event);
+}
+
+function livePurchased(event: LiveAuctionPurchased) {
+    socketHandlers.get(liveFeedSocketEvents.auctionPurchased)?.(event);
 }
 describe('auction UI', () => {
     beforeEach(() => {
@@ -507,6 +554,196 @@ describe('auction UI', () => {
 
         expect(await screen.findByText('You won this auction.')).toBeInTheDocument();
         expect(screen.getByText('Winner selected: Alice')).toBeInTheDocument();
+    });
+
+    it('sale modes render the appropriate actions', async () => {
+        const user = userEvent.setup();
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(buyNowOnlyAuction);
+            return json(auctions);
+        });
+
+        renderAt(`/auctions/${macBook.id}`);
+        expect((await screen.findAllByText('Buy Now price')).length).toBeGreaterThan(0);
+        expect(screen.queryByLabelText('Bid amount')).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Buy Now' })).toBeEnabled();
+
+        cleanup();
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(macBook);
+            return json(auctions);
+        });
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        expect(screen.getByLabelText('Bid amount')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Buy Now' })).not.toBeInTheDocument();
+
+        cleanup();
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(auctionAndBuyNowWithBid);
+            return json(auctions);
+        });
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        expect(screen.getByRole('button', { name: 'Place bid' })).toBeEnabled();
+        expect(screen.getByRole('button', { name: 'Buy Now' })).toBeEnabled();
+        expect(user).toBeDefined();
+    });
+
+    it('Buy Now requires confirmation and sends only bidder identity', async () => {
+        const user = userEvent.setup();
+        const fetchMock = vi.mocked(fetch);
+        fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
+            if (url.endsWith(`/api/auctions/${macBook.id}/buy-now`)) {
+                return json(
+                    {
+                        auctionId: macBook.id,
+                        bidderId: 'alice',
+                        finalPrice: 2000,
+                        auctionVersion: 10,
+                        purchasedAtUtc: new Date().toISOString(),
+                        correlationId: 'purchase-correlation',
+                    },
+                    201,
+                );
+            }
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(buyNowOnlyAuction);
+            return json(auctions);
+        });
+
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('button', { name: 'Buy Now' });
+        await user.click(screen.getByRole('button', { name: 'Buy Now' }));
+        expect(screen.getByText(/Confirm purchase of MacBook Pro for \$2,000/)).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Confirm Buy Now' }));
+
+        expect(await screen.findByText('Your Buy Now purchase was completed.')).toBeInTheDocument();
+        expect(screen.getByText('Final price $2,000')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Buy Now unavailable' })).toBeDisabled();
+        const post = fetchMock.mock.calls.find(
+            (call) => String(call[0]).endsWith('/buy-now') && call[1]?.method === 'POST',
+        );
+        expect(post?.[1]?.body).toBe(JSON.stringify({ bidderId: 'Alice' }));
+        expect(post?.[1]?.body).not.toContain('price');
+    });
+
+    it('Buy Now and closed siblings preserve purchase state without overwriting ordinary bid state', async () => {
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json(bids);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(auctionAndBuyNowWithBid);
+            return json(auctions);
+        });
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+
+        livePurchased({
+            auctionId: macBook.id,
+            bidderId: 'buyer-b',
+            finalPrice: 2000,
+            auctionVersion: 12,
+            purchasedAtUtc: new Date().toISOString(),
+            occurredAtUtc: new Date().toISOString(),
+            correlationId: 'purchase',
+        });
+        liveClosed({
+            auctionId: macBook.id,
+            closedAtUtc: new Date().toISOString(),
+            finalBidAmount: 1500,
+            finalBidderId: 'erin',
+            auctionVersion: 12,
+            correlationId: 'purchase',
+        });
+
+        expect(await screen.findByText('Final price $2,000')).toBeInTheDocument();
+        expect(screen.getAllByText('Winner: buyer-b').length).toBeGreaterThan(0);
+        expect(screen.getAllByText('$1,500').length).toBeGreaterThan(0);
+        expect(screen.queryByRole('button', { name: 'Place bid' })).not.toBeInTheDocument();
+    });
+
+    it('Buy Now conflicts refresh authoritative state without retrying the command', async () => {
+        const user = userEvent.setup();
+        const fetchMock = vi.mocked(fetch);
+        let detailRequests = 0;
+        let purchaseRequests = 0;
+        const closedPurchase = {
+            ...buyNowOnlyAuction,
+            status: 'Closed',
+            finalWinnerId: 'buyer-other',
+            finalPrice: 2000,
+            version: 10,
+            endTimeUtc: new Date(Date.now() - 1000).toISOString(),
+        } satisfies AuctionDetail;
+        fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
+            if (url.endsWith(`/api/auctions/${macBook.id}/buy-now`)) {
+                purchaseRequests += 1;
+                return json(
+                    { code: 'auction_not_open', message: 'Auction is no longer open.' },
+                    409,
+                );
+            }
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) {
+                detailRequests += 1;
+                return json(detailRequests === 1 ? buyNowOnlyAuction : closedPurchase);
+            }
+            return json(auctions);
+        });
+
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('button', { name: 'Buy Now' });
+        await user.click(screen.getByRole('button', { name: 'Buy Now' }));
+        await user.click(screen.getByRole('button', { name: 'Confirm Buy Now' }));
+
+        expect(await screen.findByText('This auction is no longer open.')).toBeInTheDocument();
+        expect(await screen.findByText('Final price $2,000')).toBeInTheDocument();
+        expect(purchaseRequests).toBe(1);
+    });
+
+    it('stale bids do not regress a purchase and a ceiling leaves Buy Now available', async () => {
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        livePurchased({
+            auctionId: macBook.id,
+            bidderId: 'buyer-b',
+            finalPrice: 2000,
+            auctionVersion: 12,
+            purchasedAtUtc: new Date().toISOString(),
+            occurredAtUtc: new Date().toISOString(),
+            correlationId: 'purchase',
+        });
+        live({
+            auctionId: macBook.id,
+            bidId: 'stale-bid',
+            bidderId: 'late-bidder',
+            amount: 1800,
+            auctionVersion: 11,
+            occurredAtUtc: new Date().toISOString(),
+            correlationId: 'stale',
+        });
+        expect(screen.queryByText('late-bidder')).not.toBeInTheDocument();
+
+        cleanup();
+        vi.mocked(fetch).mockImplementation((input: RequestInfo | URL) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) return json([]);
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) return json(auctionAndBuyNowAtCeiling);
+            return json(auctions);
+        });
+        renderAt(`/auctions/${macBook.id}`);
+        expect(
+            await screen.findByRole('button', { name: 'Bidding ceiling reached' }),
+        ).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Buy Now' })).toBeEnabled();
     });
 
     it('REST-loaded Closed auction starts with bidding disabled', async () => {

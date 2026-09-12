@@ -3,6 +3,7 @@ export const liveFeedSocketEvents = {
     bidAccepted: 'bid:accepted',
     auctionClosed: 'auction:closed',
     winnerSelected: 'winner:selected',
+    auctionPurchased: 'auction:purchased',
     subscribe: 'auction:subscribe',
     unsubscribe: 'auction:unsubscribe',
 } as const;

@@ -2,7 +2,12 @@
  * Socket.IO client adapter for subscribing to live auction updates from the live-feed service.
  */
 import { io, type Socket } from 'socket.io-client';
-import type { LiveAuctionClosed, LiveBidAccepted, LiveWinnerSelected } from './types';
+import type {
+    LiveAuctionClosed,
+    LiveAuctionPurchased,
+    LiveBidAccepted,
+    LiveWinnerSelected,
+} from './types';
 import { liveFeedSocketEvents } from './contracts/liveFeedTransport';
 
 const liveFeedUrl = import.meta.env.VITE_LIVE_FEED_URL ?? 'http://localhost:3001';
@@ -14,6 +19,7 @@ export type LiveFeedHandlers = {
     onBidAccepted: (event: LiveBidAccepted) => void;
     onAuctionClosed: (event: LiveAuctionClosed) => void;
     onWinnerSelected: (event: LiveWinnerSelected) => void;
+    onAuctionPurchased: (event: LiveAuctionPurchased) => void;
     onStatus: (status: 'connected' | 'reconnecting' | 'offline') => void;
 };
 
@@ -37,6 +43,7 @@ export function connectAuctionFeed(auctionId: string, handlers: LiveFeedHandlers
     socket.on(liveFeedSocketEvents.bidAccepted, handlers.onBidAccepted);
     socket.on(liveFeedSocketEvents.auctionClosed, handlers.onAuctionClosed);
     socket.on(liveFeedSocketEvents.winnerSelected, handlers.onWinnerSelected);
+    socket.on(liveFeedSocketEvents.auctionPurchased, handlers.onAuctionPurchased);
 
     return socket;
 }
