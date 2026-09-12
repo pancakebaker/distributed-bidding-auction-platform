@@ -316,6 +316,22 @@ emitted for Buy Now, and no synthetic `Bid` is created.
 separation is required for accurate bid history and for concurrent Buy Now,
 ordinary-bid, and scheduler transitions.
 
+## Buy Now event and scheduler semantics
+
+A successful Buy Now transition produces `AuctionPurchased` with routing key
+`auction.purchased`, followed by `AuctionClosed`. Both outbox messages describe
+one atomic aggregate transition, use the same resulting aggregate version and
+correlation ID, and retain distinct event IDs. `WinnerSelected` is reserved for
+an ordinary auction winner derived from accepted `Bid` history.
+
+Expiry scheduling claims only open auctions whose end time has passed. A
+purchased auction is already closed, so the scheduler never reclaims it,
+increments its version again, or emits duplicate lifecycle events. An unsold
+`BuyNowOnly` auction closes on expiry without `WinnerSelected`; an
+`AuctionAndBuyNow` auction that expires without purchase follows the ordinary
+bid-history path, emitting `WinnerSelected` only when a valid winning bid
+exists.
+
 ## Planned follow-up
 
 The next persistence-boundary work should be small and behavior-preserving:

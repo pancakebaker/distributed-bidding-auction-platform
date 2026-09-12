@@ -85,6 +85,91 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PurchasedAuctionPastEnd_IsIgnoredByScheduler()
+    {
+        var auctionId = Guid.NewGuid();
+        await InsertAuctionAsync(
+            auctionId,
+            status: "Closed",
+            version: 4,
+            endOffsetMinutes: -30,
+            saleMode: "BuyNowOnly",
+            buyNowPrice: 15000m,
+            finalWinnerId: "buyer-123",
+            finalPrice: 15000m);
+        await InsertOutboxEventAsync(auctionId, "AuctionPurchased", 4);
+        await InsertOutboxEventAsync(auctionId, "AuctionClosed", 4);
+        var service = CreateService();
+
+        Assert.Equal(0, await service.CloseExpiredAuctionsAsync(CancellationToken.None));
+
+        var auction = await GetAuctionAsync(auctionId);
+        var events = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(4, auction.Version);
+        Assert.Equal("buyer-123", auction.FinalWinnerId);
+        Assert.Equal(15000m, auction.FinalPrice);
+        Assert.Equal(2, events.Count);
+        Assert.DoesNotContain(events, message => message.EventType == "WinnerSelected");
+    }
+
+    [Fact]
+    public async Task ExpiredAuctionAndBuyNowWithBid_ClosesAsOrdinaryAuction()
+    {
+        var auctionId = Guid.NewGuid();
+        await InsertAuctionAsync(
+            auctionId,
+            status: "Open",
+            version: 8,
+            endOffsetMinutes: -5,
+            saleMode: "AuctionAndBuyNow",
+            buyNowPrice: 15000m,
+            currentBidAmount: 12500m,
+            currentBidderId: "alice");
+        await InsertBidAsync(Guid.NewGuid(), auctionId, "alice", 12500m, createdOffsetSeconds: -1);
+        var service = CreateService();
+
+        Assert.Equal(1, await service.CloseExpiredAuctionsAsync(CancellationToken.None));
+
+        var auction = await GetAuctionAsync(auctionId);
+        var events = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(9, auction.Version);
+        Assert.Equal("alice", auction.FinalWinnerId);
+        Assert.Equal(12500m, auction.FinalPrice);
+        Assert.Single(events, message => message.EventType == "AuctionClosed");
+        Assert.Single(events, message => message.EventType == "WinnerSelected");
+        Assert.DoesNotContain(events, message => message.EventType == "AuctionPurchased");
+    }
+
+    [Theory]
+    [InlineData("AuctionAndBuyNow")]
+    [InlineData("BuyNowOnly")]
+    public async Task ExpiredBuyNowCapableAuctionWithoutPurchase_ClosesWithoutWinner(string saleMode)
+    {
+        var auctionId = Guid.NewGuid();
+        await InsertAuctionAsync(
+            auctionId,
+            status: "Open",
+            version: 11,
+            endOffsetMinutes: -5,
+            saleMode: saleMode,
+            buyNowPrice: 15000m);
+        var service = CreateService();
+
+        Assert.Equal(1, await service.CloseExpiredAuctionsAsync(CancellationToken.None));
+
+        var auction = await GetAuctionAsync(auctionId);
+        var events = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(12, auction.Version);
+        Assert.Null(auction.FinalWinnerId);
+        Assert.Null(auction.FinalPrice);
+        Assert.Single(events, message => message.EventType == "AuctionClosed");
+        Assert.DoesNotContain(events, message => message.EventType is "WinnerSelected" or "AuctionPurchased");
+    }
+
+    [Fact]
     public async Task NonEligibleAuctions_DoNotClose()
     {
         var futureOpen = Guid.NewGuid();
@@ -359,7 +444,11 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         long version,
         int endOffsetMinutes,
         decimal? currentBidAmount = null,
-        string? currentBidderId = null)
+        string? currentBidderId = null,
+        string saleMode = "AuctionOnly",
+        decimal? buyNowPrice = null,
+        string? finalWinnerId = null,
+        decimal? finalPrice = null)
     {
         var now = DateTimeOffset.UtcNow;
         await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
@@ -368,10 +457,12 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
             """
             INSERT INTO auctions
                 (id, title, description, starting_price, minimum_bid_increment, current_bid_amount, current_bidder_id,
-                 start_time_utc, end_time_utc, status, version, created_at_utc, updated_at_utc)
+                 start_time_utc, end_time_utc, status, sale_mode, buy_now_price, final_winner_id, final_price,
+                 version, created_at_utc, updated_at_utc)
             VALUES
                 (@id, 'Scheduler Test Auction', 'Integration test auction', 10000, 500, @currentBidAmount, @currentBidderId,
-                 @startTimeUtc, @endTimeUtc, @status, @version, @createdAtUtc, @updatedAtUtc);
+                @startTimeUtc, @endTimeUtc, @status, @saleMode, @buyNowPrice, @finalWinnerId, @finalPrice,
+                @version, @createdAtUtc, @updatedAtUtc);
             """,
             connection);
 
@@ -381,9 +472,38 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         command.Parameters.AddWithValue("startTimeUtc", now.AddHours(-1));
         command.Parameters.AddWithValue("endTimeUtc", now.AddMinutes(endOffsetMinutes));
         command.Parameters.AddWithValue("status", status);
+        command.Parameters.AddWithValue("saleMode", saleMode);
+        command.Parameters.AddWithValue("buyNowPrice", buyNowPrice is null ? DBNull.Value : buyNowPrice.Value);
+        command.Parameters.AddWithValue("finalWinnerId", finalWinnerId is null ? DBNull.Value : finalWinnerId);
+        command.Parameters.AddWithValue("finalPrice", finalPrice is null ? DBNull.Value : finalPrice.Value);
         command.Parameters.AddWithValue("version", version);
         command.Parameters.AddWithValue("createdAtUtc", now);
         command.Parameters.AddWithValue("updatedAtUtc", now);
+        await command.ExecuteNonQueryAsync(CancellationToken.None);
+    }
+
+    private static async Task InsertOutboxEventAsync(Guid auctionId, string eventType, long aggregateVersion)
+    {
+        await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
+        await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
+        await using var command = new NpgsqlCommand(
+            """
+            INSERT INTO outbox_messages
+                (id, event_type, aggregate_type, aggregate_id, aggregate_version, occurred_at_utc,
+                 correlation_id, payload, created_at_utc, publish_attempts)
+            VALUES
+                (@id, @eventType, 'Auction', @auctionId, @aggregateVersion, @occurredAtUtc,
+                 @correlationId, '{}'::jsonb, @createdAtUtc, 0);
+            """,
+            connection);
+        var now = DateTimeOffset.UtcNow;
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("eventType", eventType);
+        command.Parameters.AddWithValue("auctionId", auctionId);
+        command.Parameters.AddWithValue("aggregateVersion", aggregateVersion);
+        command.Parameters.AddWithValue("occurredAtUtc", now);
+        command.Parameters.AddWithValue("correlationId", Guid.NewGuid().ToString());
+        command.Parameters.AddWithValue("createdAtUtc", now);
         await command.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
