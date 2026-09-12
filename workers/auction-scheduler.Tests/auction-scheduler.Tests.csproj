@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\auction-scheduler\auction-scheduler.csproj" />
+    <ProjectReference Include="..\..\apps\bidding-service\bidding-service.csproj" />
   </ItemGroup>
 
 </Project>

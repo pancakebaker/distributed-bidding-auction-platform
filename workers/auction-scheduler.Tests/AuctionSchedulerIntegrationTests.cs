@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
 using auction_scheduler.Options;
+using bidding_service.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -152,7 +154,7 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
 
         await Assert.ThrowsAsync<PostgresException>(() => service.CloseExpiredAuctionsAsync(CancellationToken.None));
 
-        await CreateOutboxTableAsync();
+        await ReapplyOutboxMigrationAsync();
         var auction = await GetAuctionAsync(auctionId);
         Assert.Equal("Open", auction.Status);
         Assert.Equal(9, auction.Version);
@@ -172,44 +174,9 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
     private static async Task ResetDatabaseAsync()
     {
         await EnsureTestDatabaseExistsAsync();
-        await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
-        await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
-
-        await using var command = new NpgsqlCommand(
-            """
-            DROP TABLE IF EXISTS outbox_messages;
-            DROP TABLE IF EXISTS bids;
-            DROP TABLE IF EXISTS auctions;
-
-            CREATE TABLE auctions (
-                id uuid PRIMARY KEY,
-                title character varying(200) NOT NULL,
-                description character varying(2000) NOT NULL,
-                starting_price numeric(18,2) NOT NULL,
-                minimum_bid_increment numeric(18,2) NOT NULL,
-                current_bid_amount numeric(18,2) NULL,
-                current_bidder_id character varying(100) NULL,
-                start_time_utc timestamp with time zone NOT NULL,
-                end_time_utc timestamp with time zone NOT NULL,
-                status character varying(24) NOT NULL,
-                version bigint NOT NULL,
-                created_at_utc timestamp with time zone NOT NULL,
-                updated_at_utc timestamp with time zone NOT NULL
-            );
-
-            CREATE TABLE bids (
-                id uuid PRIMARY KEY,
-                auction_id uuid NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
-                bidder_id character varying(100) NOT NULL,
-                amount numeric(18,2) NOT NULL,
-                created_at_utc timestamp with time zone NOT NULL
-            );
-
-            CREATE INDEX ix_bids_auction_id_created_at ON bids (auction_id, created_at_utc DESC);
-            """,
-            connection);
-        await command.ExecuteNonQueryAsync(CancellationToken.None);
-        await CreateOutboxTableAsync();
+        await using var db = CreateDbContext();
+        await db.Database.EnsureDeletedAsync(CancellationToken.None);
+        await db.Database.MigrateAsync(CancellationToken.None);
     }
 
     private static async Task EnsureTestDatabaseExistsAsync()
@@ -228,32 +195,25 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         await createCommand.ExecuteNonQueryAsync(CancellationToken.None);
     }
 
-    private static async Task CreateOutboxTableAsync()
+    private static BiddingDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<BiddingDbContext>()
+            .UseNpgsql(ConnectionString)
+            .Options;
+        return new BiddingDbContext(options);
+    }
+
+    private static async Task ReapplyOutboxMigrationAsync()
     {
         await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
         await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
         await using var command = new NpgsqlCommand(
-            """
-            CREATE TABLE IF NOT EXISTS outbox_messages (
-                id uuid PRIMARY KEY,
-                event_type character varying(200) NOT NULL,
-                aggregate_type character varying(200) NOT NULL,
-                aggregate_id uuid NOT NULL,
-                aggregate_version bigint NOT NULL,
-                occurred_at_utc timestamp with time zone NOT NULL,
-                correlation_id character varying(100) NULL,
-                payload jsonb NOT NULL,
-                created_at_utc timestamp with time zone NOT NULL,
-                published_at_utc timestamp with time zone NULL,
-                publish_attempts integer NOT NULL DEFAULT 0,
-                last_error text NULL
-            );
-
-            CREATE INDEX IF NOT EXISTS ix_outbox_messages_published_at_created_at ON outbox_messages (published_at_utc, created_at_utc);
-            CREATE INDEX IF NOT EXISTS ix_outbox_messages_aggregate_id_version ON outbox_messages (aggregate_id, aggregate_version);
-            """,
+            "DELETE FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\" = '20260904194837_AddTransactionalOutbox';",
             connection);
         await command.ExecuteNonQueryAsync(CancellationToken.None);
+
+        await using var db = CreateDbContext();
+        await db.Database.MigrateAsync(CancellationToken.None);
     }
 
     private static async Task DropOutboxTableAsync()

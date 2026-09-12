@@ -1,5 +1,7 @@
 using System.Text;
 using System.Text.Json;
+using bidding_service.Data;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using Npgsql;
@@ -190,31 +192,9 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
     private static async Task ResetDatabaseAsync()
     {
         await EnsureTestDatabaseExistsAsync();
-
-        await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
-        await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
-        await using var command = new NpgsqlCommand(
-            """
-            CREATE TABLE IF NOT EXISTS outbox_messages (
-                id uuid PRIMARY KEY,
-                event_type character varying(120) NOT NULL,
-                aggregate_type character varying(120) NOT NULL,
-                aggregate_id uuid NOT NULL,
-                aggregate_version bigint NOT NULL,
-                occurred_at_utc timestamp with time zone NOT NULL,
-                correlation_id character varying(120),
-                payload jsonb NOT NULL,
-                created_at_utc timestamp with time zone NOT NULL,
-                published_at_utc timestamp with time zone,
-                publish_attempts integer NOT NULL DEFAULT 0,
-                last_error character varying(2000)
-            );
-            CREATE INDEX IF NOT EXISTS ix_outbox_messages_published_at_created_at ON outbox_messages (published_at_utc, created_at_utc);
-            CREATE INDEX IF NOT EXISTS ix_outbox_messages_aggregate_id_version ON outbox_messages (aggregate_id, aggregate_version);
-            TRUNCATE TABLE outbox_messages;
-            """,
-            connection);
-        await command.ExecuteNonQueryAsync(CancellationToken.None);
+        await using var db = CreateDbContext();
+        await db.Database.EnsureDeletedAsync(CancellationToken.None);
+        await db.Database.MigrateAsync(CancellationToken.None);
     }
 
 
@@ -233,6 +213,15 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
         await using var createCommand = new NpgsqlCommand($"CREATE DATABASE {DatabaseName}", connection);
         await createCommand.ExecuteNonQueryAsync(CancellationToken.None);
     }
+
+    private static BiddingDbContext CreateDbContext()
+    {
+        var options = new DbContextOptionsBuilder<BiddingDbContext>()
+            .UseNpgsql(ConnectionString)
+            .Options;
+        return new BiddingDbContext(options);
+    }
+
     private async Task ResetRabbitMqAsync()
     {
         var publisher = new RabbitMqEventPublisher(Microsoft.Extensions.Options.Options.Create(_rabbitOptions), NullLogger<RabbitMqEventPublisher>.Instance);

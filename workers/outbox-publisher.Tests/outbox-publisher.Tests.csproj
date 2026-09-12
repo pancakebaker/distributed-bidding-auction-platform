@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\outbox-publisher\outbox-publisher.csproj" />
+    <ProjectReference Include="..\..\apps\bidding-service\bidding-service.csproj" />
   </ItemGroup>
 
 </Project>
