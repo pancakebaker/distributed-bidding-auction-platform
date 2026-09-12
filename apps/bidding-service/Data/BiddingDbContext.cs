@@ -12,6 +12,13 @@ namespace bidding_service.Data;
 public sealed class BiddingDbContext(
     DbContextOptions<BiddingDbContext> options) : DbContext(options)
 {
+    private const string SaleModeConstraintName = "CK_auctions_sale_mode_buy_now_price";
+    private const string SaleModeConstraintSql =
+        "(sale_mode = 'AuctionOnly' AND buy_now_price IS NULL) " +
+        "OR (sale_mode = 'BuyNowOnly' AND buy_now_price IS NOT NULL) " +
+        "OR (sale_mode = 'AuctionAndBuyNow' AND buy_now_price IS NOT NULL " +
+        "AND starting_price < buy_now_price)";
+
     /// <summary>
     /// Gets the auctions.
     /// </summary>
@@ -32,7 +39,7 @@ public sealed class BiddingDbContext(
     {
         modelBuilder.Entity<Auction>(auction =>
         {
-            auction.ToTable("auctions");
+            auction.ToTable("auctions", table => table.HasCheckConstraint(SaleModeConstraintName, SaleModeConstraintSql));
             auction.HasKey(a => a.Id);
             auction.Property(a => a.Id).HasColumnName("id");
             auction.Property(a => a.Title)
@@ -47,6 +54,15 @@ public sealed class BiddingDbContext(
                 .HasColumnName("starting_price")
                 .HasPrecision(18, 2)
                 .IsRequired();
+            auction.Property(a => a.SaleMode)
+                .HasColumnName("sale_mode")
+                .HasConversion<string>()
+                .HasMaxLength(40)
+                .HasDefaultValue(SaleMode.AuctionOnly)
+                .IsRequired();
+            auction.Property(a => a.BuyNowPrice)
+                .HasColumnName("buy_now_price")
+                .HasPrecision(18, 2);
             auction.Property(a => a.MinimumBidIncrement)
                 .HasColumnName("minimum_bid_increment")
                 .HasPrecision(18, 2)
@@ -57,6 +73,12 @@ public sealed class BiddingDbContext(
             auction.Property(a => a.CurrentBidderId)
                 .HasColumnName("current_bidder_id")
                 .HasMaxLength(120);
+            auction.Property(a => a.FinalWinnerId)
+                .HasColumnName("final_winner_id")
+                .HasMaxLength(120);
+            auction.Property(a => a.FinalPrice)
+                .HasColumnName("final_price")
+                .HasPrecision(18, 2);
             auction.Property(a => a.StartTimeUtc).HasColumnName("start_time_utc").IsRequired();
             auction.Property(a => a.EndTimeUtc).HasColumnName("end_time_utc").IsRequired();
             auction.Property(a => a.Status)

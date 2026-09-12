@@ -35,7 +35,10 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         var events = await GetOutboxMessagesAsync(auctionId);
 
         Assert.Equal("Closed", auction.Status);
+        Assert.Equal("AuctionOnly", auction.SaleMode);
         Assert.Equal(8, auction.Version);
+        Assert.Null(auction.FinalWinnerId);
+        Assert.Null(auction.FinalPrice);
         var closed = Assert.Single(events);
         Assert.Equal("AuctionClosed", closed.EventType);
         Assert.Equal(8, closed.AggregateVersion);
@@ -65,7 +68,10 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         var winner = Assert.Single(events, message => message.EventType == "WinnerSelected");
 
         Assert.Equal("Closed", auction.Status);
+        Assert.Equal("AuctionOnly", auction.SaleMode);
         Assert.Equal(16, auction.Version);
+        Assert.Equal("alice", auction.FinalWinnerId);
+        Assert.Equal(12500m, auction.FinalPrice);
         Assert.Equal(16, closed.AggregateVersion);
         Assert.Equal(16, winner.AggregateVersion);
         Assert.Equal(closed.CorrelationId, winner.CorrelationId);
@@ -139,6 +145,8 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
 
         Assert.Equal("Closed", auction.Status);
         Assert.Equal(3, auction.Version);
+        Assert.Equal("charlie", auction.FinalWinnerId);
+        Assert.Equal(15000m, auction.FinalPrice);
         using var document = JsonDocument.Parse(winner.Payload);
         Assert.Equal(bidId, document.RootElement.GetProperty("winningBidId").GetGuid());
         Assert.Equal("charlie", document.RootElement.GetProperty("winnerId").GetString());
@@ -423,11 +431,18 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
     {
         await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
         await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
-        await using var command = new NpgsqlCommand("SELECT status, version FROM auctions WHERE id = @auctionId", connection);
+        await using var command = new NpgsqlCommand(
+            "SELECT status, version, sale_mode, final_winner_id, final_price FROM auctions WHERE id = @auctionId",
+            connection);
         command.Parameters.AddWithValue("auctionId", auctionId);
         await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
         Assert.True(await reader.ReadAsync(CancellationToken.None));
-        return new AuctionRow(reader.GetString(0), reader.GetInt64(1));
+        return new AuctionRow(
+            reader.GetString(0),
+            reader.GetInt64(1),
+            reader.GetString(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3),
+            reader.IsDBNull(4) ? null : reader.GetDecimal(4));
     }
 
     private static async Task<List<OutboxRow>> GetOutboxMessagesAsync(Guid auctionId)
@@ -466,7 +481,12 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         return Convert.ToInt32(await command.ExecuteScalarAsync(CancellationToken.None), CultureInfo.InvariantCulture);
     }
 
-    private sealed record AuctionRow(string Status, long Version);
+    private sealed record AuctionRow(
+        string Status,
+        long Version,
+        string SaleMode,
+        string? FinalWinnerId,
+        decimal? FinalPrice);
     private sealed record OutboxRow(string EventType, long AggregateVersion, string? CorrelationId, string Payload);
     private sealed record ColumnExpectation(string TypeCategory, bool Nullable);
     private sealed record ColumnMetadata(string DataType, string UdtName, bool IsNullable);

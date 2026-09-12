@@ -25,6 +25,14 @@ public sealed class Auction
     /// </summary>
     public decimal StartingPrice { get; set; }
     /// <summary>
+    /// Gets or sets how the auction may be completed.
+    /// </summary>
+    public SaleMode SaleMode { get; set; }
+    /// <summary>
+    /// Gets or sets the authoritative immediate-purchase price, when enabled.
+    /// </summary>
+    public decimal? BuyNowPrice { get; set; }
+    /// <summary>
     /// Gets or sets the minimum increase required after an accepted bid.
     /// </summary>
     public decimal MinimumBidIncrement { get; set; }
@@ -36,6 +44,14 @@ public sealed class Auction
     /// Gets or sets the current highest bidder identity, if any.
     /// </summary>
     public string? CurrentBidderId { get; set; }
+    /// <summary>
+    /// Gets or sets the terminal winner identity, when the auction has a winner.
+    /// </summary>
+    public string? FinalWinnerId { get; set; }
+    /// <summary>
+    /// Gets or sets the terminal sale price, when the auction has a winner.
+    /// </summary>
+    public decimal? FinalPrice { get; set; }
     /// <summary>
     /// Gets or sets the server UTC time when bidding opens.
     /// </summary>

@@ -50,7 +50,71 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
 
         Assert.Equal("MacBook Pro", auction.Title);
         Assert.Equal("Open", auction.Status);
+        Assert.Equal("AuctionOnly", auction.SaleMode);
+        Assert.Null(auction.BuyNowPrice);
+        Assert.Null(auction.FinalWinnerId);
+        Assert.Null(auction.FinalPrice);
         Assert.Equal(1250m, auction.MinimumValidBid);
+    }
+
+    [Fact]
+    public async Task BuyNowFields_PersistWithExistingMoneyPrecision()
+    {
+        var auctionId = Guid.NewGuid();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        db.Auctions.Add(new Auction
+        {
+            Id = auctionId,
+            Title = "Buy Now test auction",
+            Description = "Buy Now persistence foundation test.",
+            StartingPrice = 1250m,
+            SaleMode = SaleMode.BuyNowOnly,
+            BuyNowPrice = 1250.67m,
+            MinimumBidIncrement = 50m,
+            StartTimeUtc = TestAuctionData.Now.AddHours(-1),
+            EndTimeUtc = TestAuctionData.Now.AddHours(1),
+            Status = AuctionStatus.Open,
+            Version = 1,
+            CreatedAtUtc = TestAuctionData.Now,
+            UpdatedAtUtc = TestAuctionData.Now
+        });
+
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var persisted = await db.Auctions.SingleAsync(auction => auction.Id == auctionId);
+        Assert.Equal(SaleMode.BuyNowOnly, persisted.SaleMode);
+        Assert.Equal(1250.67m, persisted.BuyNowPrice);
+        Assert.Null(persisted.CurrentBidAmount);
+        Assert.Null(persisted.CurrentBidderId);
+        Assert.Null(persisted.FinalWinnerId);
+        Assert.Null(persisted.FinalPrice);
+    }
+
+    [Fact]
+    public async Task AuctionAndBuyNowWithNonIncreasingStartingPrice_IsRejected()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        db.Auctions.Add(new Auction
+        {
+            Id = Guid.NewGuid(),
+            Title = "Invalid Buy Now auction",
+            Description = "Invalid sale-mode combination.",
+            StartingPrice = 1000m,
+            SaleMode = SaleMode.AuctionAndBuyNow,
+            BuyNowPrice = 1000m,
+            MinimumBidIncrement = 50m,
+            StartTimeUtc = TestAuctionData.Now,
+            EndTimeUtc = TestAuctionData.Now.AddHours(1),
+            Status = AuctionStatus.Scheduled,
+            Version = 1,
+            CreatedAtUtc = TestAuctionData.Now,
+            UpdatedAtUtc = TestAuctionData.Now
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
     [Fact]
@@ -514,6 +578,7 @@ public static class TestAuctionData
                 Title = "MacBook Pro",
                 Description = "Open test auction.",
                 StartingPrice = 1000m,
+                SaleMode = SaleMode.AuctionOnly,
                 MinimumBidIncrement = 50m,
                 CurrentBidAmount = 1200m,
                 CurrentBidderId = "carol",
@@ -530,6 +595,7 @@ public static class TestAuctionData
                 Title = "Camera",
                 Description = "Scheduled test auction.",
                 StartingPrice = 500m,
+                SaleMode = SaleMode.AuctionOnly,
                 MinimumBidIncrement = 25m,
                 StartTimeUtc = Now.AddHours(1),
                 EndTimeUtc = Now.AddHours(2),
@@ -544,6 +610,7 @@ public static class TestAuctionData
                 Title = "Gaming Console",
                 Description = "Closed test auction.",
                 StartingPrice = 300m,
+                SaleMode = SaleMode.AuctionOnly,
                 MinimumBidIncrement = 20m,
                 CurrentBidAmount = 380m,
                 CurrentBidderId = "erin",
@@ -560,6 +627,7 @@ public static class TestAuctionData
                 Title = "Ended Open Auction",
                 Description = "Status open but end time passed.",
                 StartingPrice = 300m,
+                SaleMode = SaleMode.AuctionOnly,
                 MinimumBidIncrement = 20m,
                 StartTimeUtc = Now.AddDays(-1),
                 EndTimeUtc = Now.AddMinutes(-1),
@@ -574,6 +642,7 @@ public static class TestAuctionData
                 Title = "Future Open Auction",
                 Description = "Status open but start time is future.",
                 StartingPrice = 300m,
+                SaleMode = SaleMode.AuctionOnly,
                 MinimumBidIncrement = 20m,
                 StartTimeUtc = Now.AddMinutes(1),
                 EndTimeUtc = Now.AddHours(1),

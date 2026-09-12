@@ -85,6 +85,7 @@ public sealed class AuctionClosingService(
                 connection,
                 transaction,
                 auction,
+                winner,
                 now,
                 cancellationToken);
             if (newVersion is null)
@@ -216,6 +217,7 @@ public sealed class AuctionClosingService(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         ClaimedAuction auction,
+        WinningBid? winner,
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
@@ -223,6 +225,8 @@ public sealed class AuctionClosingService(
             """
             UPDATE auctions
             SET status = @closedStatus,
+                final_winner_id = @finalWinnerId,
+                final_price = @finalPrice,
                 version = version + 1,
                 updated_at_utc = @updatedAtUtc
             WHERE id = @auctionId
@@ -234,6 +238,10 @@ public sealed class AuctionClosingService(
             transaction);
 
         command.Parameters.AddWithValue("closedStatus", ClosedStatus);
+        command.Parameters.Add("finalWinnerId", NpgsqlDbType.Text).Value =
+            winner?.BidderId ?? (object)DBNull.Value;
+        command.Parameters.Add("finalPrice", NpgsqlDbType.Numeric).Value =
+            winner?.Amount ?? (object)DBNull.Value;
         command.Parameters.AddWithValue("updatedAtUtc", now);
         command.Parameters.AddWithValue("auctionId", auction.Id);
         command.Parameters.AddWithValue("openStatus", OpenStatus);
