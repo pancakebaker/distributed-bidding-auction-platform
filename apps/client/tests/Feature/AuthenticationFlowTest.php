@@ -42,6 +42,24 @@ class AuthenticationFlowTest extends TestCase
         $this->assertAuthenticatedAs($admin);
     }
 
+    public function test_normal_bidder_can_login_without_admin_access(): void
+    {
+        $bidder = User::factory()->create([
+            'name' => 'Bidder One',
+            'email' => 'bidder@example.test',
+            'password' => Hash::make('correct-password'),
+        ]);
+
+        $this->post('/login', [
+            'email' => 'bidder@example.test',
+            'password' => 'correct-password',
+        ])->assertRedirect('/admin');
+
+        $this->assertAuthenticatedAs($bidder);
+        $this->get('/admin')->assertForbidden();
+        $this->get('/auctions')->assertOk()->assertSee('Bidder One');
+    }
+
     public function test_invalid_login_is_rejected(): void
     {
         User::factory()->admin()->create([
@@ -82,5 +100,28 @@ class AuthenticationFlowTest extends TestCase
 
         $this->assertGuest();
         $this->get('/admin')->assertRedirect('/login');
+    }
+
+    public function test_public_registration_is_not_available(): void
+    {
+        $this->get('/register')->assertNotFound();
+        $this->post('/register')->assertNotFound();
+    }
+
+    public function test_public_react_bootstrap_exposes_only_safe_auth_state(): void
+    {
+        $this->get('/auctions')
+            ->assertSee('Sign in')
+            ->assertSee('__AUTH_BOOTSTRAP__')
+            ->assertSee('authenticated')
+            ->assertSee('false')
+            ->assertDontSee('password');
+
+        $this->actingAs(User::factory()->create(['name' => 'Signed-in Bidder']))
+            ->get('/auctions')
+            ->assertSee('Signed-in Bidder')
+            ->assertSee('authenticated')
+            ->assertSee('true')
+            ->assertDontSee('password');
     }
 }

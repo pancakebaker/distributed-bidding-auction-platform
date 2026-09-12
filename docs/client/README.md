@@ -89,7 +89,11 @@ The client includes a minimal Laravel session login/logout flow for manual admin
 - `POST /login` validates email/password with `Auth::attempt`, regenerates the session, and redirects intended users to `/admin`.
 - `POST /logout` logs out, invalidates the session, regenerates the CSRF token, and returns to `/login`.
 
-There is no registration, forgot-password, OAuth, or social-auth flow. Admin access still requires the existing server-side `auth` and `can:access-admin` middleware; logging in as a normal user does not grant admin access.
+There is no public registration, forgot-password, OAuth, or social-auth flow. Accounts are provisioned by seeders or an administrative process for now. Admin access still requires the existing server-side `auth` and `can:access-admin` middleware; logging in as a normal user does not grant admin access.
+
+Local/demo bidder accounts are seeded as `bidder1@example.test`, `bidder2@example.test`, and `bidder3@example.test`. They use the development-only `DEMO_BIDDER_PASSWORD` value (defaulting to `bidder-password` when unset) and are never a production credential source.
+
+Each user has an opaque UUID `subject_id`. Laravel's session remains the current human-authentication authority. The `BiddingServiceTokenIssuer` can issue a short-lived RS256 token for the Bidding Service with issuer `dbap-laravel`, audience `dbap-bidding-service`, the user subject as `sub`, and server-derived permissions. The private key remains Laravel-side; the Bidding Service validates only the public key, issuer, audience, signature, and lifetime. The current bidder-id request fallback remains transitional until AUTH2 migrates bid and Buy Now commands; management enforcement and BFF routing remain AUTH3 work.
 
 For local manual testing, create an admin with explicit environment values:
 

@@ -40,7 +40,7 @@ class LiveFeedAdminTokenTest extends TestCase
         $response = $this->actingAs($admin)->postJson('/admin/live-feed/token');
         $response->assertOk()->assertJsonStructure(['token', 'expiresAt']);
         $payload = json_decode(base64_decode(strtr(explode('.', $response->json('token'))[1], '-_', '+/')), true, 512, JSON_THROW_ON_ERROR);
-        $this->assertSame((string) $admin->id, $payload['sub']);
+        $this->assertSame($admin->getSubjectId(), $payload['sub']);
         $this->assertSame('auction-client', $payload['iss']);
         $this->assertSame('live-feed-admin', $payload['aud']);
         $this->assertSame('admin', $payload['role']);

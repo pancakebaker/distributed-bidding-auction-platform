@@ -60,7 +60,7 @@ class AuctionOperationsHandoffTest extends TestCase
         $this->assertSame('auction-client', $payload['iss']);
         $this->assertSame('admin', $payload['role']);
         $this->assertSame(['access-auction-operations'], $payload['permissions']);
-        $this->assertSame((string) $admin->id, $payload['sub']);
+        $this->assertSame($admin->getSubjectId(), $payload['sub']);
         $this->assertIsInt($payload['iat']);
         $this->assertIsInt($payload['exp']);
         $this->assertNotEmpty($payload['jti']);

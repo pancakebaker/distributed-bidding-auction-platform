@@ -10,5 +10,12 @@
     <body>
         @include('partials.public-navigation')
         <div id="app"></div>
+        <script>
+            window.__AUTH_BOOTSTRAP__ = {{ Illuminate\Support\Js::from([
+                'authenticated' => auth()->check(),
+                'displayName' => auth()->user()?->name,
+                'isAdmin' => (bool) auth()->user()?->is_admin,
+            ]) }};
+        </script>
     </body>
 </html>

@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\User;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Str;
 
 class DemoAdminSeeder extends Seeder
 {
@@ -27,6 +28,9 @@ class DemoAdminSeeder extends Seeder
             'password' => env('DEMO_ADMIN_PASSWORD', self::DEFAULT_PASSWORD),
         ]);
 
-        $user->forceFill(['is_admin' => true])->save();
+        $user->forceFill([
+            'is_admin' => true,
+            'subject_id' => $user->subject_id ?: (string) Str::uuid(),
+        ])->save();
     }
 }

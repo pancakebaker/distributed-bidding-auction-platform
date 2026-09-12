@@ -10,6 +10,15 @@
                     href="{{ route('cms.pages.show', ['page' => $page['slug']]) }}"
                 >{{ $page['title'] }}</a>
             @endforeach
+            @auth
+                <span aria-label="Signed-in user">{{ auth()->user()->name }}</span>
+                <form method="post" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit">Log out</button>
+                </form>
+            @else
+                <a href="{{ route('login') }}">Sign in</a>
+            @endauth
         </div>
     </div>
 </nav>

@@ -11,4 +11,7 @@ public static class ApplicationClaimNames
 
     /// <summary>Identifies the application permissions claim.</summary>
     public const string Permissions = "permissions";
+
+    /// <summary>Identifies the stable tenant context when multi-tenancy is enabled.</summary>
+    public const string TenantId = "tenant_id";
 }

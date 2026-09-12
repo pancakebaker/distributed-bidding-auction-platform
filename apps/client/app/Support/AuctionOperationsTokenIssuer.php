@@ -25,7 +25,7 @@ class AuctionOperationsTokenIssuer
             min((int) config('auction_operations.token_ttl_seconds', 300), 600),
         );
         $claims = [
-            'sub' => (string) $user->getAuthIdentifier(),
+            'sub' => $user->getSubjectId(),
             'email' => (string) $user->email,
             ApplicationAuth::CLAIM_ROLE => ApplicationAuth::ROLE_ADMIN,
             ApplicationAuth::CLAIM_PERMISSIONS => [(string) config('auction_operations.token_permission')],

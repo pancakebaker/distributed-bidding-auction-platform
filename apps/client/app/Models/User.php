@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
@@ -18,6 +19,13 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable;
+
+    protected static function booted(): void
+    {
+        static::creating(function (User $user): void {
+            $user->subject_id ??= (string) Str::uuid();
+        });
+    }
 
     /**
      * Get the attributes that should be cast.
@@ -31,6 +39,18 @@ class User extends Authenticatable
             'is_admin' => 'boolean',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Get the stable opaque subject used in trusted service tokens.
+     */
+    public function getSubjectId(): string
+    {
+        if (! is_string($this->subject_id) || $this->subject_id === '') {
+            throw new \LogicException('User subject_id is not initialized.');
+        }
+
+        return $this->subject_id;
     }
 
     /**

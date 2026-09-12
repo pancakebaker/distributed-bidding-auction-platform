@@ -29,7 +29,7 @@ class LiveFeedAdminTokenIssuer
             min((int) config('live_feed.token_ttl_seconds', 600), 900),
         );
         $claims = [
-            'sub' => (string) $user->getAuthIdentifier(),
+            'sub' => $user->getSubjectId(),
             'email' => (string) $user->email,
             ApplicationAuth::CLAIM_ROLE => ApplicationAuth::ROLE_ADMIN,
             ApplicationAuth::CLAIM_PERMISSIONS => [ApplicationAuth::PERMISSION_LIVE_FEED_ADMIN],

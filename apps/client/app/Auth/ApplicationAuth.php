@@ -16,4 +16,10 @@ final class ApplicationAuth
     public const PERMISSION_AUCTION_OPERATIONS = 'access-auction-operations';
 
     public const PERMISSION_LIVE_FEED_ADMIN = 'access-live-feed-admin';
+
+    public const PERMISSION_AUCTION_BID = 'auction.bid';
+
+    public const PERMISSION_AUCTION_BUY = 'auction.buy';
+
+    public const PERMISSION_AUCTION_MANAGE = 'auction.manage';
 }

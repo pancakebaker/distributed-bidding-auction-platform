@@ -1170,6 +1170,10 @@ public sealed class AuctionApiFactory : WebApplicationFactory<Program>
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.UseSetting("Authentication:BiddingService:Issuer", "dbap-laravel");
+        builder.UseSetting("Authentication:BiddingService:Audience", "dbap-bidding-service");
+        builder.UseSetting("Authentication:BiddingService:KeyId", "bidding-service-v1");
+        builder.UseSetting("Authentication:BiddingService:PublicKeyPath", JwtTestKeys.Path);
         builder.ConfigureAppConfiguration(config =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>
@@ -1178,7 +1182,7 @@ public sealed class AuctionApiFactory : WebApplicationFactory<Program>
                 ["Database:ApplyMigrations"] = "false",
                 ["Database:SeedDemoData"] = "false",
                 ["BidPlacement:MaxConcurrencyRetries"] = "2",
-                ["BidPlacement:ArtificialProcessingDelayMilliseconds"] = "75"
+                ["BidPlacement:ArtificialProcessingDelayMilliseconds"] = "75",
             });
         });
 
