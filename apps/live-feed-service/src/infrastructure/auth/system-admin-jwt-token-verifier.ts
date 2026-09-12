@@ -1,3 +1,6 @@
+/**
+ * Validates independent system-administrator JWTs before Live Feed admin handoff.
+ */
 import { createVerify } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { ApplicationError } from '../../application/errors/application-error.js';
@@ -6,6 +9,7 @@ import type {
   AdminTokenVerifier,
 } from '../../application/ports/admin-token-verifier.js';
 
+/** Configuration for the independent system-administrator JWT trust boundary. */
 export type SystemAdminJwtTokenVerifierOptions = {
   publicKeyPath?: string;
   publicKey?: string;
@@ -23,6 +27,7 @@ export class SystemAdminJwtTokenVerifier implements AdminTokenVerifier {
     this.now = options.now ?? (() => Math.floor(Date.now() / 1000));
   }
 
+  /** Validates signature, trust claims, authorization claims, and token lifetime. */
   public verify(token: string): AdminTokenClaims {
     const parts = token.split('.');
     if (parts.length !== 3) throw invalidToken();

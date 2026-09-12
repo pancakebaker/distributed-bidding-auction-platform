@@ -1,3 +1,6 @@
+/**
+ * Persists short-lived, single-use browser handoff codes in Redis for Live Feed admin sessions.
+ */
 import { createHash, randomBytes } from 'node:crypto';
 import type { RedisClientType } from 'redis';
 import type {
@@ -14,6 +17,7 @@ export class RedisAdminHandoffStore implements AdminHandoffStore {
     private readonly now: () => number = () => Date.now(),
   ) {}
 
+  /** Creates an expiring one-time handoff code containing only validated session claims. */
   public async create(claims: AdminHandoffClaims, expiresAt: Date): Promise<string> {
     const ttlSeconds = Math.ceil((expiresAt.getTime() - this.now()) / 1000);
     if (!Number.isFinite(expiresAt.getTime()) || ttlSeconds <= 0) {
@@ -29,6 +33,7 @@ export class RedisAdminHandoffStore implements AdminHandoffStore {
     return code;
   }
 
+  /** Atomically retrieves and removes a handoff code so it cannot be reused. */
   public async consume(code: string): Promise<AdminHandoffClaims | undefined> {
     if (!/^[A-Za-z0-9_-]{40,64}$/.test(code)) return undefined;
     const value = await this.redis.getDel(this.key(code));

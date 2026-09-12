@@ -88,15 +88,15 @@ class TestAdminHandoffStore implements AdminHandoffStore {
   public created: AdminHandoffClaims | undefined;
   public consumed = false;
 
-  public async create(claims: AdminHandoffClaims): Promise<string> {
+  public create(claims: AdminHandoffClaims): Promise<string> {
     this.created = claims;
-    return 'opaque-handoff-code';
+    return Promise.resolve('opaque-handoff-code');
   }
 
-  public async consume(code: string): Promise<AdminHandoffClaims | undefined> {
-    if (code !== 'opaque-handoff-code' || this.consumed) return undefined;
+  public consume(code: string): Promise<AdminHandoffClaims | undefined> {
+    if (code !== 'opaque-handoff-code' || this.consumed) return Promise.resolve(undefined);
     this.consumed = true;
-    return this.created;
+    return Promise.resolve(this.created);
   }
 }
 
