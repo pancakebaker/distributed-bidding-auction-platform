@@ -17,6 +17,7 @@ import { LiveFeedEventProcessor } from './processors/live-feed-event-processor.j
 import { LiveFeedRabbitMqConsumer } from '../infrastructure/messaging/rabbitmq-consumer.js';
 import { auctionRoom, parseAuctionSubscription } from '../transport/websocket/rooms.js';
 import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
+import { RedisAdminTokenReplayConsumer } from '../infrastructure/cache/redis-admin-token-replay-consumer.js';
 import { SocketIoLiveFeedPublisher } from '../transport/websocket/socketio-live-feed-publisher.js';
 import { EventLoopMonitor } from '../infrastructure/runtime/event-loop-monitor.js';
 import { getProcessMetrics } from '../infrastructure/runtime/process-metrics.js';
@@ -86,6 +87,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const redisPub = redis.duplicate() as RedisClientType;
   const redisSub = redis.duplicate() as RedisClientType;
   const stateStore = new LiveFeedStateStore(redis, config.idempotencyTtlSeconds);
+  const adminTokenReplayConsumer = new RedisAdminTokenReplayConsumer(redis);
   const publisher = new SocketIoLiveFeedPublisher(io);
   const recentActivity = new RecentActivityStore(50);
   const adminPublisher = new SocketIoAdminLiveFeedPublisher(io);
@@ -162,6 +164,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   registerAdminRoutes(app, {
     auth: adminAuth,
     tokenVerifier: adminTokenVerifier,
+    replayConsumer: adminTokenReplayConsumer,
     clientOrigin: config.clientOrigin,
     assetDirectory: adminAssetDirectory,
     publicAdminDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../../public/admin'),

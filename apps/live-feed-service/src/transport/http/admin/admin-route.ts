@@ -4,6 +4,7 @@
 import express from 'express';
 import type { Express, Request, Response } from 'express';
 import { ApplicationError } from '../../../application/errors/application-error.js';
+import type { AdminTokenReplayConsumer } from '../../../application/ports/admin-token-replay-consumer.js';
 import type { AdminTokenVerifier } from '../../../application/ports/admin-token-verifier.js';
 import type { LiveFeedDashboardSnapshot } from '../../../application/diagnostics/get-live-feed-dashboard.js';
 import { renderLiveFeedAdmin } from '../../../ui/server/render-live-feed-admin.js';
@@ -16,6 +17,7 @@ import { applyAdminSecurityHeaders } from './admin-security.js';
 export type AdminRouteDependencies = {
   auth: AdminAuth;
   tokenVerifier: AdminTokenVerifier;
+  replayConsumer: AdminTokenReplayConsumer;
   clientOrigin: string;
   getSnapshot: () => LiveFeedDashboardSnapshot;
   assetDirectory: string;
@@ -38,29 +40,59 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
     response.status(204).end();
   });
 
-  app.post('/admin/auth/token', express.urlencoded({ extended: false }), (request, response) => {
-    applyTokenExchangeCors(request, response, dependencies.clientOrigin);
-    const token = bearerToken(request.get('authorization')) ?? tokenFromBody(request.body);
-    if (!token) {
-      response
-        .status(401)
-        .json({ error: 'invalid_admin_token', message: 'A Laravel admin token is required.' });
-      return;
-    }
+  app.post(
+    '/admin/auth/token',
+    express.urlencoded({ extended: false }),
+    async (request, response) => {
+      applyTokenExchangeCors(request, response, dependencies.clientOrigin);
+      const token = bearerToken(request.get('authorization')) ?? tokenFromBody(request.body);
+      if (!token) {
+        response
+          .status(401)
+          .json({ error: 'invalid_admin_token', message: 'A Laravel admin token is required.' });
+        return;
+      }
 
-    try {
-      dependencies.tokenVerifier.verify(token);
-      response.setHeader('Set-Cookie', dependencies.auth.createSession());
-      response.redirect('/admin/live-feed');
-    } catch (error) {
-      const statusCode = error instanceof ApplicationError ? error.statusCode : 401;
-      response.status(statusCode).json({
-        error: error instanceof ApplicationError ? error.code : 'invalid_admin_token',
-        message:
-          statusCode >= 500 ? 'Admin token verification is unavailable.' : 'Invalid admin token.',
-      });
-    }
-  });
+      try {
+        const claims = dependencies.tokenVerifier.verify(token);
+        let replayResult;
+        try {
+          replayResult = await dependencies.replayConsumer.consume(
+            claims.jti,
+            new Date(claims.exp * 1000),
+          );
+        } catch (error) {
+          console.error('Admin token replay protection is unavailable.', {
+            message: error instanceof Error ? error.message : String(error),
+          });
+          throw new ApplicationError(
+            'Admin token replay protection is unavailable.',
+            503,
+            'admin_token_replay_unavailable',
+            { cause: error },
+          );
+        }
+
+        if (replayResult.outcome === 'already_consumed') {
+          response.status(401).json({
+            error: 'invalid_admin_token',
+            message: 'Invalid admin token.',
+          });
+          return;
+        }
+
+        response.setHeader('Set-Cookie', dependencies.auth.createSession());
+        response.redirect('/admin/live-feed');
+      } catch (error) {
+        const statusCode = error instanceof ApplicationError ? error.statusCode : 401;
+        response.status(statusCode).json({
+          error: error instanceof ApplicationError ? error.code : 'invalid_admin_token',
+          message:
+            statusCode >= 500 ? 'Admin token verification is unavailable.' : 'Invalid admin token.',
+        });
+      }
+    },
+  );
 
   app.post('/admin/logout', (_request, response) => {
     applyAdminSecurityHeaders(response);
