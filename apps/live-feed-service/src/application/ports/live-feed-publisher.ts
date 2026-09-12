@@ -2,6 +2,7 @@
  * Application-facing publisher contract for live-feed client updates.
  */
 import type {
+  AuctionPurchasedSocketPayload,
   AuctionClosedSocketPayload,
   BidAcceptedSocketPayload,
   WinnerSelectedSocketPayload,
@@ -14,13 +15,17 @@ import type { auctionSocketEvents } from '../../domain/transport.js';
 export type LiveFeedSocketEvent =
   | typeof auctionSocketEvents.bidAccepted
   | typeof auctionSocketEvents.auctionClosed
-  | typeof auctionSocketEvents.winnerSelected;
+  | typeof auctionSocketEvents.winnerSelected
+  | typeof auctionSocketEvents.auctionPurchased;
 
 /**
  * Existing browser-facing live-feed payload union.
  */
 export type LiveFeedSocketPayload =
-  BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload;
+  | BidAcceptedSocketPayload
+  | AuctionClosedSocketPayload
+  | WinnerSelectedSocketPayload
+  | AuctionPurchasedSocketPayload;
 
 /**
  * Update passed from application processing to a transport publisher.

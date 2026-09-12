@@ -33,6 +33,24 @@ public sealed class ActivityMappingTests
     }
 
     [Fact]
+    public void AuctionPurchased_MapsBuyerAsWinnerAndFinalPrice()
+    {
+        var result = IntegrationEventMapper.ToActivity(Envelope("AuctionPurchased", Json(new
+        {
+            auctionId = AuctionId,
+            bidderId = "buyer-123",
+            finalPrice = 1000m,
+            purchasedAtUtc = DateTimeOffset.UtcNow,
+            auctionVersion = 16
+        })), DateTimeOffset.UtcNow);
+
+        Assert.Equal("buyer-123", result.BidderId);
+        Assert.Equal("buyer-123", result.WinnerId);
+        Assert.Equal(1000m, result.Amount);
+        Assert.Null(result.BidId);
+    }
+
+    [Fact]
     public void SameAggregateVersion_DoesNotAffectEventIdentity()
     {
         var closed = IntegrationEventMapper.ToActivity(Envelope("AuctionClosed", Json(new { auctionId = AuctionId, closedAtUtc = DateTimeOffset.UtcNow, finalBidAmount = 20m, finalBidderId = "winner", auctionVersion = 16 })), DateTimeOffset.UtcNow);

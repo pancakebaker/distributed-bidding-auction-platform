@@ -35,7 +35,7 @@ public sealed record ActivityHistoryQuery(
 
         if (EventType is not null
             && !ActivityHistoryQueryRules.KnownEventTypes.Contains(EventType))
-            errors.Add("Event Type must be BidAccepted, AuctionClosed, or WinnerSelected.");
+            errors.Add("Event Type must be BidAccepted, AuctionClosed, WinnerSelected, or AuctionPurchased.");
         if (Page < 1)
             errors.Add("Page must be at least 1.");
         if (!ActivityHistoryQueryRules.AllowedPageSizes.Contains(PageSize))
@@ -60,7 +60,8 @@ public static class ActivityHistoryQueryRules
     {
         IntegrationEventTypes.BidAccepted,
         IntegrationEventTypes.AuctionClosed,
-        IntegrationEventTypes.WinnerSelected
+        IntegrationEventTypes.WinnerSelected,
+        IntegrationEventTypes.AuctionPurchased
     };
     /// <summary>Gets the page sizes accepted by history filters.</summary>
     public static readonly IReadOnlySet<int> AllowedPageSizes =

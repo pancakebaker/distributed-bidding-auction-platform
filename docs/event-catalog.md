@@ -105,6 +105,37 @@ Stored in the same close transaction only when the auction has a winning accepte
 
 `AuctionClosed` and `WinnerSelected` from one closure workflow share the same resulting `Auction.Version` and correlation ID. The version is incremented once for the closure, not once per event.
 
+### AuctionPurchased
+
+Producer: Bidding Service
+
+Stored when an explicit Buy Now command completes an auction. It is a purchase
+event, not a bid event, and is persisted with its sibling `AuctionClosed` event
+at the same resulting aggregate version.
+
+```json
+{
+  "eventId": "outbox-message-id",
+  "eventType": "AuctionPurchased",
+  "occurredAtUtc": "2026-09-05T00:00:00Z",
+  "aggregateType": "Auction",
+  "aggregateId": "auction-id",
+  "aggregateVersion": 12,
+  "correlationId": "request-or-workflow-id",
+  "payload": {
+    "auctionId": "auction-id",
+    "bidderId": "buyer-123",
+    "finalPrice": 1000,
+    "purchasedAtUtc": "2026-09-05T00:00:00Z",
+    "auctionVersion": 12
+  }
+}
+```
+
+`AuctionPurchased` and `AuctionClosed` describe one atomic transition, have
+distinct event IDs, and may be consumed in either order. `WinnerSelected` is
+reserved for an ordinary winner derived from accepted bid history.
+
 ## Current and Deferred Events
 
 | Event | Producer | Initial Purpose | Status |
@@ -115,6 +146,7 @@ Stored in the same close transaction only when the auction has a winning accepte
 | BidRejected | Bidding Service | Announces a rejected bid attempt when useful for workflows or audit | Deferred |
 | AuctionClosed | Auction Scheduler | Announces bidding has closed | Persisted and published to RabbitMQ |
 | WinnerSelected | Auction Scheduler | Announces the selected winning bid | Persisted and published to RabbitMQ |
+| AuctionPurchased | Bidding Service | Announces an explicit Buy Now purchase | Persisted and published to RabbitMQ |
 | PaymentRequested | Billing Worker | Announces that payment collection has started | Deferred |
 | PaymentSucceeded | Billing Worker | Announces successful payment | Deferred |
 | PaymentFailed | Billing Worker | Announces failed payment | Deferred |
@@ -128,6 +160,7 @@ The Outbox Publisher publishes UTF-8 JSON envelopes to the durable topic exchang
 | BidAccepted | `auction.bid.accepted` | Persistent message with publisher confirmation |
 | AuctionClosed | `auction.closed` | Persistent message with publisher confirmation |
 | WinnerSelected | `auction.winner.selected` | Persistent message with publisher confirmation |
+| AuctionPurchased | `auction.purchased` | Persistent message with publisher confirmation |
 
 AMQP properties include `messageId = eventId`, `correlationId`, `contentType = application/json`, `contentEncoding = utf-8`, persistent delivery, and message `type = eventType`.
 
@@ -136,10 +169,16 @@ A local debug queue named `auction.events.debug` may be declared and bound with 
 Delivery semantics are at-least-once. Duplicate messages are possible if the publisher crashes after RabbitMQ confirms but before PostgreSQL records `PublishedAtUtc`; consumers must be idempotent using `eventId`.
 ## Live Feed Consumer
 
-The Live Feed Service consumes `BidAccepted`, `AuctionClosed`, and `WinnerSelected` from the durable queue `live-feed.bid-events`, bound to `auction.events` with routing keys `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. The Auction Operations Portal consumes the same event types from its separate durable `auction-operations.activity` queue.
+The Live Feed Service consumes `BidAccepted`, `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` from the durable queue `live-feed.bid-events`, bound to `auction.events` with their corresponding routing keys. The Auction Operations Portal consumes the same event types from its separate durable `auction-operations.activity` queue.
 
 The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale lower-version observations cannot move clients backward. New same-version lifecycle sibling events are accepted when their `eventId` has not been processed.
 
 If an event version jumps forward, the service broadcasts the newer authoritative event and logs the gap. This keeps the demo simple while making it clear that RabbitMQ delivery should be treated as at-least-once, not globally perfectly ordered.
 
-The Socket.IO events emitted to subscribed clients are `bid:accepted`, `auction:closed`, and `winner:selected`. Internal broker metadata and outbox publish state are not exposed to browser clients.
+The Socket.IO events emitted to subscribed clients are `bid:accepted`, `auction:closed`, `winner:selected`, and `auction:purchased`. Internal broker metadata and outbox publish state are not exposed to browser clients.
+
+For one Buy Now transition, both `auction:purchased` and `auction:closed` are
+valid same-version sibling deliveries. Lower aggregate versions are stale;
+new event IDs at the current version are valid siblings; duplicate event IDs
+are ignored. The live-feed Redis projection keeps ordinary `currentBid*`
+fields separate from terminal `finalWinnerId` and `finalPrice` fields.

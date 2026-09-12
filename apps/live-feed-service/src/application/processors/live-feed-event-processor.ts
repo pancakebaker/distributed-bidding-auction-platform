@@ -113,6 +113,12 @@ export class LiveFeedEventProcessor {
         eventType: envelope.eventType,
         auctionId: envelope.payload.auctionId,
         aggregateVersion: envelope.aggregateVersion,
+        ...(envelope.eventType === integrationEventTypes.auctionPurchased
+          ? {
+              buyerId: envelope.payload.bidderId,
+              finalPrice: envelope.payload.finalPrice,
+            }
+          : {}),
         correlationId: envelope.correlationId ?? undefined,
         receivedAt: new Date().toISOString(),
         outcome,
@@ -130,7 +136,8 @@ function socketEventName(
 ):
   | typeof auctionSocketEvents.bidAccepted
   | typeof auctionSocketEvents.auctionClosed
-  | typeof auctionSocketEvents.winnerSelected {
+  | typeof auctionSocketEvents.winnerSelected
+  | typeof auctionSocketEvents.auctionPurchased {
   if (eventType === integrationEventTypes.bidAccepted) {
     return auctionSocketEvents.bidAccepted;
   }
@@ -139,5 +146,9 @@ function socketEventName(
     return auctionSocketEvents.auctionClosed;
   }
 
-  return auctionSocketEvents.winnerSelected;
+  if (eventType === integrationEventTypes.winnerSelected) {
+    return auctionSocketEvents.winnerSelected;
+  }
+
+  return auctionSocketEvents.auctionPurchased;
 }

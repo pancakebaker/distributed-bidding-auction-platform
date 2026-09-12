@@ -9,6 +9,8 @@ import { createClient } from 'redis';
 import type { RedisClientType } from 'redis';
 import { createLiveFeedService } from '../../src/application/live-feed-service.js';
 import type {
+  AuctionPurchasedEnvelope,
+  AuctionPurchasedSocketPayload,
   AuctionClosedEnvelope,
   AuctionClosedSocketPayload,
   BidAcceptedEnvelope,
@@ -28,6 +30,7 @@ const routingKeys = {
   BidAccepted: integrationEventRoutingKeys.bidAccepted,
   AuctionClosed: integrationEventRoutingKeys.auctionClosed,
   WinnerSelected: integrationEventRoutingKeys.winnerSelected,
+  AuctionPurchased: integrationEventRoutingKeys.auctionPurchased,
 } as const;
 
 type TestContext = {
@@ -129,6 +132,37 @@ function winnerSelected(overrides: Partial<WinnerSelectedEnvelope> = {}): Winner
       winnerId: 'bob',
       amount: 13000,
       selectedAtUtc: new Date().toISOString(),
+      auctionVersion: aggregateVersion,
+      ...overrides.payload,
+    },
+  };
+}
+
+function auctionPurchased(overrides: Partial<AuctionPurchasedEnvelope> = {}): AuctionPurchasedEnvelope {
+  const auctionId = overrides.aggregateId ?? randomUUID();
+  const aggregateVersion = overrides.aggregateVersion ?? 12;
+
+  return {
+    eventId: randomUUID(),
+    eventType: 'AuctionPurchased',
+    occurredAtUtc: new Date().toISOString(),
+    aggregateType: 'Auction',
+    aggregateId: auctionId,
+    aggregateVersion,
+    correlationId: randomUUID(),
+    payload: {
+      auctionId,
+      bidderId: 'buyer-123',
+      finalPrice: 1000,
+      purchasedAtUtc: new Date().toISOString(),
+      auctionVersion: aggregateVersion,
+    },
+    ...overrides,
+    payload: {
+      auctionId,
+      bidderId: 'buyer-123',
+      finalPrice: 1000,
+      purchasedAtUtc: new Date().toISOString(),
       auctionVersion: aggregateVersion,
       ...overrides.payload,
     },
@@ -346,6 +380,109 @@ void test('AuctionClosed and WinnerSelected events broadcast to the correct auct
   } finally {
     client.disconnect();
     otherClient.disconnect();
+    await cleanup(context);
+  }
+});
+
+void test('AuctionPurchased is consumed, projected, and delivered to the auction room', async () => {
+  const context = await createContext();
+  const purchased = auctionPurchased();
+  const client = await connectClient(context, purchased.aggregateId);
+  const seen: AuctionPurchasedSocketPayload[] = [];
+  client.on('auction:purchased', (payload: AuctionPurchasedSocketPayload) => seen.push(payload));
+
+  try {
+    const received = once<AuctionPurchasedSocketPayload>(client, 'auction:purchased', 1500);
+    publish(context, purchased);
+    const payload = await received;
+
+    assert.equal(payload.auctionId, purchased.aggregateId);
+    assert.equal(payload.bidderId, 'buyer-123');
+    assert.equal(payload.finalPrice, 1000);
+    assert.equal(payload.auctionVersion, 12);
+    publish(context, purchased);
+    await delay(400);
+    assert.equal(seen.length, 1);
+    assert.equal(await context.redis.get(`live-feed:auction-version:${purchased.aggregateId}`), '12');
+    assert.deepEqual({ ...(await context.redis.hGetAll(`live-feed:auction:${purchased.aggregateId}`)) }, {
+      aggregateVersion: '12',
+      finalPrice: '1000',
+      finalWinnerId: 'buyer-123',
+      purchasedAtUtc: purchased.payload.purchasedAtUtc,
+      status: 'Closed',
+    });
+  } finally {
+    client.disconnect();
+    await cleanup(context);
+  }
+});
+
+void test('same-version purchase and close siblings both emit in either order and retain purchase projection', async () => {
+  for (const order of ['purchase-first', 'close-first'] as const) {
+    const context = await createContext();
+    const auctionId = randomUUID();
+    const client = await connectClient(context, auctionId);
+    const seen: string[] = [];
+    client.on('auction:purchased', () => seen.push('purchase'));
+    client.on('auction:closed', () => seen.push('closed'));
+    const purchase = auctionPurchased({ aggregateId: auctionId, aggregateVersion: 12 });
+    const closed = auctionClosed({
+      aggregateId: auctionId,
+      aggregateVersion: 12,
+      correlationId: purchase.correlationId,
+      payload: {
+        finalBidAmount: purchase.payload.finalPrice,
+        finalBidderId: purchase.payload.bidderId,
+        auctionVersion: 12,
+      },
+    });
+
+    try {
+      const events = order === 'purchase-first' ? [purchase, closed] : [closed, purchase];
+      publish(context, events[0]);
+      await waitFor(() => assert.equal(seen.length, 1));
+      publish(context, events[1]);
+      await waitFor(() => assert.equal(seen.length, 2));
+
+      assert.deepEqual(seen.sort(), ['closed', 'purchase']);
+      assert.deepEqual({ ...(await context.redis.hGetAll(`live-feed:auction:${auctionId}`)) }, {
+        aggregateVersion: '12',
+        finalPrice: '1000',
+        finalWinnerId: 'buyer-123',
+        purchasedAtUtc: purchase.payload.purchasedAtUtc,
+        status: 'Closed',
+      });
+    } finally {
+      client.disconnect();
+      await cleanup(context);
+    }
+  }
+});
+
+void test('stale bid after purchase is ignored without regressing ordinary or terminal state', async () => {
+  const context = await createContext();
+  const purchase = auctionPurchased({ aggregateVersion: 12 });
+  const client = await connectClient(context, purchase.aggregateId);
+  const seen: string[] = [];
+  client.on('auction:purchased', () => seen.push('purchase'));
+  client.on('bid:accepted', () => seen.push('bid'));
+
+  try {
+    publish(context, purchase);
+    await waitFor(() => assert.deepEqual(seen, ['purchase']));
+    publish(context, bidAccepted({ aggregateId: purchase.aggregateId, aggregateVersion: 11 }));
+    await delay(400);
+
+    assert.deepEqual(seen, ['purchase']);
+    assert.deepEqual({ ...(await context.redis.hGetAll(`live-feed:auction:${purchase.aggregateId}`)) }, {
+      aggregateVersion: '12',
+      finalPrice: '1000',
+      finalWinnerId: 'buyer-123',
+      purchasedAtUtc: purchase.payload.purchasedAtUtc,
+      status: 'Closed',
+    });
+  } finally {
+    client.disconnect();
     await cleanup(context);
   }
 });

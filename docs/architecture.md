@@ -80,7 +80,7 @@ flowchart LR
     Q2 --> AOP[.NET Auction Operations Portal]
 ```
 
-The queues are independent, so one consumer cannot steal messages from the other. Delivery is at least once and the portal deduplicates by `EventId`; `AggregateVersion` is observational metadata, so `AuctionClosed` and `WinnerSelected` may share a version.
+The queues are independent, so one consumer cannot steal messages from the other. Delivery is at least once and the portal deduplicates by `EventId`; `AggregateVersion` is observational metadata, so `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` may share a version.
 
 ## Authentication handoff
 
@@ -98,7 +98,7 @@ Laravel retains the private key. Node and .NET validate with public-key copies a
 
 ## Completed operations portal boundary
 
-The portal consumes the existing `auction.events` exchange through its own durable `auction-operations.activity` queue, with bindings for `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. Its database has an EventId uniqueness constraint, so duplicate delivery is acknowledged without duplicating rows or live notifications. `AuctionClosed` and `WinnerSelected` can share an aggregate version because EventId, not version, identifies an event.
+The portal consumes the existing `auction.events` exchange through its own durable `auction-operations.activity` queue, with bindings for `auction.bid.accepted`, `auction.closed`, `auction.winner.selected`, and `auction.purchased`. Its database has an EventId uniqueness constraint, so duplicate delivery is acknowledged without duplicating rows or live notifications. `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` can share an aggregate version because EventId, not version, identifies an event.
 
 The portal’s history query is UTC-based, bounded to a 31-day range, filtered by exact aggregate ID and known event type, and paginated in PostgreSQL. Reports use the same filters and reject more than 5,000 rows. OpenTelemetry, bounded metrics, PostgreSQL/RabbitMQ health checks, and an isolated BenchmarkDotNet project are documented in the [portal README](../apps/auction-operations-portal/README.md).
 
@@ -109,7 +109,7 @@ The Laravel client is the browser-facing web shell. React renders the demo aucti
 
 The client never decides whether a bid is valid. It submits commands to the Bidding Service, handles structured REST responses, and updates local UI state from accepted command responses. Socket.IO events are used for multi-browser convergence and live awareness.
 
-Client-side version checks protect the view from stale live events. Lower versions are ignored. `BidAccepted` must advance the current version, while distinct lifecycle sibling events at the same version are allowed because one closure transaction may produce both `AuctionClosed` and `WinnerSelected`. This improves UI resilience but does not make browser state authoritative.
+Client-side version checks protect the view from stale live events. Lower versions are ignored. `BidAccepted` must advance the current version, while distinct lifecycle sibling events at the same version are allowed because one transition may produce `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased`. This improves UI resilience but does not make browser state authoritative.
 
 Browser countdowns are visual only. Server-side UTC validation in the Bidding Service remains the source of truth for scheduled, open, and closed auction behavior.
 ## Bidding Service Authority
@@ -200,13 +200,13 @@ For a bid-versus-close race, PostgreSQL transaction ordering decides the seriali
 
 The Live Feed Service never decides whether a bid is valid. It only broadcasts accepted events that originated from the authoritative Bidding Service and arrived through RabbitMQ.
 
-It consumes from one durable shared queue, `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. Manual acknowledgement is used: valid messages are ACKed after validation, Redis idempotency/order checks, and Socket.IO fan-out. Malformed messages are NACKed without requeue and dead-lettered to `live-feed.bid-events.dlq`; transient processing failures are NACKed with requeue.
+It consumes from one durable shared queue, `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`, `auction.closed`, `auction.winner.selected`, and `auction.purchased`. Manual acknowledgement is used: valid messages are ACKed after validation, Redis idempotency/order checks, and Socket.IO fan-out. Malformed messages are NACKed without requeue and dead-lettered to `live-feed.bid-events.dlq`; transient processing failures are NACKed with requeue.
 
 Redis supports live-feed behavior, not auction authority. It powers the Socket.IO Redis adapter for multi-instance fan-out, stores short-lived event idempotency keys by `eventId`, and stores the highest observed `aggregateVersion` per auction. The version update is atomic in Redis so competing live-feed instances do not race through a naive read-then-write path.
 
-The service ignores duplicate event IDs and stale lower-version observations. `eventId` provides event uniqueness; `aggregateVersion` represents the resulting aggregate state version. Because one aggregate transition can produce multiple events, a new `AuctionClosed v16` and a new `WinnerSelected v16` are both accepted. If an event advances from version 42 to 44, the service accepts and broadcasts the newer authoritative state while logging the gap; it does not fabricate missing events or run a replay engine in this demo phase.
+The service ignores duplicate event IDs and stale lower-version observations. `eventId` provides event uniqueness; `aggregateVersion` represents the resulting aggregate state version. Because one aggregate transition can produce multiple events, a new `AuctionClosed v16`, `WinnerSelected v16`, or `AuctionPurchased v16` is accepted when its event ID is new. If an event advances from version 42 to 44, the service accepts and broadcasts the newer authoritative state while logging the gap; it does not fabricate missing events or run a replay engine in this demo phase.
 
-Socket.IO rooms are constructed server-side as `auction:{auctionId}` after validating that the client supplied a syntactically valid UUID. The frontend-facing events are `bid:accepted`, `auction:closed`, and `winner:selected`. They expose only auction-oriented payloads such as bid amount, final amount, winner, auction version, event time, and correlation ID; broker metadata stays internal.
+Socket.IO rooms are constructed server-side as `auction:{auctionId}` after validating that the client supplied a syntactically valid UUID. The frontend-facing events are `bid:accepted`, `auction:closed`, `winner:selected`, and `auction:purchased`. The purchase event exposes the buyer, authoritative final price, aggregate version, purchase time, and correlation ID; broker metadata stays internal.
 ### Live Feed Node Phase 1 structure and runtime diagnostics
 
 The Node live-feed source is organized by its current responsibilities rather than by speculative abstractions:
@@ -405,7 +405,7 @@ rather than embedding Node Cluster workers inside one container. No Cluster mode
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
 
-RabbitMQ publishing is implemented for outbox `BidAccepted`, `AuctionClosed`, and `WinnerSelected` messages. The Live Feed Service consumes all three for real-time auction UI projection.
+RabbitMQ publishing is implemented for outbox `BidAccepted`, `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` messages. The Live Feed Service consumes all four for real-time auction UI projection.
 
 ## Server Time
 

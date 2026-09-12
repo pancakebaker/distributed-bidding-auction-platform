@@ -7,6 +7,7 @@ export const integrationEventTypes = {
   bidAccepted: 'BidAccepted',
   auctionClosed: 'AuctionClosed',
   winnerSelected: 'WinnerSelected',
+  auctionPurchased: 'AuctionPurchased',
 } as const;
 
 /** Wire-level aggregate discriminator values. */
@@ -82,10 +83,32 @@ export type WinnerSelectedEnvelope = {
   };
 };
 
+/** Integration envelope published when an auction is completed through Buy Now. */
+export type AuctionPurchasedEnvelope = {
+  eventId: string;
+  eventType: typeof integrationEventTypes.auctionPurchased;
+  occurredAtUtc: string;
+  aggregateType: typeof aggregateTypes.auction;
+  aggregateId: string;
+  aggregateVersion: number;
+  correlationId: string | null;
+  payload: {
+    auctionId: string;
+    bidderId: string;
+    finalPrice: number;
+    purchasedAtUtc: string;
+    auctionVersion: number;
+  };
+};
+
 /**
  * Union of auction events that the live-feed projection is allowed to consume.
  */
-export type LiveFeedEnvelope = BidAcceptedEnvelope | AuctionClosedEnvelope | WinnerSelectedEnvelope;
+export type LiveFeedEnvelope =
+  | BidAcceptedEnvelope
+  | AuctionClosedEnvelope
+  | WinnerSelectedEnvelope
+  | AuctionPurchasedEnvelope;
 
 /**
  * Frontend-facing payload emitted when a bid is accepted for an auction room.
@@ -122,6 +145,17 @@ export type WinnerSelectedSocketPayload = {
   amount: number;
   selectedAtUtc: string;
   auctionVersion: number;
+  correlationId: string | null;
+};
+
+/** Frontend-facing payload emitted when an auction is purchased through Buy Now. */
+export type AuctionPurchasedSocketPayload = {
+  auctionId: string;
+  bidderId: string;
+  finalPrice: number;
+  auctionVersion: number;
+  purchasedAtUtc: string;
+  occurredAtUtc: string;
   correlationId: string | null;
 };
 
@@ -197,6 +231,10 @@ export function validateLiveFeedEnvelope(value: unknown): LiveFeedEnvelope {
 
   if (base.eventType === integrationEventTypes.winnerSelected) {
     return validateWinnerSelectedEnvelopeFromBase(base);
+  }
+
+  if (base.eventType === integrationEventTypes.auctionPurchased) {
+    return validateAuctionPurchasedEnvelopeFromBase(base);
   }
 
   throw new Error('Unsupported eventType.');
@@ -417,12 +455,63 @@ function validateWinnerSelectedEnvelopeFromBase(
   };
 }
 
+function validateAuctionPurchasedEnvelopeFromBase(
+  value: ReturnType<typeof validateBaseEnvelope>,
+): AuctionPurchasedEnvelope {
+  const payload = value.payload as Record<string, unknown>;
+
+  if (!isUuid(payload.auctionId)) {
+    throw new Error('AuctionPurchased payload has an invalid auctionId.');
+  }
+
+  if (payload.auctionId !== value.aggregateId) {
+    throw new Error('AuctionPurchased payload auctionId must match aggregateId.');
+  }
+
+  if (typeof payload.bidderId !== 'string' || payload.bidderId.trim().length === 0) {
+    throw new Error('AuctionPurchased payload has an invalid bidderId.');
+  }
+
+  if (!isValidAmount(payload.finalPrice) || payload.finalPrice <= 0) {
+    throw new Error('AuctionPurchased payload has an invalid finalPrice.');
+  }
+
+  if (!isIsoDate(payload.purchasedAtUtc)) {
+    throw new Error('AuctionPurchased payload has an invalid purchasedAtUtc.');
+  }
+
+  if (payload.auctionVersion !== value.aggregateVersion) {
+    throw new Error('AuctionPurchased payload auctionVersion must match aggregateVersion.');
+  }
+
+  return {
+    eventId: value.eventId,
+    eventType: integrationEventTypes.auctionPurchased,
+    occurredAtUtc: value.occurredAtUtc,
+    aggregateType: value.aggregateType,
+    aggregateId: value.aggregateId,
+    aggregateVersion: value.aggregateVersion,
+    correlationId: value.correlationId,
+    payload: {
+      auctionId: payload.auctionId,
+      bidderId: payload.bidderId,
+      finalPrice: payload.finalPrice,
+      purchasedAtUtc: payload.purchasedAtUtc,
+      auctionVersion: payload.auctionVersion,
+    },
+  };
+}
+
 /**
  * Converts a validated integration envelope into the smaller payload exposed over Socket.IO.
  */
 export function toSocketPayload(
   envelope: LiveFeedEnvelope,
-): BidAcceptedSocketPayload | AuctionClosedSocketPayload | WinnerSelectedSocketPayload {
+):
+  | BidAcceptedSocketPayload
+  | AuctionClosedSocketPayload
+  | WinnerSelectedSocketPayload
+  | AuctionPurchasedSocketPayload {
   if (envelope.eventType === integrationEventTypes.bidAccepted) {
     return {
       auctionId: envelope.payload.auctionId,
@@ -446,13 +535,26 @@ export function toSocketPayload(
     };
   }
 
+  if (envelope.eventType === integrationEventTypes.winnerSelected) {
+    return {
+      auctionId: envelope.payload.auctionId,
+      winningBidId: envelope.payload.winningBidId,
+      winnerId: envelope.payload.winnerId,
+      amount: envelope.payload.amount,
+      selectedAtUtc: envelope.payload.selectedAtUtc,
+      auctionVersion: envelope.payload.auctionVersion,
+      occurredAtUtc: envelope.occurredAtUtc,
+      correlationId: envelope.correlationId,
+    };
+  }
+
   return {
     auctionId: envelope.payload.auctionId,
-    winningBidId: envelope.payload.winningBidId,
-    winnerId: envelope.payload.winnerId,
-    amount: envelope.payload.amount,
-    selectedAtUtc: envelope.payload.selectedAtUtc,
+    bidderId: envelope.payload.bidderId,
+    finalPrice: envelope.payload.finalPrice,
     auctionVersion: envelope.payload.auctionVersion,
+    purchasedAtUtc: envelope.payload.purchasedAtUtc,
+    occurredAtUtc: envelope.occurredAtUtc,
     correlationId: envelope.correlationId,
   };
 }

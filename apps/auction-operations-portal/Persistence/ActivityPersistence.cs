@@ -118,6 +118,13 @@ public sealed class IntegrationEventMapper
                 activity.WinnerId = winner.WinnerId;
                 activity.Amount = winner.Amount;
                 break;
+            case IntegrationEventTypes.AuctionPurchased:
+                var purchase = Deserialize<AuctionPurchasedPayload>(envelope.Payload);
+                ValidateAuction(purchase.AuctionId, purchase.AuctionVersion, envelope);
+                activity.BidderId = purchase.BidderId;
+                activity.WinnerId = purchase.BidderId;
+                activity.Amount = purchase.FinalPrice;
+                break;
             default:
                 throw new FormatException($"Unsupported event type '{envelope.EventType}'.");
         }

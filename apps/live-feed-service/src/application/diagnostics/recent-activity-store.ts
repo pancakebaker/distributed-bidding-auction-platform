@@ -10,6 +10,8 @@ export type OperationalActivity = {
   eventType: string;
   auctionId?: string;
   aggregateVersion?: number;
+  buyerId?: string;
+  finalPrice?: number;
   correlationId?: string;
   receivedAt: string;
   outcome: 'applied' | 'stale' | 'ignored' | 'error';

@@ -193,6 +193,8 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
                 <span className={'outcome outcome-' + activity.outcome}>{activity.outcome}</span>
                 <strong>{activity.eventType}</strong>
                 <span>{activity.auctionId ?? 'service event'}</span>
+                {activity.buyerId ? <span>Buyer: {activity.buyerId}</span> : null}
+                {activity.finalPrice !== undefined ? <span>Final: {activity.finalPrice}</span> : null}
                 <time dateTime={activity.receivedAt}>{activity.receivedAt}</time>
               </li>
             ))}

@@ -41,3 +41,11 @@ public sealed record WinnerSelectedPayload(
     decimal Amount,
     DateTimeOffset SelectedAtUtc,
     long AuctionVersion);
+
+/// <summary>Contains the payload for an explicit Buy Now purchase event.</summary>
+public sealed record AuctionPurchasedPayload(
+    Guid AuctionId,
+    string BidderId,
+    decimal FinalPrice,
+    DateTimeOffset PurchasedAtUtc,
+    long AuctionVersion);
