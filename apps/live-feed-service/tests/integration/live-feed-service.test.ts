@@ -158,7 +158,6 @@ async function createContext(): Promise<TestContext> {
     rabbitMqUrl,
     rabbitMqExchange: exchange,
     rabbitMqQueue: queue,
-    rabbitMqRoutingKey: routingKeys.BidAccepted,
     rabbitMqRoutingKeys: Object.values(routingKeys),
     rabbitMqPrefetch: 3,
     rabbitMqDeadLetterExchange: dlx,
