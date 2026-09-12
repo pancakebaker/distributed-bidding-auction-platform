@@ -23,8 +23,6 @@ import {
     statusTone,
 } from '../utils/auction';
 
-const bidders = ['Alice', 'Bob', 'Charlie', 'Diana'];
-
 type WinnerState = {
     winnerId: string;
     winningBidId?: string;
@@ -40,7 +38,6 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     const [bids, setBids] = useState<Bid[]>([]);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
-    const [bidderId, setBidderId] = useState(bidders[0]);
     const [amount, setAmount] = useState('');
     const [submitting, setSubmitting] = useState(false);
     const [purchasing, setPurchasing] = useState(false);
@@ -53,6 +50,12 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     const [activity, setActivity] = useState<string[]>([]);
     const [winner, setWinner] = useState<WinnerState | null>(null);
     const now = useNow();
+    const auth = window.__AUTH_BOOTSTRAP__ ?? {
+        authenticated: false,
+        displayName: null,
+        subjectId: null,
+        isAdmin: false,
+    };
 
     const refresh = () => {
         setLoading(true);
@@ -198,7 +201,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                 setFormMessage({
                     tone: 'error',
                     text:
-                        event.bidderId.toLowerCase() === bidderId.toLowerCase()
+                        event.bidderId.toLowerCase() === auth.subjectId?.toLowerCase()
                             ? 'Your Buy Now purchase was completed.'
                             : 'This auction was purchased by another buyer.',
                 });
@@ -226,7 +229,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         return () => {
             socket.disconnect();
         };
-    }, [auctionId, bidderId]);
+    }, [auctionId, auth.subjectId]);
 
     const minimumBid = auction?.minimumValidBid ?? 0;
     const countdown = auction ? getCountdown(auction, now) : '';
@@ -240,8 +243,13 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         auction.buyNowPrice !== null &&
         minimumBid >= auction.buyNowPrice;
     const biddingUnavailable =
-        !auction || !timeEligible || auction.status !== 'Open' || biddingAtCeiling;
+        !auth.authenticated ||
+        !auction ||
+        !timeEligible ||
+        auction.status !== 'Open' ||
+        biddingAtCeiling;
     const buyNowUnavailable =
+        !auth.authenticated ||
         !auction ||
         !timeEligible ||
         auction.status !== 'Open' ||
@@ -295,7 +303,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         setFormMessage(null);
 
         try {
-            const response = await placeBid(auction.id, bidderId, numericAmount);
+            const response = await placeBid(auction.id, numericAmount);
             setAuction({
                 ...auction,
                 currentBidAmount: response.currentBidAmount,
@@ -342,7 +350,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         setFormMessage(null);
 
         try {
-            const response = await buyNow(auction.id, bidderId);
+            const response = await buyNow(auction.id);
             setAuction((current) =>
                 current
                     ? {
@@ -466,7 +474,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                 ) : displayedWinner ? (
                                     <p>
                                         {displayedWinner.winnerId.toLowerCase() ===
-                                        bidderId.toLowerCase()
+                                        auth.subjectId?.toLowerCase()
                                             ? 'You won this auction.'
                                             : `Winner: ${displayedWinner.winnerId}`}
                                     </p>
@@ -542,22 +550,14 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                           : 'Bidding unavailable'
                                       : 'Place bid'}
                             </h2>
-                            {auction.saleMode !== 'BuyNowOnly' && (
+                            {!auth.authenticated && (
+                                <p className="muted">
+                                    <a href="/login">Sign in to bid or buy</a> to participate.
+                                </p>
+                            )}
+                            {auth.authenticated && auction.saleMode !== 'BuyNowOnly' && (
                                 <>
-                                    <label>
-                                        Acting as
-                                        <select
-                                            disabled={biddingUnavailable}
-                                            value={bidderId}
-                                            onChange={(event) => setBidderId(event.target.value)}
-                                        >
-                                            {bidders.map((bidder) => (
-                                                <option key={bidder} value={bidder.toLowerCase()}>
-                                                    {bidder}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </label>
+                                    <p className="muted">Signed in as {auth.displayName}.</p>
                                     <label>
                                         Bid amount
                                         <input

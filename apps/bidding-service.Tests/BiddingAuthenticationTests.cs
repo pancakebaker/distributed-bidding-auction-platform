@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Cryptography;
 
 namespace bidding_service.Tests;
@@ -85,5 +86,31 @@ public sealed class BiddingAuthenticationTests : IClassFixture<AuctionApiFactory
         var response = await client.GetAsync("/testing/authenticated-sub");
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BidEndpointRequiresAuthenticatedBidder()
+    {
+        client.DefaultRequestHeaders.Authorization = null;
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/auctions/{TestAuctionData.OpenAuctionId}/bids",
+            new { amount = 1250m });
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task BuyNowEndpointRequiresAuctionBuyPermission()
+    {
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTestKeys.CreateToken(permissions: ["auction.bid"]));
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/auctions/{TestAuctionData.OpenAuctionId}/buy-now",
+            new { });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }

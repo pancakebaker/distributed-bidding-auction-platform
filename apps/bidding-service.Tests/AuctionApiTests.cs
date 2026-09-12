@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using bidding_service.Contracts;
@@ -26,6 +27,8 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     {
         _factory = factory;
         _client = factory.CreateClient();
+        _client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", JwtTestKeys.CreateToken("test-bidder"));
     }
 
     public async Task InitializeAsync() => await _factory.ResetDatabaseAsync();
@@ -670,7 +673,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_OnScheduledAuction_RejectsBid()
     {
-        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ScheduledAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
+        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ScheduledAuctionId}/bids", new PlaceBidRequest(500m, "dana"), JsonOptions);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
@@ -680,7 +683,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_OnClosedAuction_RejectsBid()
     {
-        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ClosedAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
+        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ClosedAuctionId}/bids", new PlaceBidRequest(500m, "dana"), JsonOptions);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
@@ -690,7 +693,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_AfterEndTime_RejectsBid()
     {
-        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.EndedOpenAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
+        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.EndedOpenAuctionId}/bids", new PlaceBidRequest(500m, "dana"), JsonOptions);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
@@ -700,7 +703,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_BeforeStartTime_RejectsBid()
     {
-        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.FutureOpenAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
+        var response = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.FutureOpenAuctionId}/bids", new PlaceBidRequest(500m, "dana"), JsonOptions);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
@@ -797,8 +800,8 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task PlaceBid_WhenScheduledOrClosed_DoesNotCreateOutboxMessage()
     {
-        var scheduled = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ScheduledAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
-        var closed = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ClosedAuctionId}/bids", new PlaceBidRequest("dana", 500m), JsonOptions);
+        var scheduled = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ScheduledAuctionId}/bids", new PlaceBidRequest(500m, "dana"), JsonOptions);
+        var closed = await _client.PostAsJsonAsync($"/api/auctions/{TestAuctionData.ClosedAuctionId}/bids", new PlaceBidRequest(500m, "dana"), JsonOptions);
 
         Assert.Equal(HttpStatusCode.Conflict, scheduled.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, closed.StatusCode);
@@ -1029,8 +1032,12 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     {
         var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{auctionId}/bids")
         {
-            Content = JsonContent.Create(new PlaceBidRequest(bidderId, amount), options: JsonOptions)
+            Content = JsonContent.Create(new PlaceBidRequest(amount, bidderId), options: JsonOptions)
         };
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                JwtTestKeys.CreateToken(bidderId, permissions: ["auction.bid"]));
 
         if (!string.IsNullOrWhiteSpace(correlationId))
         {
@@ -1061,6 +1068,10 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         {
             Content = JsonContent.Create(new BuyNowRequest(bidderId), options: JsonOptions)
         };
+        request.Headers.Authorization =
+            new AuthenticationHeaderValue(
+                "Bearer",
+                JwtTestKeys.CreateToken(bidderId, permissions: ["auction.buy"]));
 
         if (!string.IsNullOrWhiteSpace(correlationId))
         {

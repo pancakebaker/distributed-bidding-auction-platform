@@ -211,6 +211,12 @@ function liveCancelled(event: LiveAuctionCancelled) {
 }
 describe('auction UI', () => {
     beforeEach(() => {
+        window.__AUTH_BOOTSTRAP__ = {
+            authenticated: true,
+            displayName: 'Alice',
+            subjectId: 'alice',
+            isAdmin: false,
+        };
         socketHandlers.clear();
         socketIoHandlers.clear();
         emitMock.mockClear();
@@ -219,6 +225,7 @@ describe('auction UI', () => {
     });
 
     afterEach(() => {
+        delete window.__AUTH_BOOTSTRAP__;
         cleanup();
         vi.restoreAllMocks();
     });
@@ -296,7 +303,7 @@ describe('auction UI', () => {
                 String(call[0]).endsWith(`/api/auctions/${macBook.id}/bids`) &&
                 call[1]?.method === 'POST',
         );
-        expect(postCall?.[1]?.body).toBe(JSON.stringify({ bidderId: 'Alice', amount: 1600 }));
+        expect(postCall?.[1]?.body).toBe(JSON.stringify({ amount: 1600 }));
         expect((postCall?.[1]?.headers as Record<string, string>)['X-Correlation-ID']).toBe(
             'client-correlation-id',
         );
@@ -628,7 +635,7 @@ describe('auction UI', () => {
         expect(user).toBeDefined();
     });
 
-    it('Buy Now requires confirmation and sends only bidder identity', async () => {
+    it('Buy Now requires confirmation and sends no identity or price', async () => {
         const user = userEvent.setup();
         const fetchMock = vi.mocked(fetch);
         fetchMock.mockImplementation((input: RequestInfo | URL, _init?: RequestInit) => {
@@ -663,7 +670,7 @@ describe('auction UI', () => {
         const post = fetchMock.mock.calls.find(
             (call) => String(call[0]).endsWith('/buy-now') && call[1]?.method === 'POST',
         );
-        expect(post?.[1]?.body).toBe(JSON.stringify({ bidderId: 'Alice' }));
+        expect(post?.[1]?.body).toBe(JSON.stringify({}));
         expect(post?.[1]?.body).not.toContain('price');
     });
 

@@ -57,14 +57,16 @@ public sealed record BidResponse(
     DateTimeOffset CreatedAtUtc);
 
 /// <summary>
-/// Carries a bidder identity and bid amount for bid placement.
+/// Carries the bid amount. The bidder identity comes from the validated principal.
+/// BidderId is retained only as a deprecated compatibility field and is ignored.
 /// </summary>
-public sealed record PlaceBidRequest(string BidderId, decimal Amount);
+public sealed record PlaceBidRequest(decimal Amount, string? BidderId = null);
 
 /// <summary>
-/// Carries the buyer identity for an explicit Buy Now command.
+/// Carries an explicit Buy Now command. The buyer identity comes from the validated principal.
+/// BidderId is retained only as a deprecated compatibility field and is ignored.
 /// </summary>
-public sealed record BuyNowRequest(string BidderId);
+public sealed record BuyNowRequest(string? BidderId = null);
 
 /// <summary>
 /// Carries the expected auction version for an explicit cancellation command.

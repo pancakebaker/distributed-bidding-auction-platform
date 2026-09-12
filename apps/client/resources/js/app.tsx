@@ -11,6 +11,7 @@ import { AuctionApp } from './app/AuctionApp';
 export type AuthBootstrap = {
     authenticated: boolean;
     displayName: string | null;
+    subjectId: string | null;
     isAdmin: boolean;
 };
 

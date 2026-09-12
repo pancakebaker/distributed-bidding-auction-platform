@@ -14,14 +14,15 @@ public interface IBuyerIdentityResolver
     /// Resolves an authenticated identity or the temporary demo request identity.
     /// </summary>
     /// <param name="httpContext">The current HTTP context.</param>
-    /// <param name="requestedIdentity">The caller-supplied demo identity.</param>
+    /// <param name="requestedIdentity">The legacy development-only fallback identity.</param>
     /// <returns>The resolved identity, or <see langword="null"/> when unavailable.</returns>
     string? Resolve(HttpContext httpContext, string? requestedIdentity);
 }
 
 /// <summary>
 /// Uses an authenticated principal when available and retains the request
-/// identity only as the current unauthenticated demo fallback.
+/// identity only as a legacy unauthenticated development fallback. Protected
+/// bid and Buy Now endpoints always pass a null fallback.
 /// </summary>
 public sealed class BuyerIdentityResolver : IBuyerIdentityResolver
 {

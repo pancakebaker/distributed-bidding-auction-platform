@@ -66,6 +66,7 @@ public static class AuctionEndpoints
 
         group.MapPost("/{id:guid}/bids", PlaceBid)
             .WithName("PlaceBid")
+            .RequireAuthorization("AuctionBid")
             .Produces<PlaceBidResponse>(StatusCodes.Status201Created)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
@@ -73,6 +74,7 @@ public static class AuctionEndpoints
 
         group.MapPost("/{id:guid}/buy-now", BuyNow)
             .WithName("BuyNow")
+            .RequireAuthorization("AuctionBuy")
             .Produces<BuyNowResponse>(StatusCodes.Status201Created)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
@@ -480,7 +482,7 @@ public static class AuctionEndpoints
         var correlationId = ResolveCorrelationId(httpContext);
         httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
 
-        var bidderId = identityResolver.Resolve(httpContext, request.BidderId);
+        var bidderId = identityResolver.Resolve(httpContext, null);
         if (string.IsNullOrWhiteSpace(bidderId))
         {
             return TypedResults.BadRequest(
@@ -720,7 +722,7 @@ public static class AuctionEndpoints
             id,
             correlationId);
 
-        var bidderId = identityResolver.Resolve(httpContext, request.BidderId);
+        var bidderId = identityResolver.Resolve(httpContext, null);
         if (string.IsNullOrWhiteSpace(bidderId))
         {
             return TypedResults.BadRequest(

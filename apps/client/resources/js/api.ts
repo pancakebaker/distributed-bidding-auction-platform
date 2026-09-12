@@ -29,11 +29,11 @@ export class ApiClientError extends Error {
     }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, baseUrl = biddingApiUrl): Promise<T> {
     let response: Response;
 
     try {
-        response = await fetch(`${biddingApiUrl}${path}`, {
+        response = await fetch(`${baseUrl}${path}`, {
             headers: {
                 Accept: 'application/json',
                 ...init?.headers,
@@ -51,6 +51,23 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     return body as T;
+}
+
+async function bffRequest<T>(path: string, init?: RequestInit): Promise<T> {
+    const csrfToken = document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content;
+
+    return request<T>(
+        path,
+        {
+            ...init,
+            headers: {
+                Accept: 'application/json',
+                ...(csrfToken ? { 'X-CSRF-TOKEN': csrfToken } : {}),
+                ...init?.headers,
+            },
+        },
+        '',
+    );
 }
 
 function toApiErrorResponse(body: unknown): ApiErrorResponse {
@@ -131,35 +148,31 @@ export function getAuctionBids(id: string): Promise<Bid[]> {
  * Submits a bid command with a client-generated correlation ID for tracing through
  * the demo pipeline.
  */
-export function placeBid(
-    auctionId: string,
-    bidderId: string,
-    amount: number,
-): Promise<PlaceBidResponse> {
+export function placeBid(auctionId: string, amount: number): Promise<PlaceBidResponse> {
     const correlationId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
-    return request<PlaceBidResponse>(`/api/auctions/${auctionId}/bids`, {
+    return bffRequest<PlaceBidResponse>(`/api/auctions/${auctionId}/bids`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Correlation-ID': correlationId,
         },
-        body: JSON.stringify({ bidderId, amount }),
+        body: JSON.stringify({ amount }),
     });
 }
 
 /**
  * Executes the explicit Buy Now command. The server owns the authoritative price.
  */
-export function buyNow(auctionId: string, bidderId: string): Promise<BuyNowResponse> {
+export function buyNow(auctionId: string): Promise<BuyNowResponse> {
     const correlationId = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random()}`;
 
-    return request<BuyNowResponse>(`/api/auctions/${auctionId}/buy-now`, {
+    return bffRequest<BuyNowResponse>(`/api/auctions/${auctionId}/buy-now`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Correlation-ID': correlationId,
         },
-        body: JSON.stringify({ bidderId }),
+        body: JSON.stringify({}),
     });
 }

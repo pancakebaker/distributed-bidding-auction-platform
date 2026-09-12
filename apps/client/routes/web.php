@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\AdminPageController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\AuctionOperationsController;
 use App\Http\Controllers\Admin\LiveFeedAdminController;
+use App\Http\Controllers\AuctionCommandController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Cms\PublicFaqController;
 use App\Http\Controllers\Cms\PublicPageController;
@@ -29,6 +30,11 @@ Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])
     ->name('logout');
 
 Route::middleware('auth')->group(function (): void {
+    Route::post('/api/auctions/{auction}/bids', [AuctionCommandController::class, 'placeBid'])
+        ->name('api.auctions.bids.store');
+    Route::post('/api/auctions/{auction}/buy-now', [AuctionCommandController::class, 'buyNow'])
+        ->name('api.auctions.buy-now');
+
     Route::get('/account/notifications', [NotificationPreferenceController::class, 'edit'])
         ->name('account.notifications.edit');
     Route::put('/account/notifications', [NotificationPreferenceController::class, 'update'])
