@@ -15,6 +15,7 @@ using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
 using AuctionOperationsPortal.Telemetry;
 using DistributedBidding.AuthContracts;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
@@ -70,6 +71,8 @@ builder.Services.Configure<SystemAdminAuthOptions>(options =>
 });
 builder.Services.Configure<SystemAdminDemoOptions>(options =>
     builder.Configuration.GetSection(SystemAdminDemoOptions.SectionName).Bind(options));
+builder.Services.Configure<SystemAdminSessionOptions>(options =>
+    builder.Configuration.GetSection(SystemAdminSessionOptions.SectionName).Bind(options));
 builder.Services.PostConfigure<SystemAdminDemoOptions>(options =>
 {
     var configuredPassword = builder.Configuration["SYSTEM_ADMIN_DEMO_PASSWORD"];
@@ -85,6 +88,11 @@ if (!Path.IsPathRooted(systemAdminAuthOptions.PrivateKeyPath))
         Path.Combine(builder.Environment.ContentRootPath, systemAdminAuthOptions.PrivateKeyPath));
 }
 systemAdminAuthOptions.Validate(
+    builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
+var systemAdminSessionOptions = builder.Configuration
+    .GetSection(SystemAdminSessionOptions.SectionName)
+    .Get<SystemAdminSessionOptions>() ?? new();
+systemAdminSessionOptions.Validate(
     builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
 builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection(RabbitMqOptions.SectionName));
@@ -144,20 +152,16 @@ builder.Services.AddSingleton<LaravelTokenValidator>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
-        var authOptions = builder.Configuration
-            .GetSection(LaravelAuthOptions.SectionName)
-            .Get<LaravelAuthOptions>() ?? new();
-        options.Cookie.Name = authOptions.CookieName;
+        options.Cookie.Name = systemAdminSessionOptions.CookieName;
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             || builder.Environment.IsEnvironment("Testing")
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
-        options.ExpireTimeSpan = TimeSpan.FromSeconds(
-            Math.Clamp(authOptions.CookieLifetimeSeconds, 60, 3600));
+        options.ExpireTimeSpan = TimeSpan.FromMinutes(systemAdminSessionOptions.LifetimeMinutes);
         options.SlidingExpiration = false;
-        options.LoginPath = "/auth/required";
+        options.LoginPath = "/login";
         options.AccessDeniedPath = "/auth/denied";
     });
 var permission = builder.Configuration[$"{LaravelAuthOptions.SectionName}:Permission"]
@@ -165,8 +169,11 @@ var permission = builder.Configuration[$"{LaravelAuthOptions.SectionName}:Permis
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AuctionOperationsAdmin", policy => policy
         .RequireAuthenticatedUser()
-        .RequireRole(ApplicationRoles.Admin)
-        .RequireClaim("permission", permission));
+        .RequireAssertion(context =>
+            (context.User.IsInRole(ApplicationRoles.Admin)
+                && context.User.HasClaim("permission", permission))
+            || (context.User.IsInRole(SystemAdminRoles.SystemAdministrator)
+                && context.User.HasClaim("permission", SystemAdminPermissions.Monitor))));
 builder.Services.AddCascadingAuthenticationState();
 if (builder.Environment.IsEnvironment("Testing"))
     builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
@@ -199,6 +206,14 @@ builder.Services.AddRateLimiter(options =>
         _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    options.AddPolicy("SystemAdminLogin", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 10,
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
@@ -254,6 +269,50 @@ app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks
     }
 });
 app.MapPost(
+    "/auth/login",
+    async (
+        HttpContext context,
+        ISystemAdminAccountService accounts,
+        IOptions<SystemAdminSessionOptions> sessionOptions,
+        ILogger<Program> logger) =>
+    {
+        using var activity = PortalTelemetry.StartActivity("portal.auth.login");
+        var form = await context.Request.ReadFormAsync(context.RequestAborted);
+        var email = form["email"].ToString();
+        var password = form["password"].ToString();
+        var returnUrl = form["returnUrl"].ToString();
+        var user = await accounts.FindActiveByEmailAsync(email, context.RequestAborted);
+        var valid = user is not null
+            && string.Equals(user.Role, SystemAdminRoles.SystemAdministrator, StringComparison.Ordinal)
+            && accounts.VerifyPassword(user, password) == Microsoft.AspNetCore.Identity.PasswordVerificationResult.Success;
+        if (!valid)
+        {
+            activity?.SetTag("auth.outcome", "rejected");
+            logger.LogWarning("System-admin login failed: invalid credentials.");
+            return Results.Text("Invalid email or password.", statusCode: StatusCodes.Status401Unauthorized);
+        }
+
+        var claims = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
+        claims.AddClaim(new Claim(ClaimTypes.NameIdentifier, user!.SubjectId));
+        claims.AddClaim(new Claim(ClaimTypes.Email, user.Email));
+        claims.AddClaim(new Claim(ClaimTypes.Role, SystemAdminRoles.SystemAdministrator));
+        foreach (var systemPermission in SystemAdminPermissions.ForRole(user.Role))
+            claims.AddClaim(new Claim("permission", systemPermission));
+        await context.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(claims),
+            new AuthenticationProperties
+            {
+                IsPersistent = false,
+                ExpiresUtc = DateTimeOffset.UtcNow.AddMinutes(sessionOptions.Value.LifetimeMinutes)
+            });
+        activity?.SetTag("auth.outcome", "accepted");
+        logger.LogInformation("System-admin login succeeded for subject {SubjectId}.", user.SubjectId);
+        return Results.Redirect(IsSafeLocalReturnUrl(returnUrl) ? returnUrl : "/");
+    })
+    .RequireRateLimiting("SystemAdminLogin")
+    .WithMetadata(new RequireAntiforgeryTokenAttribute());
+app.MapPost(
     "/auth/handoff",
     async (
         HttpContext context,
@@ -293,15 +352,16 @@ app.MapPost(
         return Results.Text("Unauthorized", statusCode: StatusCodes.Status401Unauthorized);
     }
 }).DisableAntiforgery();
-app.MapPost("/auth/logout", async (HttpContext context, IOptions<LaravelAuthOptions> authOptions) =>
+app.MapPost("/auth/logout", async (HttpContext context) =>
 {
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-    return Results.Redirect(authOptions.Value.LaravelAdminUrl);
-}).RequireAuthorization("AuctionOperationsAdmin").DisableAntiforgery();
+    return Results.Redirect("/login");
+}).RequireAuthorization("AuctionOperationsAdmin")
+    .WithMetadata(new RequireAntiforgeryTokenAttribute());
 app.MapGet(
     "/auth/required",
-    (IOptions<LaravelAuthOptions> authOptions) =>
-        Results.Redirect(authOptions.Value.LaravelAdminUrl));
+    (HttpContext context) => Results.Redirect(
+        "/login?returnUrl=" + Uri.EscapeDataString(context.Request.Query["returnUrl"].ToString())));
 app.MapGet(
     "/auth/denied",
     () => Results.Text("Access denied", statusCode: StatusCodes.Status403Forbidden));
@@ -362,6 +422,15 @@ app.MapHub<ActivityHub>("/hubs/activity").RequireAuthorization("AuctionOperation
 app.MapStaticAssets();
 app.MapRazorComponents<App>().AddInteractiveServerRenderMode();
 app.Run();
+
+static bool IsSafeLocalReturnUrl(string? returnUrl) =>
+    !string.IsNullOrWhiteSpace(returnUrl)
+    && returnUrl.StartsWith('/')
+    && !returnUrl.StartsWith("//", StringComparison.Ordinal)
+    && !returnUrl.Contains('\\', StringComparison.Ordinal)
+    && !Uri.TryCreate(returnUrl, UriKind.Absolute, out _)
+    && !returnUrl.Contains('\r', StringComparison.Ordinal)
+    && !returnUrl.Contains('\n', StringComparison.Ordinal);
 
 /// <summary>Exposes the entry point for integration tests.</summary>
 public partial class Program;

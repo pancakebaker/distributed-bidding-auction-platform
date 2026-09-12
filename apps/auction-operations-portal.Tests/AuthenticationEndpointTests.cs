@@ -2,10 +2,16 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Net;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
+using AuctionOperationsPortal.Auth;
+using AuctionOperationsPortal.Data;
 using AuctionOperationsPortal.Options;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.Tokens;
 
 namespace AuctionOperationsPortal.Tests;
@@ -45,7 +51,7 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
         var response = await client.GetAsync("/");
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("auth/required", response.Headers.Location?.ToString());
+        Assert.Contains("login", response.Headers.Location?.ToString());
     }
 
     [Fact]
@@ -55,7 +61,7 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         var response = await client.GetAsync("/activity/history");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("auth/required", response.Headers.Location?.ToString());
+        Assert.Contains("login", response.Headers.Location?.ToString());
     }
 
     [Fact]
@@ -65,7 +71,7 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
         var response = await client.GetAsync("/activity/report.pdf?from=2026-09-01T00:00:00Z&to=2026-09-01T01:00:00Z");
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Contains("auth/required", response.Headers.Location?.ToString());
+        Assert.Contains("login", response.Headers.Location?.ToString());
     }
 
     [Fact]
@@ -78,9 +84,88 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/activity/history")).StatusCode);
-        var logout = await client.PostAsync("/auth/logout", new FormUrlEncodedContent(Array.Empty<KeyValuePair<string, string>>()));
+        var home = await client.GetAsync("/");
+        var antiforgeryToken = ExtractAntiforgeryToken(await home.Content.ReadAsStringAsync());
+        var logout = await client.PostAsync(
+            "/auth/logout",
+            new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("__RequestVerificationToken", antiforgeryToken) }));
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         Assert.Contains("Set-Cookie", logout.Headers.ToString());
+    }
+
+    [Fact]
+    public async Task LocalSystemAdminLogin_CreatesSharedPortalCookieAndUsesSafeReturnUrl()
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        var login = await client.GetAsync("/login?returnUrl=%2Factivity%2Fhistory");
+        var token = ExtractAntiforgeryToken(await login.Content.ReadAsStringAsync());
+        var response = await client.PostAsync(
+            "/auth/login",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("email", "systemadmin@example.test"),
+                new KeyValuePair<string, string>("password", "system-admin-password"),
+                new KeyValuePair<string, string>("returnUrl", "/activity/history"),
+                new KeyValuePair<string, string>("__RequestVerificationToken", token)
+            }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/activity/history", response.Headers.Location?.ToString());
+        Assert.Contains("auction_operations_auth", response.Headers.GetValues("Set-Cookie").Single());
+    }
+
+    [Theory]
+    [InlineData("systemadmin@example.test", "wrong-password")]
+    [InlineData("unknown@example.test", "system-admin-password")]
+    public async Task LocalSystemAdminLogin_UsesGenericFailure(string email, string password)
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        var login = await client.GetAsync("/login");
+        var token = ExtractAntiforgeryToken(await login.Content.ReadAsStringAsync());
+        var response = await client.PostAsync(
+            "/auth/login",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("email", email),
+                new KeyValuePair<string, string>("password", password),
+                new KeyValuePair<string, string>("__RequestVerificationToken", token)
+            }));
+        var body = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("Invalid email or password.", body);
+        Assert.False(response.Headers.TryGetValues("Set-Cookie", out _));
+    }
+
+    [Fact]
+    public async Task LocalSystemAdminLogin_RejectsExternalReturnUrl()
+    {
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
+        var login = await client.GetAsync("/login?returnUrl=https%3A%2F%2Fevil.example");
+        var token = ExtractAntiforgeryToken(await login.Content.ReadAsStringAsync());
+        var response = await client.PostAsync(
+            "/auth/login",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("email", "systemadmin@example.test"),
+                new KeyValuePair<string, string>("password", "system-admin-password"),
+                new KeyValuePair<string, string>("returnUrl", "https://evil.example"),
+                new KeyValuePair<string, string>("__RequestVerificationToken", token)
+            }));
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Equal("/", response.Headers.Location?.ToString());
+    }
+
+    private static string ExtractAntiforgeryToken(string html)
+    {
+        var match = Regex.Match(
+            html,
+            "name=\\\"__RequestVerificationToken\\\"[^>]*value=\\\"([^\\\"]+)\\\"",
+            RegexOptions.CultureInvariant);
+        return match.Success
+            ? match.Groups[1].Value
+            : throw new InvalidOperationException("Antiforgery token was not rendered.");
     }
 
     [Fact]
@@ -138,11 +223,47 @@ public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Progra
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        builder.ConfigureServices(services =>
+        {
+            services.RemoveAll<ISystemAdminAccountService>();
+            services.AddScoped<ISystemAdminAccountService, TestSystemAdminAccountService>();
+        });
         builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
         {
             [$"{LaravelAuthOptions.SectionName}:PublicKeyPath"] = publicKeyPath,
             [$"{LaravelAuthOptions.SectionName}:LaravelAdminUrl"] = "http://localhost:8000/admin"
         }));
+    }
+
+    private sealed class TestSystemAdminAccountService : ISystemAdminAccountService
+    {
+        private readonly IPasswordHasher<SystemAdminUser> hasher = new PasswordHasher<SystemAdminUser>();
+        private readonly SystemAdminUser user;
+
+        public TestSystemAdminAccountService()
+        {
+            user = new SystemAdminUser
+            {
+                SubjectId = "system-admin-test-subject",
+                Email = "systemadmin@example.test",
+                NormalizedEmail = "SYSTEMADMIN@EXAMPLE.TEST",
+                PasswordHash = string.Empty,
+                Role = SystemAdminRoles.SystemAdministrator,
+                IsActive = true,
+                CreatedAtUtc = DateTimeOffset.UtcNow,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            };
+            user.PasswordHash = hasher.HashPassword(user, "system-admin-password");
+        }
+
+        public Task<SystemAdminUser?> FindActiveByEmailAsync(string email, CancellationToken cancellationToken = default) =>
+            Task.FromResult<SystemAdminUser?>(
+                SystemAdminAccountService.NormalizeEmail(email) == user.NormalizedEmail && user.IsActive
+                    ? user
+                    : null);
+
+        public PasswordVerificationResult VerifyPassword(SystemAdminUser account, string password) =>
+            hasher.VerifyHashedPassword(account, account.PasswordHash, password);
     }
 
     public string CreateToken()

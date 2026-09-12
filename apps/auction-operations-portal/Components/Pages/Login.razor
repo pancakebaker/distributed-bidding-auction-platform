@@ -1,0 +1,35 @@
+@page "/login"
+@using Microsoft.AspNetCore.Components
+@attribute [Microsoft.AspNetCore.Authorization.AllowAnonymous]
+<PageTitle>System Administration Sign In</PageTitle>
+<main>
+    <h1>System Administration</h1>
+    <h2>Operations Portal</h2>
+    <p>Sign in with an authorized system administrator account.</p>
+    <form method="post" action="/auth/login">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@SafeReturnUrl" />
+        <p>
+            <label for="email">Email</label>
+            <input id="email" name="email" type="email" autocomplete="username" required />
+        </p>
+        <p>
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </p>
+        <button type="submit">Sign in</button>
+    </form>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? ReturnUrl { get; set; }
+
+    private string SafeReturnUrl =>
+        ReturnUrl is not null
+            && ReturnUrl.StartsWith("/", StringComparison.Ordinal)
+            && !ReturnUrl.StartsWith("//", StringComparison.Ordinal)
+            && !ReturnUrl.Contains('\\', StringComparison.Ordinal)
+            ? ReturnUrl
+            : string.Empty;
+}
