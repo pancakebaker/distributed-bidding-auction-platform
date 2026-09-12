@@ -138,6 +138,7 @@ public static class AuctionEndpoints
         TimeProvider timeProvider,
         IOptions<BidPlacementOptions> options,
         ILoggerFactory loggerFactory,
+        IBuyerIdentityResolver identityResolver,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -145,7 +146,7 @@ public static class AuctionEndpoints
         var correlationId = ResolveCorrelationId(httpContext);
         httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
 
-        var bidderId = request.BidderId?.Trim();
+        var bidderId = identityResolver.Resolve(httpContext, request.BidderId);
         if (string.IsNullOrWhiteSpace(bidderId))
         {
             return TypedResults.BadRequest(
@@ -302,7 +303,7 @@ public static class AuctionEndpoints
                     ToBidRuleDetails(auction)));
         }
 
-        if (now > auction.EndTimeUtc)
+        if (now >= auction.EndTimeUtc)
         {
             return new BidValidationError(
                 StatusCodes.Status409Conflict,
@@ -372,6 +373,7 @@ public static class AuctionEndpoints
         TimeProvider timeProvider,
         IOptions<BidPlacementOptions> options,
         ILoggerFactory loggerFactory,
+        IBuyerIdentityResolver identityResolver,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -379,7 +381,12 @@ public static class AuctionEndpoints
         var correlationId = ResolveCorrelationId(httpContext);
         httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
 
-        var bidderId = request.BidderId?.Trim();
+        logger.LogInformation(
+            "Buy Now attempt for auction {AuctionId}. CorrelationId: {CorrelationId}",
+            id,
+            correlationId);
+
+        var bidderId = identityResolver.Resolve(httpContext, request.BidderId);
         if (string.IsNullOrWhiteSpace(bidderId))
         {
             return TypedResults.BadRequest(
@@ -405,8 +412,9 @@ public static class AuctionEndpoints
             {
                 await transaction.RollbackAsync(cancellationToken);
                 logger.LogInformation(
-                    "Buy Now rejected after validation for auction {AuctionId}. Code: {Code}. Version: {AuctionVersion}. CorrelationId: {CorrelationId}",
+                    "Buy Now rejected after validation for auction {AuctionId}. SaleMode: {SaleMode}. Code: {Code}. Version: {AuctionVersion}. CorrelationId: {CorrelationId}",
                     auction.Id,
+                    auction.SaleMode,
                     validationError.Code,
                     auction.Version,
                     correlationId);
@@ -444,10 +452,12 @@ public static class AuctionEndpoints
                 await transaction.CommitAsync(cancellationToken);
 
                 logger.LogInformation(
-                    "Completed Buy Now for auction {AuctionId}. Version advanced to {AuctionVersion}. PurchaseMessageId: {PurchaseMessageId}. CorrelationId: {CorrelationId}",
+                    "Completed Buy Now for auction {AuctionId}. SaleMode: {SaleMode}. Version advanced to {AuctionVersion}. PurchaseEventId: {PurchaseEventId}. ClosedEventId: {ClosedEventId}. CorrelationId: {CorrelationId}",
                     auction.Id,
+                    auction.SaleMode,
                     auction.Version,
                     purchasedMessage.Id,
+                    closedMessage.Id,
                     correlationId);
 
                 var response = new BuyNowResponse(

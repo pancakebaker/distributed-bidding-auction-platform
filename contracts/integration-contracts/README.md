@@ -4,7 +4,10 @@
 
 This project defines stable wire-level identifiers used across the distributed
 bidding platform's service boundaries. It prevents producers and consumers from
-independently duplicating correctness-sensitive protocol strings.
+independently duplicating correctness-sensitive protocol strings. It is the
+contract boundary shared by the Bidding Service, outbox publisher, scheduler
+where applicable, live-feed service, Operations Portal, and future external
+clients/services.
 
 This is a deliberately small contract project, not a general-purpose shared
 utilities library.
@@ -19,6 +22,7 @@ casually renamed:
 - `BidAccepted`
 - `AuctionClosed`
 - `WinnerSelected`
+- `AuctionPurchased`
 
 ### Aggregate type
 
@@ -29,6 +33,7 @@ casually renamed:
 - `auction.bid.accepted`
 - `auction.closed`
 - `auction.winner.selected`
+- `auction.purchased`
 
 The RabbitMQ exchange name, `auction.events`, is deliberately not owned here.
 It remains deployment and service configuration because environments may
@@ -48,6 +53,19 @@ producers and consumers:
 The contract defines what these messages are called on the wire. Application
 services still own when events are produced, payload creation, persistence,
 business logic, and message handling.
+
+Integration contracts are external messages, not domain entities. The Bidding
+Service remains authoritative for auction state; consumers must not infer write
+authority from a shared event contract.
+
+`AuctionPurchased` is the explicit Buy Now event. Its authoritative payload is
+the auction ID, buyer/bidder ID, and final price; envelope fields carry the
+event ID, occurrence time, correlation ID, aggregate ID/type, and aggregate
+version. It uses `auction.purchased`. `AuctionPurchased` and `AuctionClosed`
+describe one atomic terminal transition, share the resulting aggregate
+version, and have distinct event IDs. Consumers must ignore lower versions,
+ignore duplicate event IDs, and accept a new event ID at an equal version as a
+valid sibling regardless of sibling delivery order.
 
 ## What belongs here
 
@@ -109,12 +127,14 @@ alignment; C# and TypeScript do not yet share a generated source of truth.
 If services move into separate Git repositories, do not copy this source into
 each repository. Prefer this evolution:
 
-1. Extract the contract project into its own repository and package lifecycle.
-2. Publish `DistributedBidding.IntegrationContracts` as a versioned NuGet
-   package.
-3. Replace monorepo `ProjectReference` dependencies with `PackageReference`.
-4. Pin an explicit compatible package version in each .NET service repository.
-5. Upgrade consumers deliberately.
+1. Stabilize the current monorepo contract and its compatibility tests.
+2. Extract the contract project into its own repository and package lifecycle.
+3. Publish `DistributedBidding.IntegrationContracts` as a versioned NuGet
+   package, and provide a generated/versioned or schema-derived artifact for
+   TypeScript consumers.
+4. Replace monorepo `ProjectReference` dependencies with explicit package
+   versions in each service repository.
+5. Upgrade consumers deliberately; never maintain copied source contracts.
 
 Conceptually:
 
@@ -140,6 +160,11 @@ The package should follow semantic-versioning expectations:
 Existing wire values should generally be treated as immutable once deployed.
 Prefer adding new event versions or identifiers over silently renaming existing
 ones.
+
+Prefer additive changes. Do not silently rename event types or routing keys,
+remove fields, or add new required fields without a coordinated deployment
+assessment. Preserve aggregate-version and event-ID semantics when evolving a
+payload.
 
 ## Changing the contract
 

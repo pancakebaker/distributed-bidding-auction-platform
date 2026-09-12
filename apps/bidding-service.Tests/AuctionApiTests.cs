@@ -287,6 +287,50 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     [Fact]
+    public async Task DuplicateBuyNowSubmissionDoesNotCreateDuplicatePurchase()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.BuyNowOnly);
+
+        var first = await BuyNowAsync(auctionId, "buyer-1");
+        var second = await BuyNowAsync(auctionId, "buyer-1");
+
+        Assert.Equal(HttpStatusCode.Created, first.StatusCode);
+        await AssertBuyNowRejectedAsync(second, "auction_not_open");
+
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(2, auction.Version);
+        Assert.Equal("buyer-1", auction.FinalWinnerId);
+        Assert.Equal(1500m, auction.FinalPrice);
+
+        var messages = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal(2, messages.Count);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionPurchased);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionClosed);
+    }
+
+    [Fact]
+    public async Task BuyNowAndBidRejectAtExactEndTimeBoundary()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(
+            SaleMode.AuctionAndBuyNow,
+            endTimeUtc: TestAuctionData.Now);
+
+        await AssertBuyNowRejectedAsync(await BuyNowAsync(auctionId, "buyer-1"), "auction_ended");
+        await AssertBidRejectedAsync(
+            await PlaceBidAsync(auctionId, "bidder-1", 1250m),
+            "auction_ended");
+
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal("Open", auction.Status);
+        Assert.Equal(1, auction.Version);
+        Assert.Null(auction.FinalWinnerId);
+        Assert.Null(auction.FinalPrice);
+        Assert.Empty(await GetBidsAsync(auctionId));
+        Assert.Empty(await GetOutboxMessagesAsync(auctionId));
+    }
+
+    [Fact]
     public async Task BuyNowAndOrdinaryBidRaceLeavesOnePurchaseAndConsistentTerminalState()
     {
         var auctionId = await AddBuyNowAuctionAsync(SaleMode.AuctionAndBuyNow);

@@ -17,6 +17,7 @@ builder.Services.Configure<DatabaseOptions>(
 builder.Services.Configure<BidPlacementOptions>(
     builder.Configuration.GetSection(BidPlacementOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IBuyerIdentityResolver, BuyerIdentityResolver>();
 builder.Services.AddDbContext<BiddingDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("BiddingDb")

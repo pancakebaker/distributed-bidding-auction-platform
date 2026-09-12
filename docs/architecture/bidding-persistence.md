@@ -316,6 +316,47 @@ emitted for Buy Now, and no synthetic `Bid` is created.
 separation is required for accurate bid history and for concurrent Buy Now,
 ordinary-bid, and scheduler transitions.
 
+### BN6 API and identity contract
+
+The current request shape is:
+
+```http
+POST /api/auctions/{id}/buy-now
+Content-Type: application/json
+
+{ "bidderId": "buyer-123" }
+```
+
+The bidder identity is a transitional demo contract because this repository
+does not currently authenticate a principal at the Bidding Service. The API
+resolves identity through one boundary: an authenticated principal, when one
+exists, takes precedence; otherwise the trimmed request identity is retained
+for local/demo use. The request cannot supply a price, final winner, or terminal
+state. A future authentication integration should replace only this resolver,
+not endpoint business rules.
+
+`BuyNowPrice` is always read from PostgreSQL. Supported modes are
+`BuyNowOnly` and `AuctionAndBuyNow`; `AuctionOnly` rejects the command. Success
+returns `201 Created` with the committed auction ID, buyer ID, final price,
+version, purchase time, and correlation ID. A duplicate submission is safe at
+the state-transition level: the first request closes the auction and writes one
+purchase plus one close event; a later request reloads the closed state and
+returns a domain conflict. Request-level idempotency keys are not currently
+provided.
+
+Stable API error codes include `invalid_bidder`, `auction_not_found`,
+`auction_not_started`, `auction_ended`, `auction_not_open`,
+`buy_now_not_available`, `auction_concurrency_conflict`,
+`bidding_not_available`, and `bid_at_or_above_buy_now_price`. Ordinary bids at
+or above `BuyNowPrice` never trigger a purchase. The server remains authoritative
+for mode, price, identity, state, and concurrency outcomes.
+
+No authentication or authorization middleware currently reaches these command
+endpoints, and neither is an admin-only route. The temporary request identity
+must therefore be treated as non-authoritative/demo-only until an established
+authentication system is integrated. Logs use structured identifiers and do
+not record tokens or full request bodies.
+
 ## Buy Now event and scheduler semantics
 
 A successful Buy Now transition produces `AuctionPurchased` with routing key
@@ -331,6 +372,44 @@ increments its version again, or emits duplicate lifecycle events. An unsold
 `AuctionAndBuyNow` auction that expires without purchase follows the ordinary
 bid-history path, emitting `WinnerSelected` only when a valid winning bid
 exists.
+
+### BN6 deployment, rollback, and recovery
+
+The platform boundary is intentional: commands use HTTP; durable auction state
+lives in PostgreSQL; integration events flow through the transactional outbox;
+RabbitMQ transports them; Redis/live-feed provides projections and realtime UX;
+and HTTP read state remains the browser recovery authority when a live event is
+missed.
+
+Deploy Buy Now in this order: apply the additive, backward-compatible database
+migration; deploy the Bidding Service and workers that understand the new
+nullable fields and events; deploy the outbox publisher; deploy live-feed and
+Operations Portal consumers before enabling event production; then expose the
+Laravel/React client behavior. Consumers must understand `AuctionPurchased`
+before a producer can emit it. Existing consumers may safely continue to read
+the added nullable fields, but an old consumer that rejects the new event is a
+degraded/unsafe deployment for purchase activity and must be upgraded first.
+
+Keeping the new columns after a service rollback is safe and is preferred to
+running a destructive down migration in production. An older service can read
+the additive fields without using them; an older live consumer may lose
+purchase activity if it cannot recognize the event; a new client against an
+old backend is degraded because purchase capability is unavailable. The
+transactional outbox remains the compatibility boundary, and same-version
+sibling events still require event-ID deduplication rather than version-only
+rejection.
+
+The existing BN1 migration backfills historical rows to `AuctionOnly`, leaves
+`BuyNowPrice`, `FinalWinnerId`, and `FinalPrice` null, preserves `numeric(18,2)`
+money precision, and adds a static sale-mode check. It has no new runtime
+indexes or payment state. Production rollback should retain these columns and
+constraints; migration `Down` is a development/test rollback mechanism, not a
+data-preserving production rollback plan.
+
+Buy Now eligibility is `StartTimeUtc <= now < EndTimeUtc`; the exact end instant
+is rejected, matching expiry scheduling. .NET `decimal` and PostgreSQL
+`numeric(18,2)` remain authoritative. JavaScript/Redis values are display and
+projection representations only and must never become the price authority.
 
 ## Planned follow-up
 
