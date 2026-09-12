@@ -373,6 +373,62 @@ increments its version again, or emits duplicate lifecycle events. An unsold
 bid-history path, emitting `WinnerSelected` only when a valid winning bid
 exists.
 
+## Auction management API (AM1)
+
+The Bidding Service is the authoritative write owner for auction creation and
+configuration. Admin applications and future clients call the management API;
+they do not write BiddingDb directly. AM1 exposes:
+
+```text
+POST   /api/auctions
+PUT    /api/auctions/{id}
+DELETE /api/auctions/{id}
+```
+
+Create derives lifecycle state from the server clock: a future start creates a
+`Scheduled` auction and a started, unexpired window creates an `Open` auction.
+Expired windows and invalid money/time/sale-mode combinations are rejected.
+The API never accepts status, version, current bid, final outcome, or audit
+timestamps from the caller.
+
+Sale-mode configuration remains authoritative as follows:
+
+- `AuctionOnly` requires a positive starting price and increment and no
+  `BuyNowPrice`.
+- `BuyNowOnly` requires a positive `BuyNowPrice`. Because `StartingPrice` is
+  still non-null in persistence, it is normalized to `BuyNowPrice`; that value
+  is compatibility data, not the purchase-price authority. The increment is a
+  required positive schema value but has no bidding meaning in this mode.
+- `AuctionAndBuyNow` requires a positive starting price and increment and a
+  `BuyNowPrice` strictly greater than the starting price.
+
+Only future, untouched `Scheduled` auctions are editable. Their expected
+`Version` is required, and a successful update increments it exactly once.
+`Open`, `Closed`, and `Cancelled` auctions are immutable in AM1; an auction
+whose persisted status is stale relative to its start time is treated as
+started and is not edited. There is no generic patch/overposting path.
+
+Management failures use the stable codes `invalid_sale_mode_configuration`,
+`invalid_auction_time_window`, `invalid_starting_price`,
+`invalid_bid_increment`, `invalid_buy_now_price`, `auction_not_found`,
+`auction_already_started`, `auction_not_editable`, `auction_not_deletable`,
+and `auction_concurrency_conflict` as applicable.
+
+`DELETE` is intentionally narrow: it physically removes only a future,
+untouched `Scheduled` auction with no bids, terminal outcome, or outbox history.
+Open, bid-bearing, closed, cancelled, or purchased auctions return
+`auction_not_deletable`. AM1 does not introduce a cancellation endpoint or
+`AuctionCancelled` event; explicit cancellation semantics and lifecycle-event
+propagation remain future work. This preserves historical and outbox integrity
+and ensures the expiry scheduler never sees a deleted or cancelled auction.
+
+Management APIs currently have no authentication or authorization middleware in
+the Bidding Service. They are therefore a local/demo management boundary, not
+an assertion of production administrative security. A future established admin
+principal should protect these routes without changing the explicit field and
+version rules. AM2 will provide the admin UI and must call these APIs rather
+than accessing the database.
+
 ### BN6 deployment, rollback, and recovery
 
 The platform boundary is intentional: commands use HTTP; durable auction state

@@ -25,6 +25,21 @@ public static class DatabaseSeeder
     /// </summary>
     public static readonly Guid ClosedAuctionId =
         Guid.Parse("33333333-3333-3333-3333-333333333333");
+    /// <summary>
+    /// Stable identifier for the open Buy Now-only demo auction.
+    /// </summary>
+    public static readonly Guid OpenBuyNowOnlyAuctionId =
+        Guid.Parse("66666666-6666-6666-6666-666666666666");
+    /// <summary>
+    /// Stable identifier for the open combined-mode demo auction.
+    /// </summary>
+    public static readonly Guid OpenAuctionAndBuyNowAuctionId =
+        Guid.Parse("77777777-7777-7777-7777-777777777777");
+    /// <summary>
+    /// Stable identifier for the scheduled combined-mode demo auction.
+    /// </summary>
+    public static readonly Guid ScheduledAuctionAndBuyNowAuctionId =
+        Guid.Parse("88888888-8888-8888-8888-888888888888");
 
     /// <summary>
     /// Seeds deterministic demo auctions and bid history when the database is empty.
@@ -93,6 +108,54 @@ public static class DatabaseSeeder
                 Version = 2,
                 CreatedAtUtc = now.AddDays(-3),
                 UpdatedAtUtc = now.AddHours(-1)
+            },
+            new Auction
+            {
+                Id = OpenBuyNowOnlyAuctionId,
+                Title = "Noise-Cancelling Headphones",
+                Description = "Demo Buy Now-only auction.",
+                StartingPrice = 500m,
+                SaleMode = SaleMode.BuyNowOnly,
+                BuyNowPrice = 500m,
+                MinimumBidIncrement = 1m,
+                StartTimeUtc = now.AddHours(-1),
+                EndTimeUtc = now.AddHours(8),
+                Status = AuctionStatus.Open,
+                Version = 1,
+                CreatedAtUtc = createdAt,
+                UpdatedAtUtc = createdAt
+            },
+            new Auction
+            {
+                Id = OpenAuctionAndBuyNowAuctionId,
+                Title = "Mirrorless Camera Body",
+                Description = "Demo auction with ordinary bidding and Buy Now.",
+                StartingPrice = 100m,
+                SaleMode = SaleMode.AuctionAndBuyNow,
+                BuyNowPrice = 500m,
+                MinimumBidIncrement = 25m,
+                StartTimeUtc = now.AddHours(-1),
+                EndTimeUtc = now.AddHours(8),
+                Status = AuctionStatus.Open,
+                Version = 1,
+                CreatedAtUtc = createdAt,
+                UpdatedAtUtc = createdAt
+            },
+            new Auction
+            {
+                Id = ScheduledAuctionAndBuyNowAuctionId,
+                Title = "Studio Microphone",
+                Description = "Demo scheduled auction with Buy Now.",
+                StartingPrice = 100m,
+                SaleMode = SaleMode.AuctionAndBuyNow,
+                BuyNowPrice = 500m,
+                MinimumBidIncrement = 25m,
+                StartTimeUtc = now.AddHours(3),
+                EndTimeUtc = now.AddHours(12),
+                Status = AuctionStatus.Scheduled,
+                Version = 1,
+                CreatedAtUtc = createdAt,
+                UpdatedAtUtc = createdAt
             });
 
         db.Bids.AddRange(

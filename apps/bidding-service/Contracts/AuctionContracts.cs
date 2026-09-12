@@ -93,6 +93,33 @@ public sealed record BuyNowResponse(
     string CorrelationId);
 
 /// <summary>
+/// Carries the caller-controlled configuration for a new auction.
+/// </summary>
+public sealed record CreateAuctionRequest(
+    string Title,
+    string Description,
+    string SaleMode,
+    decimal StartingPrice,
+    decimal MinimumBidIncrement,
+    decimal? BuyNowPrice,
+    DateTimeOffset StartTimeUtc,
+    DateTimeOffset EndTimeUtc);
+
+/// <summary>
+/// Carries editable configuration and the expected aggregate version.
+/// </summary>
+public sealed record UpdateAuctionRequest(
+    string Title,
+    string Description,
+    string SaleMode,
+    decimal StartingPrice,
+    decimal MinimumBidIncrement,
+    decimal? BuyNowPrice,
+    DateTimeOffset StartTimeUtc,
+    DateTimeOffset EndTimeUtc,
+    long Version);
+
+/// <summary>
 /// Provides a stable error shape for API clients.
 /// </summary>
 public sealed record ApiErrorResponse(string Code, string Message, object? Details = null);

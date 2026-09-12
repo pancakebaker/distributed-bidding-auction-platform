@@ -25,6 +25,25 @@ public static class AuctionEndpoints
     {
         var group = app.MapGroup("/api/auctions").WithTags("Auctions");
 
+        group.MapPost("/", CreateAuction)
+            .WithName("CreateAuction")
+            .Produces<AuctionDetailResponse>(StatusCodes.Status201Created)
+            .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
+
+        group.MapPut("/{id:guid}", UpdateAuction)
+            .WithName("UpdateAuction")
+            .Produces<AuctionDetailResponse>()
+            .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
+            .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
+
+        group.MapDelete("/{id:guid}", DeleteAuction)
+            .WithName("DeleteAuction")
+            .Produces(StatusCodes.Status204NoContent)
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
+            .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
+
         group.MapGet("/", GetAuctions)
             .WithName("GetAuctions")
             .Produces<IReadOnlyList<AuctionSummaryResponse>>();
@@ -54,6 +73,241 @@ public static class AuctionEndpoints
             .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
 
         return group;
+    }
+
+    private static async Task<IResult> CreateAuction(
+        CreateAuctionRequest request,
+        BiddingDbContext db,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var now = timeProvider.GetUtcNow();
+        var basicError = ValidateBasicFields(request.Title, request.Description);
+        if (basicError is not null)
+        {
+            return TypedResults.BadRequest(basicError);
+        }
+
+        var timeError = ValidateCreationWindow(request.StartTimeUtc, request.EndTimeUtc, now);
+        if (timeError is not null)
+        {
+            return TypedResults.BadRequest(timeError);
+        }
+
+        if (!AuctionManagementRules.TryNormalize(
+                request.SaleMode,
+                request.StartingPrice,
+                request.MinimumBidIncrement,
+                request.BuyNowPrice,
+                out var configuration,
+                out var configurationError))
+        {
+            return TypedResults.BadRequest(configurationError!);
+        }
+
+        var auction = new Auction
+        {
+            Id = Guid.NewGuid(),
+            Title = request.Title.Trim(),
+            Description = request.Description.Trim(),
+            StartingPrice = configuration.StartingPrice,
+            SaleMode = configuration.SaleMode,
+            BuyNowPrice = configuration.BuyNowPrice,
+            MinimumBidIncrement = configuration.MinimumBidIncrement,
+            StartTimeUtc = request.StartTimeUtc,
+            EndTimeUtc = request.EndTimeUtc,
+            Status = request.StartTimeUtc > now ? AuctionStatus.Scheduled : AuctionStatus.Open,
+            Version = 1,
+            CreatedAtUtc = now,
+            UpdatedAtUtc = now
+        };
+
+        db.Auctions.Add(auction);
+        await db.SaveChangesAsync(cancellationToken);
+        return TypedResults.Created($"/api/auctions/{auction.Id}", ToDetailResponse(auction));
+    }
+
+    private static async Task<IResult> UpdateAuction(
+        Guid id,
+        UpdateAuctionRequest request,
+        BiddingDbContext db,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (auction is null)
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
+
+        var now = timeProvider.GetUtcNow();
+        if (auction.Status == AuctionStatus.Scheduled && now >= auction.StartTimeUtc)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_already_started",
+                "The scheduled auction has already reached its start time."));
+        }
+
+        if (auction.Status != AuctionStatus.Scheduled)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_not_editable",
+                "Only future Scheduled auctions can be edited."));
+        }
+
+        if (await db.Bids.AnyAsync(b => b.AuctionId == id, cancellationToken))
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_not_editable",
+                "An auction with bid history cannot be edited."));
+        }
+
+        if (request.Version != auction.Version)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_concurrency_conflict",
+                "Auction state changed. Refresh before editing again."));
+        }
+
+        var basicError = ValidateBasicFields(request.Title, request.Description);
+        if (basicError is not null)
+        {
+            return TypedResults.BadRequest(basicError);
+        }
+
+        var timeError = ValidateUpdateWindow(request.StartTimeUtc, request.EndTimeUtc, now);
+        if (timeError is not null)
+        {
+            return TypedResults.BadRequest(timeError);
+        }
+
+        if (!AuctionManagementRules.TryNormalize(
+                request.SaleMode,
+                request.StartingPrice,
+                request.MinimumBidIncrement,
+                request.BuyNowPrice,
+                out var configuration,
+                out var configurationError))
+        {
+            return TypedResults.BadRequest(configurationError!);
+        }
+
+        auction.Title = request.Title.Trim();
+        auction.Description = request.Description.Trim();
+        auction.StartingPrice = configuration.StartingPrice;
+        auction.SaleMode = configuration.SaleMode;
+        auction.BuyNowPrice = configuration.BuyNowPrice;
+        auction.MinimumBidIncrement = configuration.MinimumBidIncrement;
+        auction.StartTimeUtc = request.StartTimeUtc;
+        auction.EndTimeUtc = request.EndTimeUtc;
+        auction.Version += 1;
+        auction.UpdatedAtUtc = now;
+
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_concurrency_conflict",
+                "Auction state changed. Refresh before editing again."));
+        }
+
+        return TypedResults.Ok(ToDetailResponse(auction));
+    }
+
+    private static async Task<IResult> DeleteAuction(
+        Guid id,
+        BiddingDbContext db,
+        TimeProvider timeProvider,
+        CancellationToken cancellationToken)
+    {
+        var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (auction is null)
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
+
+        var now = timeProvider.GetUtcNow();
+        var hasBids = await db.Bids.AnyAsync(b => b.AuctionId == id, cancellationToken);
+        var hasEvents = await db.OutboxMessages.AnyAsync(m => m.AggregateId == id, cancellationToken);
+        var safelyDeletable = auction.Status == AuctionStatus.Scheduled
+            && now < auction.StartTimeUtc
+            && !hasBids
+            && !hasEvents
+            && auction.CurrentBidAmount is null
+            && auction.CurrentBidderId is null
+            && auction.FinalWinnerId is null
+            && auction.FinalPrice is null;
+
+        if (!safelyDeletable)
+        {
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_not_deletable",
+                "Only untouched future Scheduled auctions can be deleted."));
+        }
+
+        db.Auctions.Remove(auction);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            db.ChangeTracker.Clear();
+            return TypedResults.Conflict(new ApiErrorResponse(
+                "auction_concurrency_conflict",
+                "Auction state changed while it was being deleted."));
+        }
+
+        return TypedResults.NoContent();
+    }
+
+    private static ApiErrorResponse? ValidateBasicFields(string? title, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(title) || title.Trim().Length > 200)
+        {
+            return new ApiErrorResponse("invalid_auction_configuration", "Title is required and must be at most 200 characters.");
+        }
+
+        if (string.IsNullOrWhiteSpace(description) || description.Trim().Length > 2000)
+        {
+            return new ApiErrorResponse("invalid_auction_configuration", "Description is required and must be at most 2000 characters.");
+        }
+
+        return null;
+    }
+
+    private static ApiErrorResponse? ValidateCreationWindow(
+        DateTimeOffset startTimeUtc,
+        DateTimeOffset endTimeUtc,
+        DateTimeOffset now)
+    {
+        if (startTimeUtc >= endTimeUtc || endTimeUtc <= now)
+        {
+            return new ApiErrorResponse(
+                "invalid_auction_time_window",
+                "StartTimeUtc must be before EndTimeUtc and EndTimeUtc must be in the future.");
+        }
+
+        return null;
+    }
+
+    private static ApiErrorResponse? ValidateUpdateWindow(
+        DateTimeOffset startTimeUtc,
+        DateTimeOffset endTimeUtc,
+        DateTimeOffset now)
+    {
+        if (startTimeUtc <= now || startTimeUtc >= endTimeUtc || endTimeUtc <= now)
+        {
+            return new ApiErrorResponse(
+                "invalid_auction_time_window",
+                "Scheduled edits must keep StartTimeUtc in the future and before EndTimeUtc.");
+        }
+
+        return null;
     }
 
     private static async Task<Ok<List<AuctionSummaryResponse>>> GetAuctions(

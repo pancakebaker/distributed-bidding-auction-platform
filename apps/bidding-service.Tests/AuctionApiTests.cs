@@ -57,6 +57,228 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         Assert.Equal(1250m, auction.MinimumValidBid);
     }
 
+    [Theory]
+    [InlineData("AuctionOnly", 100, 10, false, "Open")]
+    [InlineData("BuyNowOnly", 1, 1, true, "Open")]
+    [InlineData("AuctionAndBuyNow", 100, 25, true, "Open")]
+    public async Task CreateAuction_CreatesConfiguredSaleMode(
+        string saleMode,
+        decimal startingPrice,
+        decimal minimumBidIncrement,
+        bool hasBuyNowPrice,
+        string expectedStatus)
+    {
+        decimal? buyNowPrice = hasBuyNowPrice ? 500m : null;
+        var response = await CreateAuctionAsync(
+            new CreateAuctionRequest(
+                "Managed demo auction",
+                "Created through the management API.",
+                saleMode,
+                startingPrice,
+                minimumBidIncrement,
+                buyNowPrice,
+                TestAuctionData.Now.AddHours(-1),
+                TestAuctionData.Now.AddHours(2)));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.NotNull(created);
+        Assert.Equal(saleMode, created.SaleMode);
+        Assert.Equal(expectedStatus, created.Status);
+        Assert.Equal(buyNowPrice, created.BuyNowPrice);
+        Assert.Equal(buyNowPrice is not null && saleMode == "BuyNowOnly" ? buyNowPrice : startingPrice, created.StartingPrice);
+        Assert.Equal(1, created.Version);
+
+        var persisted = await GetAuctionAsync(created.Id);
+        Assert.Equal(created.SaleMode, persisted.SaleMode);
+        Assert.Equal(created.BuyNowPrice, persisted.BuyNowPrice);
+        Assert.Equal(created.Version, persisted.Version);
+    }
+
+    [Fact]
+    public async Task CreateAuction_DerivesScheduledStatus()
+    {
+        var response = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Future managed auction",
+            "Scheduled through the management API.",
+            "AuctionAndBuyNow",
+            100m,
+            25m,
+            500m,
+            TestAuctionData.Now.AddHours(1),
+            TestAuctionData.Now.AddHours(3)));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.Equal("Scheduled", created?.Status);
+    }
+
+    [Fact]
+    public async Task CreateAuction_RejectsInvalidConfigurationAndDoesNotCreateState()
+    {
+        var requests = new[]
+        {
+            new CreateAuctionRequest("bad", "bad", "AuctionOnly", 100m, 10m, 500m, TestAuctionData.Now, TestAuctionData.Now.AddHours(1)),
+            new CreateAuctionRequest("bad", "bad", "AuctionOnly", 100m, 10m, null, TestAuctionData.Now, TestAuctionData.Now),
+            new CreateAuctionRequest("bad", "bad", "BuyNowOnly", 100m, 10m, null, TestAuctionData.Now, TestAuctionData.Now.AddHours(1)),
+            new CreateAuctionRequest("bad", "bad", "AuctionAndBuyNow", 500m, 10m, 500m, TestAuctionData.Now, TestAuctionData.Now.AddHours(1)),
+            new CreateAuctionRequest("bad", "bad", "AuctionOnly", 100.001m, 10m, null, TestAuctionData.Now, TestAuctionData.Now.AddHours(1))
+        };
+
+        foreach (var request in requests)
+        {
+            var response = await CreateAuctionAsync(request);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
+            Assert.NotNull(error?.Code);
+        }
+    }
+
+    [Fact]
+    public async Task CreateAuction_IgnoresCallerControlledAggregateState()
+    {
+        var payload = new
+        {
+            title = "Overposting test",
+            description = "Server-owned fields must be ignored.",
+            saleMode = "AuctionOnly",
+            startingPrice = 100m,
+            minimumBidIncrement = 10m,
+            buyNowPrice = (decimal?)null,
+            startTimeUtc = TestAuctionData.Now.AddHours(-1),
+            endTimeUtc = TestAuctionData.Now.AddHours(1),
+            status = "Closed",
+            version = 99,
+            currentBidAmount = 999m,
+            currentBidderId = "attacker",
+            finalWinnerId = "attacker",
+            finalPrice = 999m,
+            createdAtUtc = TestAuctionData.Now.AddYears(-1),
+            updatedAtUtc = TestAuctionData.Now.AddYears(-1)
+        };
+
+        var response = await _client.PostAsJsonAsync("/api/auctions", payload, JsonOptions);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.NotNull(created);
+        Assert.Equal("Open", created.Status);
+        Assert.Equal(1, created.Version);
+        Assert.Null(created.CurrentBidAmount);
+        Assert.Null(created.CurrentBidderId);
+        Assert.Null(created.FinalWinnerId);
+        Assert.Null(created.FinalPrice);
+    }
+
+    [Fact]
+    public async Task ScheduledAuction_CanBeUpdatedWithExpectedVersion()
+    {
+        var createdResponse = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Editable auction",
+            "Before-start configuration.",
+            "AuctionOnly",
+            100m,
+            10m,
+            null,
+            TestAuctionData.Now.AddHours(1),
+            TestAuctionData.Now.AddHours(3)));
+        var created = await createdResponse.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+
+        var update = await UpdateAuctionAsync(created!.Id, new UpdateAuctionRequest(
+            "Edited auction",
+            "Updated before start.",
+            "AuctionAndBuyNow",
+            100m,
+            25m,
+            500m,
+            TestAuctionData.Now.AddHours(2),
+            TestAuctionData.Now.AddHours(4),
+            created.Version));
+
+        Assert.Equal(HttpStatusCode.OK, update.StatusCode);
+        var updated = await update.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.Equal("AuctionAndBuyNow", updated?.SaleMode);
+        Assert.Equal(500m, updated?.BuyNowPrice);
+        Assert.Equal(2, updated?.Version);
+        Assert.Equal("Edited auction", (await GetAuctionAsync(created.Id)).Title);
+
+        var stale = await UpdateAuctionAsync(created.Id, new UpdateAuctionRequest(
+            "Stale edit", "Should be rejected.", "AuctionOnly", 200m, 10m, null,
+            TestAuctionData.Now.AddHours(2), TestAuctionData.Now.AddHours(4), created.Version));
+        await AssertManagementRejectedAsync(stale, "auction_concurrency_conflict");
+        Assert.Equal(2, (await GetAuctionAsync(created.Id)).Version);
+    }
+
+    [Fact]
+    public async Task OpenAndClosedAuctionsAreNotEditable()
+    {
+        var open = await UpdateAuctionAsync(TestAuctionData.OpenAuctionId, new UpdateAuctionRequest(
+            "No edit", "No edit", "AuctionOnly", 100m, 10m, null,
+            TestAuctionData.Now.AddHours(1), TestAuctionData.Now.AddHours(2), 3));
+        var closed = await UpdateAuctionAsync(TestAuctionData.ClosedAuctionId, new UpdateAuctionRequest(
+            "No edit", "No edit", "AuctionOnly", 100m, 10m, null,
+            TestAuctionData.Now.AddHours(1), TestAuctionData.Now.AddHours(2), 2));
+
+        await AssertManagementRejectedAsync(open, "auction_not_editable");
+        await AssertManagementRejectedAsync(closed, "auction_not_editable");
+    }
+
+    [Fact]
+    public async Task DeleteOnlyRemovesUntouchedFutureScheduledAuction()
+    {
+        var created = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Disposable auction", "Safe to delete.", "AuctionOnly", 100m, 10m, null,
+            TestAuctionData.Now.AddHours(1), TestAuctionData.Now.AddHours(3)));
+        var auction = await created.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+
+        var deleted = await _client.DeleteAsync($"/api/auctions/{auction!.Id}");
+        Assert.Equal(HttpStatusCode.NoContent, deleted.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _client.GetAsync($"/api/auctions/{auction.Id}")).StatusCode);
+
+        await AssertManagementRejectedAsync(
+            await _client.DeleteAsync($"/api/auctions/{TestAuctionData.OpenAuctionId}"),
+            "auction_not_deletable");
+        await AssertManagementRejectedAsync(
+            await _client.DeleteAsync($"/api/auctions/{TestAuctionData.ClosedAuctionId}"),
+            "auction_not_deletable");
+    }
+
+    [Fact]
+    public async Task CreatedBuyNowModesRemainCompatibleWithExistingCommands()
+    {
+        var buyNowOnly = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Created Buy Now", "Purchase this auction.", "BuyNowOnly", 1m, 1m, 500m,
+            TestAuctionData.Now.AddHours(-1), TestAuctionData.Now.AddHours(1)));
+        var buyNowAuction = await buyNowOnly.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        var purchase = await BuyNowAsync(buyNowAuction!.Id, "buyer-from-api");
+        Assert.Equal(HttpStatusCode.Created, purchase.StatusCode);
+
+        var combined = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Created combined", "Bid before Buy Now.", "AuctionAndBuyNow", 100m, 25m, 500m,
+            TestAuctionData.Now.AddHours(-1), TestAuctionData.Now.AddHours(1)));
+        var combinedAuction = await combined.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.Equal(HttpStatusCode.Created, (await PlaceBidAsync(combinedAuction!.Id, "bidder-from-api", 125m)).StatusCode);
+    }
+
+    [Fact]
+    public async Task DatabaseSeeder_CoversAllSaleModes()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");
+        await db.Database.MigrateAsync();
+        await DatabaseSeeder.SeedAsync(db, new FixedTimeProvider(TestAuctionData.Now));
+
+        var modes = await db.Auctions.Select(auction => auction.SaleMode).Distinct().ToListAsync();
+        Assert.Contains(SaleMode.AuctionOnly, modes);
+        Assert.Contains(SaleMode.BuyNowOnly, modes);
+        Assert.Contains(SaleMode.AuctionAndBuyNow, modes);
+        Assert.All(await db.Auctions.Where(a => a.SaleMode == SaleMode.BuyNowOnly).ToListAsync(), auction =>
+        {
+            Assert.Equal(auction.BuyNowPrice, auction.StartingPrice);
+            Assert.True(auction.BuyNowPrice > 0);
+        });
+    }
+
     [Fact]
     public async Task BuyNowFields_PersistWithExistingMoneyPrecision()
     {
@@ -761,6 +983,16 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         return _client.SendAsync(request);
     }
 
+    private Task<HttpResponseMessage> CreateAuctionAsync(CreateAuctionRequest request)
+    {
+        return _client.PostAsJsonAsync("/api/auctions", request, JsonOptions);
+    }
+
+    private Task<HttpResponseMessage> UpdateAuctionAsync(Guid auctionId, UpdateAuctionRequest request)
+    {
+        return _client.PutAsJsonAsync($"/api/auctions/{auctionId}", request, JsonOptions);
+    }
+
     private Task<HttpResponseMessage> BuyNowAsync(Guid auctionId, string bidderId, string? correlationId = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{auctionId}/buy-now")
@@ -848,6 +1080,16 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     private async Task AssertBidRejectedAsync(
+        HttpResponseMessage response,
+        string expectedCode,
+        HttpStatusCode expectedStatus = HttpStatusCode.Conflict)
+    {
+        Assert.Equal(expectedStatus, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
+        Assert.Equal(expectedCode, error?.Code);
+    }
+
+    private async Task AssertManagementRejectedAsync(
         HttpResponseMessage response,
         string expectedCode,
         HttpStatusCode expectedStatus = HttpStatusCode.Conflict)
