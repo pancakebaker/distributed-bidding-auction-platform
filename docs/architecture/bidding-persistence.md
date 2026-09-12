@@ -217,18 +217,79 @@ redesigned service boundary that preserves atomicity. This recommendation does
 not prohibit future separation; it avoids creating an unmanaged schema-release
 coordination problem prematurely.
 
-## Future privilege guidance
+## Runtime database privilege boundaries
 
-The current shared development credentials are not a least-privilege design.
-Future deployment roles should reflect actual access needs:
+The Bidding Service, Auction Scheduler, and Outbox Publisher share one
+authoritative schema but should not share unrestricted production database
+identities. The following are intended runtime boundaries, expressed as a
+deployment contract rather than executable grants. A conceptual
+`bidding_migrator` identity owns the schema and performs migration/deployment
+operations; it is not the normal identity for any runtime worker.
 
-- the scheduler roughly needs `SELECT`/`UPDATE` access to `auctions`, `SELECT`
-  access to `bids`, and `INSERT` access to `outbox_messages`;
-- the outbox publisher roughly needs `SELECT` and row-locking/`UPDATE` access
-  to `outbox_messages` only;
-- the Bidding Service owns schema and migration privileges.
+| Identity | `auctions` | `bids` | `outbox_messages` | DDL/migrations |
+| --- | --- | --- | --- | --- |
+| `bidding_migrator` | ownership-level migration access | ownership-level migration access | ownership-level migration access | apply migrations, create/change schema and indexes |
+| `bidding_service` | `SELECT`, `INSERT`, `UPDATE` | `SELECT`, `INSERT` | `INSERT` | none during normal runtime |
+| `auction_scheduler` | `SELECT`, `UPDATE` | `SELECT` | `INSERT` | none |
+| `outbox_publisher` | none | none | `SELECT`, `UPDATE` | none |
 
-This is deployment guidance, not an enforced credential change in this stage.
+The `bidding_service` boundary reflects the current API and local demo
+initializer. API reads select auctions and bids; bid placement updates the
+auction, inserts a bid, and inserts a `BidAccepted` outbox row. The service
+does not need to read or update outbox rows for its request path. Local demo
+seeding also requires the documented auction and bid inserts. Migration and
+schema privileges remain separate from these runtime DML privileges.
+
+The scheduler claims eligible auctions with `SELECT ... FOR UPDATE SKIP
+LOCKED`, reads the winning bid, updates the auction during close, and inserts
+the lifecycle outbox rows. PostgreSQL row locking is part of `SELECT`, so a
+separate lock privilege is not required. The scheduler does not need to
+insert or delete auctions, modify bids, update or delete outbox rows, or
+change schema.
+
+The publisher discovers unpublished rows with `SELECT ... FOR UPDATE SKIP
+LOCKED` and updates publication state after RabbitMQ confirmation. `UPDATE`
+is required for `published_at_utc`, `publish_attempts`, and `last_error`. It
+does not need to insert outbox rows or access auctions and bids. These grants
+must preserve the existing ReadCommitted transaction and RabbitMQ
+publish/confirm behavior; this documentation does not propose changing either
+boundary.
+
+Tables should remain owned by the migration/schema owner. Granting runtime
+identities `SELECT`, `INSERT`, or `UPDATE` does not transfer ownership. Keeping
+ownership with `bidding_migrator` ensures that future migrations, index changes,
+and ownership-level operations remain controlled by the deployment process.
+
+The repository currently uses the broad local PostgreSQL role `auction_app`
+for the Bidding Service, both workers, Docker Compose, and integration tests.
+That is a development convenience, not the intended production
+least-privilege model. D2.4 does not create roles, grants, credentials, secret
+files, or connection-string changes. The conceptual role names above describe
+the target deployment architecture only.
+
+Disposable integration-test environments may continue using a broader
+identity because the tests create and drop isolated databases and apply
+migrations as part of compatibility and behavior verification. A future
+deployment-focused integration test can validate reduced runtime grants
+separately without changing the disposable test setup.
+
+These explicit database contracts also make future repository separation
+safer: each deployable has a visible persistence boundary, and accidental
+schema access is easier to detect than with shared unrestricted credentials.
+For now, the Bidding Service, Scheduler, and Publisher remain grouped because
+they share BiddingDb, migration lifecycle, and transaction-sensitive
+persistence behavior.
+
+For schema changes, the conceptual deployment sequence remains:
+
+1. Apply a backward-compatible migration with `bidding_migrator`.
+2. Verify compatibility with the currently deployed service and workers.
+3. Deploy runtime services using their DML-only identities.
+4. Remove deprecated schema only in a later compatible release.
+
+This additive, backward-compatible sequence allows service and worker versions
+to overlap safely while a migration is being rolled out. It does not add
+executable deployment automation.
 
 ## Planned follow-up
 
@@ -237,5 +298,4 @@ The next persistence-boundary work should be small and behavior-preserving:
 1. Run scheduler and outbox integration tests against databases created from
    the Bidding Service migrations.
 2. Add compatibility assertions for required columns and indexes.
-3. Document runtime database privilege boundaries.
-4. Reassess repository grouping only after schema compatibility is protected.
+3. Reassess repository grouping only after schema compatibility is protected.
