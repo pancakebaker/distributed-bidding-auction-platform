@@ -54,7 +54,7 @@ flowchart LR
     RMQ --> AOP
 ```
 
-The Bidding Service remains authoritative for bids, auctions, and `Auction.Version`. The portal records a safe activity projection in `auction_activity`; it never updates bidding tables. Its `/activity/live`, `/activity/history`, and `/activity/report.pdf` features use PostgreSQL, while SignalR is only best-effort delivery. Laravel remains the identity authority for both the existing Node admin handoff and the portal’s dedicated `auction-operations-portal` audience.
+The Bidding Service remains authoritative for bids, auctions, and `Auction.Version`. The portal records a safe activity projection in `auction_activity`; it never updates bidding tables. Its `/activity/live`, `/activity/history`, and `/activity/report.pdf` features use PostgreSQL, while SignalR is only best-effort delivery. Laravel owns bidder and tenant-admin identity; the Operations Portal owns independent SystemAdministrator identity.
 
 ## Accepted-bid transaction flow
 
@@ -86,14 +86,13 @@ The queues are independent, so one consumer cannot steal messages from the other
 
 ```mermaid
 flowchart LR
-    L[Laravel login<br/>access-admin gate] --> T[Short-lived RS256<br/>handoff token]
-    T --> N[Node Live Feed<br/>POST /admin/auth/token]
+    L[Operations Portal local login<br/>SystemAdministrator] --> T[Short-lived RS256<br/>live-feed-admin token]
+    T --> N[Node Live Feed<br/>opaque one-time handoff]
     N --> NC[HttpOnly Live Feed<br/>session cookie]
-    T --> A[Operations Portal<br/>POST /auth/handoff]
-    A --> AC[HttpOnly portal<br/>session cookie]
+    L --> AC[HttpOnly portal<br/>session cookie]
 ```
 
-Laravel retains the private key. Node and .NET validate with public-key copies and use separate audiences and permissions. The portal validates the issuer, audience, permission, role, expiry, and single-use JTI before redirecting to `/activity/live`.
+The Operations Portal retains the system-admin private key. Node validates with public verification material and the service-specific `live-feed-admin` audience. The portal validates the authenticated local SystemAdministrator session before issuing the short-lived token; Live Feed validates issuer, audience, `kid`, permission, role, expiry, and single-use JTI before returning the opaque browser handoff.
 
 
 ## Completed operations portal boundary
@@ -455,7 +454,7 @@ Bounded operational activity updates
 
 The page reuses existing runtime diagnostics, memory metrics, RabbitMQ/Redis status, connection counts, and the Phase 5/6/7 diagnostic links. It does not add auction CRUD, persistence, a reporting subsystem, or a BFF layer. The existing `/health`, `/diagnostics/runtime`, `/diagnostics/live-feed/stream`, `/diagnostics/live-feed/activity`, and runtime diagnostic contracts remain unchanged.
 
-The admin boundary is deliberately small. The preferred SYS3 path is the local Operations Portal SystemAdministrator session: the portal signs a short-lived RS256 token with the system-admin private key, targeting `live-feed-admin`, and sends it server-to-server to Node. Node receives only the configured public key, requires issuer, audience, explicit `kid`, `SystemAdministrator`, and `livefeed.admin`, consumes the JTI once through Redis, and returns a short-lived opaque handoff code. The browser follows that code to establish the existing root-scoped HttpOnly HMAC session; the JWT never enters a URL, HTML response, browser storage, or Socket.IO handshake. The legacy Laravel issuer/`access-live-feed-admin` path remains separately validated and temporarily enabled until SYS4. The cookie is marked HttpOnly and SameSite, expires, and uses `Path=/` so the authenticated Socket.IO handshake at `/socket.io` receives it; it is Secure in production. Production deployments still need TLS, secret management, CSRF, and rate-limiting controls.
+The admin boundary is deliberately small. The SYS4 path is the local Operations Portal SystemAdministrator session: the portal signs a short-lived RS256 token with the system-admin private key, targeting `live-feed-admin`, and sends it server-to-server to Node. Node receives only the configured public key, requires issuer, audience, explicit `kid`, `SystemAdministrator`, and `livefeed.admin`, consumes the JTI once through Redis, and returns a short-lived opaque handoff code. The browser follows that code to establish the existing root-scoped HttpOnly HMAC session; the JWT never enters a URL, HTML response, browser storage, or Socket.IO handshake. Laravel-issued platform-admin tokens are no longer accepted. The cookie is marked HttpOnly and SameSite, expires, and uses `Path=/` so the authenticated Socket.IO handshake at `/socket.io` receives it; it is Secure in production. Production deployments still need TLS, secret management, CSRF, and rate-limiting controls.
 
 The Socket.IO admin channel uses a separate `admin:live-feed` room and `admin:activity` event. A socket must present a valid admin cookie when requesting `admin:subscribe`; unauthorized sockets do not join the room. Existing browser auction rooms, event names, payloads, subscription flow, RabbitMQ topology, Redis keys/version semantics, and Bidding Service authority are unaffected.
 
@@ -483,4 +482,4 @@ The Phase 8 in-memory activity ring remains separate from durable history. It is
 
 ### Transitional and independent admin identity for Live Feed Operations
 
-The preferred browser path is now `SystemAdministrator → Operations Portal cookie → portal server → POST /admin/auth/system-token → opaque one-time code → GET /admin/auth/handoff → Live Feed cookie`. The Node system-admin boundary accepts only the independent `dbap-system-admin` issuer, `live-feed-admin` audience, configured `kid`, `SystemAdministrator` role, and `livefeed.admin` permission. The portal private key stays portal-side; Node receives only the public key. The browser never sees the JWT. The existing Laravel `GET /admin/live-feed` / `POST /admin/live-feed/token` path remains separately validated as transitional compatibility until SYS4. Both paths establish the same local cookie, which protects `/admin/live-feed`, `/admin/api/history`, `/admin/api/history.pdf`, and the server-side `admin:live-feed` Socket.IO authorization. Public auction rooms remain anonymous.
+The browser path is `SystemAdministrator → Operations Portal cookie → portal server → POST /admin/auth/system-token → opaque one-time code → GET /admin/auth/handoff → Live Feed cookie`. The Node system-admin boundary accepts only the independent `dbap-system-admin` issuer, `live-feed-admin` audience, configured `kid`, `SystemAdministrator` role, and `livefeed.admin` permission. The portal private key stays portal-side; Node receives only the public key. The browser never sees the JWT. The local cookie protects `/admin/live-feed`, `/admin/api/history`, `/admin/api/history.pdf`, and the server-side `admin:live-feed` Socket.IO authorization. Public auction rooms remain anonymous.

@@ -1,5 +1,5 @@
 /**
- * Application-facing verification boundary for short-lived Laravel-issued admin tokens.
+ * Application-facing verification boundary for short-lived system-admin tokens.
  */
 
 /**

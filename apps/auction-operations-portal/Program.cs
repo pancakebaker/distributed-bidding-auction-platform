@@ -14,7 +14,6 @@ using AuctionOperationsPortal.Notifications;
 using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
 using AuctionOperationsPortal.Telemetry;
-using DistributedBidding.AuthContracts;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -51,15 +50,6 @@ builder.Services.Configure<ObservabilityOptions>(
 var observabilityOptions = builder.Configuration
     .GetSection(ObservabilityOptions.SectionName)
     .Get<ObservabilityOptions>() ?? new();
-builder.Services.Configure<LaravelAuthOptions>(options =>
-{
-    builder.Configuration.GetSection(LaravelAuthOptions.SectionName).Bind(options);
-    if (!Path.IsPathRooted(options.PublicKeyPath))
-    {
-        options.PublicKeyPath = Path.GetFullPath(
-            Path.Combine(builder.Environment.ContentRootPath, options.PublicKeyPath));
-    }
-});
 builder.Services.Configure<SystemAdminAuthOptions>(options =>
 {
     builder.Configuration.GetSection(SystemAdminAuthOptions.SectionName).Bind(options);
@@ -159,8 +149,6 @@ builder.Services.AddHttpClient<ILiveFeedAdminHandoffClient, LiveFeedAdminHandoff
     client.BaseAddress = new Uri(liveFeedAdminOptions.BaseUrl, UriKind.Absolute);
     client.Timeout = TimeSpan.FromSeconds(10);
 });
-builder.Services.AddSingleton<PortalReplayProtection>();
-builder.Services.AddSingleton<LaravelTokenValidator>();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -176,16 +164,11 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LoginPath = "/login";
         options.AccessDeniedPath = "/auth/denied";
     });
-var permission = builder.Configuration[$"{LaravelAuthOptions.SectionName}:Permission"]
-    ?? ApplicationPermissions.AccessAuctionOperations;
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AuctionOperationsAdmin", policy => policy
         .RequireAuthenticatedUser()
-        .RequireAssertion(context =>
-            (context.User.IsInRole(ApplicationRoles.Admin)
-                && context.User.HasClaim("permission", permission))
-            || (context.User.IsInRole(SystemAdminRoles.SystemAdministrator)
-                && context.User.HasClaim("permission", SystemAdminPermissions.Monitor))));
+        .RequireRole(SystemAdminRoles.SystemAdministrator)
+        .RequireClaim("permission", SystemAdminPermissions.Monitor));
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("SystemAdminLiveFeed", policy => policy
         .RequireAuthenticatedUser()
@@ -366,46 +349,6 @@ app.MapPost(
     })
     .RequireAuthorization("SystemAdminLiveFeed")
     .WithMetadata(new RequireAntiforgeryTokenAttribute());
-app.MapPost(
-    "/auth/handoff",
-    async (
-        HttpContext context,
-        LaravelTokenValidator validator,
-        IOptions<LaravelAuthOptions> authOptions,
-        ILogger<Program> logger) =>
-{
-    using var activity = PortalTelemetry.StartActivity("portal.auth.handoff");
-    var form = await context.Request.ReadFormAsync(context.RequestAborted);
-    var token = form["token"].ToString();
-    try
-    {
-        var identity = validator.Validate(token);
-        activity?.SetTag("auth.outcome", "accepted");
-        var claims = new System.Security.Claims.ClaimsIdentity(
-            CookieAuthenticationDefaults.AuthenticationScheme);
-        claims.AddClaim(new(System.Security.Claims.ClaimTypes.NameIdentifier, identity.Subject));
-        if (!string.IsNullOrWhiteSpace(identity.Email))
-            claims.AddClaim(new(System.Security.Claims.ClaimTypes.Email, identity.Email));
-        claims.AddClaim(new(System.Security.Claims.ClaimTypes.Role, identity.Role));
-        claims.AddClaim(new("permission", authOptions.Value.Permission));
-        await context.SignInAsync(
-            CookieAuthenticationDefaults.AuthenticationScheme,
-            new System.Security.Claims.ClaimsPrincipal(claims),
-            new AuthenticationProperties
-            {
-                IsPersistent = false,
-                ExpiresUtc = identity.ExpiresAt
-            });
-        return Results.Redirect("/activity/live");
-    }
-    catch (PortalTokenValidationException exception)
-    {
-        activity?.SetTag("auth.outcome", "rejected");
-        activity?.SetTag("auth.failure_category", exception.Category);
-        logger.LogWarning("Portal handoff rejected: {Category}", exception.Category);
-        return Results.Text("Unauthorized", statusCode: StatusCodes.Status401Unauthorized);
-    }
-}).DisableAntiforgery();
 app.MapPost("/auth/logout", async (HttpContext context) =>
 {
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);

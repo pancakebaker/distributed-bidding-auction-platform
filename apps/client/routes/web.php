@@ -7,8 +7,6 @@ use App\Http\Controllers\Admin\AdminExportController;
 use App\Http\Controllers\Admin\AdminFaqController;
 use App\Http\Controllers\Admin\AdminPageController;
 use App\Http\Controllers\Admin\AdminUserController;
-use App\Http\Controllers\Admin\AuctionOperationsController;
-use App\Http\Controllers\Admin\LiveFeedAdminController;
 use App\Http\Controllers\AuctionCommandController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Cms\PublicFaqController;
@@ -46,11 +44,6 @@ Route::middleware(['auth', 'can:access-admin'])
     ->name('admin.')
     ->group(function (): void {
         Route::get('/', AdminDashboardController::class)->name('dashboard');
-        Route::get('/live-feed', LiveFeedAdminController::class)->name('live-feed');
-        Route::get('/auction-operations', AuctionOperationsController::class)
-            ->name('auction-operations');
-        Route::post('/live-feed/token', [LiveFeedAdminController::class, 'token'])
-            ->name('live-feed.token');
         Route::get('/users', [AdminUserController::class, 'index'])->name('users.index');
         Route::get('/audit-logs', [AdminAuditLogController::class, 'index'])
             ->name('audit-logs.index');

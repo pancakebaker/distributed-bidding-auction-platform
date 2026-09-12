@@ -16,7 +16,6 @@ public sealed class DependencyInjectionTests : IClassFixture<AuthenticationEndpo
     public void TestingHost_ValidatesLifetimesAndResolvesRepresentativeServices()
     {
         using var scope = factory.Services.CreateScope();
-        Assert.IsType<LaravelTokenValidator>(factory.Services.GetRequiredService<LaravelTokenValidator>());
         Assert.IsType<RabbitMqTopology>(factory.Services.GetRequiredService<RabbitMqTopology>());
         Assert.IsAssignableFrom<IActivityPersistence>(scope.ServiceProvider.GetRequiredService<IActivityPersistence>());
         Assert.IsAssignableFrom<IActivityHistoryQueryService>(scope.ServiceProvider.GetRequiredService<IActivityHistoryQueryService>());

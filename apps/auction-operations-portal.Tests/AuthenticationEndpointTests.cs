@@ -1,7 +1,4 @@
-using System.IdentityModel.Tokens.Jwt;
 using System.Net;
-using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using AuctionOperationsPortal.Auth;
 using AuctionOperationsPortal.Data;
@@ -12,7 +9,6 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.IdentityModel.Tokens;
 
 namespace AuctionOperationsPortal.Tests;
 
@@ -21,29 +17,6 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
     private readonly AuthenticationEndpointFactory factory;
 
     public AuthenticationEndpointTests(AuthenticationEndpointFactory factory) => this.factory = factory;
-
-    [Fact]
-    public async Task ValidHandoff_CreatesShortLivedCookieAndRedirects()
-    {
-        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        using var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("token", factory.CreateToken()) });
-        var response = await client.PostAsync("/auth/handoff", content);
-
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-        Assert.Equal("/activity/live", response.Headers.Location?.ToString());
-        Assert.Contains("auction_operations_auth", response.Headers.GetValues("Set-Cookie").Single());
-    }
-
-    [Fact]
-    public async Task InvalidHandoff_DoesNotCreateCookie()
-    {
-        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
-        using var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("token", "invalid") });
-        var response = await client.PostAsync("/auth/handoff", content);
-
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.False(response.Headers.TryGetValues("Set-Cookie", out _));
-    }
 
     [Fact]
     public async Task AnonymousPortalRoute_IsRejected()
@@ -78,9 +51,7 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
     public async Task AuthenticatedPortalRoute_IsAccessibleAndLogoutClearsCookie()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
-        using var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("token", factory.CreateToken()) });
-        var handoff = await client.PostAsync("/auth/handoff", content);
-        Assert.Equal(HttpStatusCode.Redirect, handoff.StatusCode);
+        await LocalLoginAsync(client);
 
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/")).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/activity/history")).StatusCode);
@@ -245,12 +216,26 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
             : throw new InvalidOperationException("Antiforgery token was not rendered.");
     }
 
+    private static async Task LocalLoginAsync(HttpClient client)
+    {
+        var login = await client.GetAsync("/login");
+        var token = ExtractAntiforgeryToken(await login.Content.ReadAsStringAsync());
+        var response = await client.PostAsync(
+            "/auth/login",
+            new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("email", "systemadmin@example.test"),
+                new KeyValuePair<string, string>("password", "system-admin-password"),
+                new KeyValuePair<string, string>("__RequestVerificationToken", token)
+            }));
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+    }
+
     [Fact]
     public async Task AuthenticatedReport_ReturnsPdfAndRateLimitsAfterFiveRequests()
     {
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false, HandleCookies = true });
-        using var content = new FormUrlEncodedContent(new[] { new KeyValuePair<string, string>("token", factory.CreateToken()) });
-        Assert.Equal(HttpStatusCode.Redirect, (await client.PostAsync("/auth/handoff", content)).StatusCode);
+        await LocalLoginAsync(client);
         const string url = "/activity/report.pdf?from=2026-09-01T00:00:00Z&to=2026-09-01T01:00:00Z";
 
         HttpResponseMessage? first = null;
@@ -287,16 +272,6 @@ public sealed class AuthenticationEndpointTests : IClassFixture<AuthenticationEn
 
 public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Program>
 {
-    private readonly RSA signingKey = RSA.Create(2048);
-    private readonly string publicKeyPath = Path.Combine(Path.GetTempPath(), $"auction-portal-endpoint-{Guid.NewGuid():N}.pem");
-
-    public AuthenticationEndpointFactory()
-    {
-        using var publicKey = RSA.Create();
-        publicKey.ImportParameters(signingKey.ExportParameters(false));
-        File.WriteAllText(publicKeyPath, publicKey.ExportSubjectPublicKeyInfoPem());
-    }
-
     protected override void ConfigureWebHost(Microsoft.AspNetCore.Hosting.IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
@@ -309,11 +284,6 @@ public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Progra
             services.RemoveAll<ILiveFeedAdminHandoffClient>();
             services.AddSingleton<ILiveFeedAdminHandoffClient, TestLiveFeedAdminHandoffClient>();
         });
-        builder.ConfigureAppConfiguration((_, configuration) => configuration.AddInMemoryCollection(new Dictionary<string, string?>
-        {
-            [$"{LaravelAuthOptions.SectionName}:PublicKeyPath"] = publicKeyPath,
-            [$"{LaravelAuthOptions.SectionName}:LaravelAdminUrl"] = "http://localhost:8000/admin"
-        }));
     }
 
     private sealed class TestSystemAdminTokenIssuer : ISystemAdminTokenIssuer
@@ -369,36 +339,5 @@ public sealed class AuthenticationEndpointFactory : WebApplicationFactory<Progra
 
         public PasswordVerificationResult VerifyPassword(SystemAdminUser account, string password) =>
             hasher.VerifyHashedPassword(account, account.PasswordHash, password);
-    }
-
-    public string CreateToken()
-    {
-        var now = DateTimeOffset.UtcNow;
-        var token = new JwtSecurityToken(
-            "auction-client",
-            "auction-operations-portal",
-            new[]
-            {
-                new Claim(JwtRegisteredClaimNames.Sub, "admin-1"),
-                new Claim(JwtRegisteredClaimNames.Email, "admin@example.com"),
-                new Claim("role", "admin"),
-                new Claim("permissions", "access-auction-operations"),
-                new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString("N"))
-            },
-            now.UtcDateTime,
-            now.AddMinutes(5).UtcDateTime,
-            new SigningCredentials(new RsaSecurityKey(signingKey), SecurityAlgorithms.RsaSha256));
-        return new JwtSecurityTokenHandler().WriteToken(token);
-    }
-
-    protected override void Dispose(bool disposing)
-    {
-        if (disposing)
-        {
-            signingKey.Dispose();
-            if (File.Exists(publicKeyPath))
-                File.Delete(publicKeyPath);
-        }
-        base.Dispose(disposing);
     }
 }

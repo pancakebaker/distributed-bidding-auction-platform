@@ -34,7 +34,6 @@ import { registerLiveFeedActivityRoute } from '../transport/http/live-feed-activ
 import { registerAdminRoutes } from '../transport/http/admin/admin-route.js';
 import { registerAdminHistoryRoutes } from '../transport/http/admin/admin-history-route.js';
 import { AdminAuth } from '../transport/http/admin/admin-auth.js';
-import { JwtAdminTokenVerifier } from '../infrastructure/auth/jwt-admin-token-verifier.js';
 import { SystemAdminJwtTokenVerifier } from '../infrastructure/auth/system-admin-jwt-token-verifier.js';
 import { getLiveFeedDashboard } from './diagnostics/get-live-feed-dashboard.js';
 import { RecentActivityStore } from './diagnostics/recent-activity-store.js';
@@ -102,11 +101,6 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   );
   const processor = new LiveFeedEventProcessor(publisher, stateStore, activityObserver);
   const adminAuth = new AdminAuth();
-  const adminTokenVerifier = new JwtAdminTokenVerifier({
-    publicKeyPath: config.adminTokenPublicKeyPath,
-    issuer: config.adminTokenIssuer,
-    audience: config.adminTokenAudience,
-  });
   const systemAdminTokenVerifier = new SystemAdminJwtTokenVerifier({
     publicKeyPath: config.systemAdminTokenPublicKeyPath,
     issuer: config.systemAdminTokenIssuer,
@@ -172,15 +166,12 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   registerAdminHistoryRoutes(app, { auth: adminAuth, store: historyStore });
   registerAdminRoutes(app, {
     auth: adminAuth,
-    tokenVerifier: adminTokenVerifier,
     replayConsumer: adminTokenReplayConsumer,
-    clientOrigin: config.clientOrigin,
     assetDirectory: adminAssetDirectory,
     publicAdminDirectory: resolve(dirname(fileURLToPath(import.meta.url)), '../../public/admin'),
+    systemAdminPortalUrl: config.systemAdminPortalUrl,
     systemTokenVerifier: systemAdminTokenVerifier,
     handoffStore: adminHandoffStore,
-    enableLegacyLaravelAdminAuth: config.enableLegacyLaravelAdminAuth,
-    enableSystemAdminAuth: config.enableSystemAdminAuth,
     getSnapshot: () =>
       getLiveFeedDashboard({
         eventLoopMonitor,

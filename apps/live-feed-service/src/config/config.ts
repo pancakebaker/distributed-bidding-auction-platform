@@ -13,6 +13,7 @@ import { integrationEventRoutingKeys } from '../domain/transport.js';
 export type LiveFeedConfig = {
   port: number;
   clientOrigin: string;
+  systemAdminPortalUrl: string;
   redisUrl: string;
   rabbitMqUrl: string;
   rabbitMqExchange: string;
@@ -26,15 +27,10 @@ export type LiveFeedConfig = {
   liveFeedDbPoolMax: number;
   liveFeedDbIdleTimeoutMs: number;
   liveFeedDbConnectionTimeoutMs: number;
-  adminTokenPublicKeyPath: string;
-  adminTokenIssuer: string;
-  adminTokenAudience: string;
   systemAdminTokenPublicKeyPath: string;
   systemAdminTokenIssuer: string;
   systemAdminTokenAudience: string;
   systemAdminTokenKid: string;
-  enableLegacyLaravelAdminAuth: boolean;
-  enableSystemAdminAuth: boolean;
 };
 
 function numberFromEnv(name: string, fallback: number): number {
@@ -91,11 +87,10 @@ function rabbitMqUrlFromEnv(): string {
  */
 export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedConfig {
   const serviceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-  const configuredPublicKeyPath = process.env.LIVE_FEED_ADMIN_TOKEN_PUBLIC_KEY_PATH;
-
   const config: LiveFeedConfig = {
     port: numberFromEnv('PORT', 3001),
     clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:8000',
+    systemAdminPortalUrl: process.env.SYSTEM_ADMIN_PORTAL_URL ?? 'http://localhost:5099',
     redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
     rabbitMqUrl: rabbitMqUrlFromEnv(),
     rabbitMqExchange: process.env.RABBITMQ_EXCHANGE ?? 'auction.events',
@@ -109,13 +104,6 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     liveFeedDbPoolMax: numberFromEnv('LIVE_FEED_DB_POOL_MAX', 5),
     liveFeedDbIdleTimeoutMs: numberFromEnv('LIVE_FEED_DB_IDLE_TIMEOUT_MS', 10000),
     liveFeedDbConnectionTimeoutMs: numberFromEnv('LIVE_FEED_DB_CONNECTION_TIMEOUT_MS', 2000),
-    adminTokenPublicKeyPath: configuredPublicKeyPath
-      ? isAbsolute(configuredPublicKeyPath)
-        ? configuredPublicKeyPath
-        : resolve(serviceRoot, configuredPublicKeyPath)
-      : resolve(serviceRoot, 'config/live-feed-admin-public.pem'),
-    adminTokenIssuer: process.env.LIVE_FEED_ADMIN_TOKEN_ISSUER ?? 'auction-client',
-    adminTokenAudience: process.env.LIVE_FEED_ADMIN_TOKEN_AUDIENCE ?? 'live-feed-admin',
     systemAdminTokenPublicKeyPath: resolve(
       serviceRoot,
       process.env.SYSTEM_ADMIN_TOKEN_PUBLIC_KEY_PATH ?? 'config/system-admin-public.pem',
@@ -123,12 +111,10 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     systemAdminTokenIssuer: process.env.SYSTEM_ADMIN_TOKEN_ISSUER ?? 'dbap-system-admin',
     systemAdminTokenAudience: process.env.SYSTEM_ADMIN_TOKEN_AUDIENCE ?? 'live-feed-admin',
     systemAdminTokenKid: process.env.SYSTEM_ADMIN_TOKEN_KID ?? 'system-admin-development-1',
-    enableLegacyLaravelAdminAuth: process.env.ENABLE_LEGACY_LARAVEL_ADMIN_AUTH !== 'false',
-    enableSystemAdminAuth: process.env.ENABLE_SYSTEM_ADMIN_AUTH !== 'false',
     ...overrides,
   };
 
-  if (process.env.NODE_ENV === 'production' && config.enableSystemAdminAuth) {
+  if (process.env.NODE_ENV === 'production') {
     if (
       !config.systemAdminTokenIssuer ||
       !config.systemAdminTokenAudience ||

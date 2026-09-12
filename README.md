@@ -85,7 +85,7 @@ See the [system architecture notes](docs/architecture.md), [event catalog](docs/
 
 | Component | Responsibility |
 | --- | --- |
-| Laravel + React Client | Bidder/admin web experience, Laravel identity authority, and portal handoff entry point |
+| Laravel + React Client | Bidder/tenant-admin web experience and Laravel BFF |
 | Bidding Service | Validates and accepts bids; owns authoritative auction state and concurrency |
 | Auction Scheduler | Applies scheduled auction lifecycle transitions in the bidding database and writes lifecycle outbox events |
 | Outbox Publisher | Publishes committed outbox events to RabbitMQ |
@@ -143,26 +143,25 @@ Delivery is at least once. `EventId` is the idempotency key. `AggregateVersion` 
 
 ## Authentication Flow
 
-Laravel remains the username/password and admin identity authority:
+Laravel owns bidder and tenant-admin identity. The Operations Portal owns platform SystemAdministrator identity:
 
 ```mermaid
 flowchart LR
-    L[Laravel login<br/>access-admin gate] --> T[Short-lived RS256<br/>handoff token]
-    T --> N[Node Live Feed<br/>POST /admin/auth/token]
+    L[Laravel login<br/>tenant admin] --> B[Laravel BFF<br/>auction commands]
+    S[SystemAdministrator<br/>Operations Portal /login] --> T[Short-lived RS256<br/>live-feed-admin token]
+    T --> N[Node Live Feed<br/>opaque one-time handoff]
     N --> NC[HttpOnly Live Feed<br/>session cookie]
-    T --> A[Operations Portal<br/>POST /auth/handoff]
-    A --> AC[HttpOnly portal<br/>session cookie]
 ```
 
-1. An authenticated user passes Laravel’s existing admin gate.
-2. Laravel issues a short-lived RS256 handoff token with the existing issuer, audience `auction-operations-portal`, permission `access-auction-operations`, role, subject, expiry, and JTI.
-3. The browser submits the token to the portal’s `POST /auth/handoff` endpoint.
-4. The portal validates the signature using only Laravel’s public key, exact issuer/audience, expiry, subject, role, permission, and single-use JTI.
-5. The portal creates a short-lived HttpOnly authentication cookie and never stores the JWT in browser storage.
+1. Tenant bidders and tenant administrators authenticate with Laravel for tenant-facing flows.
+2. System administrators authenticate directly with the Operations Portal local account store.
+3. The portal issues a short-lived RS256 token for `live-feed-admin` server-to-server.
+4. Live Feed validates the independent issuer, audience, explicit key ID, role, permission, signature, expiry, and JTI.
+5. Only a short-lived opaque handoff code crosses the browser boundary; the JWT never enters browser storage or a URL.
 
-Portal pages and the SignalR hub require the `AuctionOperationsAdmin` policy. Portal logout clears only the portal cookie and redirects to a configured safe Laravel destination. The existing Node Live Feed authentication flow remains separate and unchanged.
+Portal pages and the SignalR hub require the `AuctionOperationsAdmin` policy. Portal logout clears only the portal cookie and returns to `/login`.
 
-Laravel holds the private signing key. Node Live Feed and the Operations Portal receive public-key copies only. The portal uses the dedicated audience `auction-operations-portal` and permission `access-auction-operations`; it does not reuse the Node audience. Portal JTI replay protection is currently in-memory and single-instance, so distributed replay storage is required before horizontally scaling portal authentication.
+The Operations Portal holds the system-admin private signing key. Live Feed receives public verification material only and uses Redis-backed JTI replay protection. Tenant Laravel tokens are scoped to Bidding Service audiences and are not accepted by platform-admin surfaces.
 
 ## Operations Portal
 
@@ -185,7 +184,7 @@ The portal uses OpenTelemetry with:
 
 - ActivitySource: `AuctionOperationsPortal`;
 - ASP.NET Core, HttpClient, and EF Core instrumentation;
-- custom spans for message processing, persistence, SignalR publication, history, reports, and handoff validation;
+- custom spans for message processing, persistence, SignalR publication, history, reports, and system-admin handoff validation;
 - bounded metrics for processed/duplicate/rejected/transient events, SignalR publication, reports, and operation durations;
 - PostgreSQL and RabbitMQ health checks at `/health`.
 
@@ -208,10 +207,10 @@ Portal metrics use bounded dimensions only; EventId, CorrelationId, AggregateId,
 
 ## Security Highlights
 
-- Laravel is the identity authority; the portal accepts only the dedicated RS256 audience and permission.
+- Laravel owns bidder and tenant-admin identity; the portal owns independent SystemAdministrator identity and accepts only the dedicated RS256 audience and permission for Live Feed access.
 - Portal sessions use short-lived HttpOnly cookies that are Secure outside Development/Testing.
 - Authorization is enforced server-side for pages, the SignalR hub, and report endpoints.
-- JTI replay protection is required for handoff tokens; the current in-memory guard is single-instance.
+- Live Feed consumes system-admin token JTIs once through Redis before issuing an opaque browser handoff code.
 - PDF generation is bounded and rate-limited.
 - No secrets are committed, and reporting exposes safe projected fields rather than raw event payloads.
 
@@ -242,7 +241,7 @@ The project uses BenchmarkDotNet 0.15.8 and `MemoryDiagnoser`. Results are obser
 - **Portal idempotency:** the portal database uniquely constrains EventId.
 - **Lifecycle events:** same-version sibling events remain distinct by EventId.
 - **Real-time delivery:** SignalR is transient best-effort delivery; PostgreSQL supports reconciliation.
-- **Identity:** Laravel is the identity authority; the portal establishes a short-lived local session after signed handoff.
+- **Identity:** Laravel owns bidder and tenant-admin identity; the Operations Portal owns independent SystemAdministrator identity and its local session.
 - **Reporting:** history and PDF reports use only the portal-owned projection.
 
 ## Local Development
@@ -263,7 +262,7 @@ php apps/client/artisan key:generate
 $env:LOCAL_ADMIN_NAME="Local Admin"
 $env:LOCAL_ADMIN_EMAIL="local-admin@example.test"
 $env:LOCAL_ADMIN_PASSWORD="choose-a-local-only-password"
-./scripts/generate-live-feed-admin-keys.ps1
+./scripts/generate-system-admin-keys.ps1
 ./scripts/start-infrastructure.ps1
 php apps/client/artisan migrate
 php apps/client/artisan db:seed --class=Database\\Seeders\\LocalAdminSeeder
@@ -281,7 +280,7 @@ dotnet run --no-restore --project apps/auction-operations-portal --urls http://l
 Useful local URLs:
 
 - Laravel/React client: `http://localhost:8000`
-- portal handoff: `http://localhost:8000/admin/auction-operations`
+- portal login: `http://localhost:5099/login`
 - portal live activity: `http://localhost:5099/activity/live`
 - portal history: `http://localhost:5099/activity/history`
 - portal health: `http://localhost:5099/health`
@@ -293,9 +292,8 @@ SystemAdministrator session to issue a short-lived server-side `live-feed-admin`
 JWT. Live Feed validates the independent `dbap-system-admin` issuer, audience,
 explicit key ID, role, permission, and signature, then returns a one-time opaque
 handoff code. Only that code crosses the browser boundary; the JWT remains
-server-to-server. The legacy Laravel Live Feed handoff remains available during
-SYS3 and is scheduled for removal in SYS4. Public auction Socket.IO rooms remain
-anonymous.
+server-to-server. Laravel tenant administration remains separate, and public
+auction Socket.IO rooms remain anonymous.
 
 The PostgreSQL initialization creates `auction_operations` on a fresh volume. For an existing volume created before the portal was added, create that database idempotently with the documented PostgreSQL setup; do not destroy the volume to rerun initialization.
 
@@ -379,14 +377,14 @@ The completed platform intentionally does not include:
 - **Auction CRUD or an API gateway:** deferred because current service routing does not justify another operational layer; the Bidding Service remains the command boundary.
 - **Portal Redis caching:** deferred because bounded PostgreSQL history/report queries do not justify cache invalidation and staleness complexity.
 - **End-to-end W3C trace continuity:** deferred until the publisher emits `traceparent`/`tracestate`; the portal preserves existing correlation IDs without changing producer contracts.
-- **Distributed portal handoff replay storage:** required before horizontally scaling portal authentication because the current consumed-JTI guard is in-memory and single-instance.
+- **Distributed portal session coordination:** future deployment hardening may add shared coordination for multi-instance portal sessions; the current local cookie remains the browser session authority.
 - **Background report jobs, scheduling, email delivery, or report persistence:** deferred because current reports are bounded synchronous requests.
 - **Full bidder account administration, payment workflows, and notification workflows:** outside the completed platform scope.
 - **A mandatory OpenTelemetry collector/Grafana/Prometheus/Jaeger stack:** deferred because local development remains usable with exporters disabled.
 - **Multi-instance SignalR backplane and distributed live-session coordination:** deferred until deployment scale requires it.
 - **Production deployment hardening, load testing, and compliance controls:** intentionally outside this functional demonstration.
 
-These are explicit follow-up design areas, not silently implemented features. The portal’s in-memory single-use handoff replay cache is suitable only for the current single-instance demonstration; a distributed deployment would need a shared replay store.
+These are explicit follow-up design areas, not silently implemented features. Live Feed’s Redis-backed JTI and opaque-code stores are the current single-use boundary; deployment-scale session coordination remains future hardening.
 
 ## License and Third-Party Notes
 

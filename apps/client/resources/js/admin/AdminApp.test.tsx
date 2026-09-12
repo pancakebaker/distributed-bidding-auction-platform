@@ -12,24 +12,6 @@ const navigation = [
     { label: 'Exports', href: '/admin/exports', active: false },
 ];
 
-const externalNavigation = [
-    ...navigation,
-    {
-        label: 'Live Feed Operations ↗',
-        href: '/admin/live-feed',
-        active: false,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-    },
-    {
-        label: 'Auction Operations ↗',
-        href: '/admin/auction-operations',
-        active: false,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-    },
-];
-
 const pagination = {
     current_page: 1,
     last_page: 2,
@@ -55,30 +37,6 @@ function deferred<T>() {
 describe('admin UI', () => {
     beforeEach(() => {
         window.history.replaceState({}, '', '/admin');
-    });
-
-    it('renders external operations launchers without intercepting their handoff routes', () => {
-        const fetchMock = vi.fn();
-        vi.stubGlobal('fetch', fetchMock);
-
-        render(
-            <AdminApp
-                bootstrap={{
-                    page: 'dashboard',
-                    navigation: externalNavigation,
-                    props: { metrics: [], recentAuditLogs: [], auditActionCounts: [] },
-                }}
-            />,
-        );
-
-        for (const label of ['Live Feed Operations ↗', 'Auction Operations ↗']) {
-            const link = screen.getByRole('link', { name: label });
-            expect(link).toHaveAttribute('target', '_blank');
-            expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-            fireEvent.click(link);
-        }
-
-        expect(fetchMock).not.toHaveBeenCalled();
     });
 
     afterEach(() => {

@@ -152,7 +152,7 @@ The client is part of a larger distributed auction platform that includes:
 - **Auction Scheduler** — handles time-based auction lifecycle actions
 - **Outbox Publisher** — publishes persisted domain events to the messaging infrastructure
 
-Laravel remains the identity authority. Authenticated bid, Buy Now, and tenant auction-management commands use same-origin Laravel routes, which mint short-lived RS256 Bidding Service tokens server-side and proxy the commands. The browser never chooses or stores authoritative identity or downstream tokens. Public auction reads and Socket.IO events remain anonymous; the protected `/admin/auction-operations` route performs the separate short-lived RS256 handoff to the portal. See the [repository README](../../README.md) for the final architecture, local infrastructure setup, and end-to-end demo instructions.
+Laravel owns bidder and tenant-admin identity. Authenticated bid, Buy Now, and tenant auction-management commands use same-origin Laravel routes, which mint short-lived RS256 Bidding Service tokens server-side and proxy the commands. The browser never chooses or stores authoritative identity or downstream tokens. Public auction reads and Socket.IO events remain anonymous. Platform monitoring is entered through the independent Operations Portal SystemAdministrator session. See the [repository README](../../README.md) for the final architecture, local infrastructure setup, and end-to-end demo instructions.
 
 ### Authenticated auction commands
 

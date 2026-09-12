@@ -1,5 +1,5 @@
 /**
- * Small signed-cookie session boundary for the Laravel-authorized live-feed operations page.
+ * Small signed-cookie session boundary for the system-admin-authorized live-feed operations page.
  */
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { AdminHandoffClaims } from '../../../application/ports/admin-handoff-store.js';

@@ -5,7 +5,6 @@ import test from 'node:test';
 import express from 'express';
 import { AdminAuth } from '../../src/transport/http/admin/admin-auth.js';
 import { registerAdminRoutes } from '../../src/transport/http/admin/admin-route.js';
-import { adminRoutes } from '../../src/transport/http/admin/admin-routes.js';
 import type {
   AdminTokenReplayConsumer,
   AdminTokenReplayConsumeResult,
@@ -55,31 +54,12 @@ async function startApp(
   };
 }
 
-const claims: AdminTokenClaims = {
-  sub: '1',
-  email: 'admin@example.test',
-  role: 'admin',
-  permissions: ['access-live-feed-admin'],
-  iss: 'auction-client',
-  aud: 'live-feed-admin',
-  iat: 1,
-  exp: 9_999_999_999,
-};
-const verifier: AdminTokenVerifier = {
-  verify: (token) => {
-    if (token !== 'valid-token') throw new Error('invalid');
-    return claims;
-  },
-};
-
 class TestAdminTokenReplayConsumer implements AdminTokenReplayConsumer {
   public readonly calls: Array<{ jti: string; expiresAt: Date }> = [];
   public outcome: AdminTokenReplayConsumeResult = { outcome: 'consumed' };
-  public error: Error | undefined;
 
   public consume(jti: string, expiresAt: Date): Promise<AdminTokenReplayConsumeResult> {
     this.calls.push({ jti, expiresAt });
-    if (this.error) return Promise.reject(this.error);
     return Promise.resolve(this.outcome);
   }
 }
@@ -100,225 +80,83 @@ class TestAdminHandoffStore implements AdminHandoffStore {
   }
 }
 
+const claims: AdminTokenClaims = {
+  sub: 'system-admin-subject',
+  role: 'SystemAdministrator',
+  permissions: ['system.monitor', 'livefeed.admin', 'system.diagnostics'],
+  iss: 'dbap-system-admin',
+  aud: 'live-feed-admin',
+  iat: 1,
+  exp: 9_999_999_999,
+  jti: 'system-jti',
+};
+const verifier: AdminTokenVerifier = {
+  verify: (token) =>
+    token === 'valid-token'
+      ? claims
+      : (() => {
+          throw new Error('invalid');
+        })(),
+};
+
 function registerTestAdminRoutes(
   app: express.Express,
-  tokenVerifier: AdminTokenVerifier = verifier,
-  replayConsumer: TestAdminTokenReplayConsumer = new TestAdminTokenReplayConsumer(),
-): TestAdminTokenReplayConsumer {
+  replayConsumer = new TestAdminTokenReplayConsumer(),
+  handoffStore = new TestAdminHandoffStore(),
+) {
   registerAdminRoutes(app, {
     auth: new AdminAuth({ secret: 'test-secret', secure: false }),
-    tokenVerifier,
     replayConsumer,
-    clientOrigin: 'http://localhost:8000',
     assetDirectory: 'dist/ui',
     publicAdminDirectory: 'public/admin',
-    getSnapshot: () => snapshot,
-  });
-  return replayConsumer;
-}
-void test('admin token exchange creates a session and serves SSR without Node credentials', async () => {
-  const app = express();
-  const auth = new AdminAuth({ secret: 'test-secret', secure: false });
-  registerAdminRoutes(app, {
-    auth,
-    tokenVerifier: verifier,
-    replayConsumer: new TestAdminTokenReplayConsumer(),
-    clientOrigin: 'http://localhost:8000',
-    assetDirectory: 'dist/ui',
-    publicAdminDirectory: 'public/admin',
-    getSnapshot: () => snapshot,
-  });
-  const server = await startApp(app);
-  try {
-    const unauthorized = await fetch(server.baseUrl + '/admin/live-feed', { redirect: 'manual' });
-    assert.equal(unauthorized.status, 302);
-    const exchange = await fetch(server.baseUrl + '/admin/auth/token', {
-      method: 'POST',
-      headers: { authorization: 'Bearer valid-token' },
-      redirect: 'manual',
-    });
-    assert.equal(exchange.status, 302);
-    assert.match(exchange.headers.get('set-cookie') ?? '', /Path=\//);
-    const cookie = exchange.headers.get('set-cookie')?.split(';')[0] ?? '';
-    const page = await fetch(server.baseUrl + '/admin/live-feed', { headers: { cookie } });
-    const html = await page.text();
-    assert.equal(page.status, 200);
-    assert.match(html, /What is the Live Feed Service doing right now/);
-    assert.doesNotMatch(html, /password/);
-  } finally {
-    await server.close();
-  }
-});
-
-void test('invalid admin token is rejected without issuing a cookie', async () => {
-  const app = express();
-  registerAdminRoutes(app, {
-    auth: new AdminAuth({ secret: 'test-secret' }),
-    tokenVerifier: verifier,
-    replayConsumer: new TestAdminTokenReplayConsumer(),
-    clientOrigin: 'http://localhost:8000',
-    assetDirectory: 'dist/ui',
-    publicAdminDirectory: 'public/admin',
-    getSnapshot: () => snapshot,
-  });
-  const server = await startApp(app);
-  try {
-    const response = await fetch(server.baseUrl + '/admin/auth/token', {
-      method: 'POST',
-      headers: { authorization: 'Bearer invalid-token' },
-    });
-    assert.equal(response.status, 401);
-    assert.equal(response.headers.has('set-cookie'), false);
-  } finally {
-    await server.close();
-  }
-});
-
-void test('duplicate admin token exchange is rejected without issuing a cookie', async () => {
-  const app = express();
-  const replayConsumer = new TestAdminTokenReplayConsumer();
-  registerTestAdminRoutes(app, verifier, replayConsumer);
-  const server = await startApp(app);
-  try {
-    const firstResponse = await fetch(server.baseUrl + '/admin/auth/token', {
-      method: 'POST',
-      headers: { authorization: 'Bearer valid-token' },
-      redirect: 'manual',
-    });
-    assert.equal(firstResponse.status, 302);
-    assert.match(firstResponse.headers.get('set-cookie') ?? '', /Path=\//);
-
-    replayConsumer.outcome = { outcome: 'already_consumed' };
-    const duplicateResponse = await fetch(server.baseUrl + '/admin/auth/token', {
-      method: 'POST',
-      headers: { authorization: 'Bearer valid-token' },
-    });
-    assert.equal(duplicateResponse.status, 401);
-    assert.equal(duplicateResponse.headers.has('set-cookie'), false);
-    assert.equal(replayConsumer.calls.length, 2);
-  } finally {
-    await server.close();
-  }
-});
-
-void test('replay-store failure fails closed without issuing a cookie', async () => {
-  const app = express();
-  const replayConsumer = new TestAdminTokenReplayConsumer();
-  replayConsumer.error = new Error('redis unavailable');
-  registerTestAdminRoutes(app, verifier, replayConsumer);
-  const server = await startApp(app);
-  try {
-    const response = await fetch(server.baseUrl + '/admin/auth/token', {
-      method: 'POST',
-      headers: { authorization: 'Bearer valid-token' },
-    });
-    assert.equal(response.status, 503);
-    assert.equal(response.headers.has('set-cookie'), false);
-  } finally {
-    await server.close();
-  }
-});
-
-void test('invalid JWT is rejected before replay consumption', async () => {
-  const app = express();
-  const replayConsumer = new TestAdminTokenReplayConsumer();
-  const invalidVerifier: AdminTokenVerifier = {
-    verify: () => {
-      throw new Error('invalid');
-    },
-  };
-  registerTestAdminRoutes(app, invalidVerifier, replayConsumer);
-  const server = await startApp(app);
-  try {
-    const response = await fetch(server.baseUrl + '/admin/auth/token', {
-      method: 'POST',
-      headers: { authorization: 'Bearer invalid-token' },
-    });
-    assert.equal(response.status, 401);
-    assert.equal(replayConsumer.calls.length, 0);
-    assert.equal(response.headers.has('set-cookie'), false);
-  } finally {
-    await server.close();
-  }
-});
-
-void test('exchange passes validated JTI expiry and accepts independent JTIs', async () => {
-  const secondClaims = { ...claims, sub: '2', jti: 'second-jti' };
-  const tokenClaims = new Map([
-    ['first-token', claims],
-    ['second-token', secondClaims],
-  ]);
-  const tokenVerifier: AdminTokenVerifier = {
-    verify: (token) =>
-      tokenClaims.get(token) ??
-      (() => {
-        throw new Error('invalid');
-      })(),
-  };
-  const app = express();
-  const replayConsumer = new TestAdminTokenReplayConsumer();
-  registerTestAdminRoutes(app, tokenVerifier, replayConsumer);
-  const server = await startApp(app);
-  try {
-    for (const token of ['first-token', 'second-token']) {
-      const response = await fetch(server.baseUrl + '/admin/auth/token', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${token}` },
-        redirect: 'manual',
-      });
-      assert.equal(response.status, 302);
-      assert.match(response.headers.get('set-cookie') ?? '', /Path=\//);
-    }
-    assert.deepEqual(replayConsumer.calls, [
-      { jti: claims.jti, expiresAt: new Date(claims.exp * 1000) },
-      { jti: secondClaims.jti, expiresAt: new Date(secondClaims.exp * 1000) },
-    ]);
-  } finally {
-    await server.close();
-  }
-});
-
-void test('admin handoff paths remain stable', () => {
-  assert.deepEqual(adminRoutes, {
-    liveFeed: '/admin/live-feed',
-    tokenExchange: '/admin/auth/token',
-  });
-});
-
-void test('system-admin exchange creates an opaque one-time browser handoff without returning a JWT', async () => {
-  const app = express();
-  const handoffStore = new TestAdminHandoffStore();
-  const systemClaims: AdminTokenClaims = {
-    sub: 'system-admin-subject',
-    role: 'SystemAdministrator',
-    permissions: ['system.monitor', 'livefeed.admin', 'system.diagnostics'],
-    iss: 'dbap-system-admin',
-    aud: 'live-feed-admin',
-    iat: 1,
-    exp: 9_999_999_999,
-    jti: 'system-jti',
-  };
-  registerAdminRoutes(app, {
-    auth: new AdminAuth({ secret: 'test-secret', secure: false }),
-    tokenVerifier: verifier,
-    systemTokenVerifier: { verify: () => systemClaims },
-    replayConsumer: new TestAdminTokenReplayConsumer(),
+    systemAdminPortalUrl: 'http://localhost:5099',
+    systemTokenVerifier: verifier,
     handoffStore,
-    clientOrigin: 'http://localhost:8000',
-    assetDirectory: 'dist/ui',
-    publicAdminDirectory: 'public/admin',
     getSnapshot: () => snapshot,
   });
+  return { replayConsumer, handoffStore };
+}
+
+void test('anonymous admin page is rejected', async () => {
+  const app = express();
+  registerTestAdminRoutes(app);
+  const server = await startApp(app);
+  try {
+    const response = await fetch(server.baseUrl + '/admin/live-feed', { redirect: 'manual' });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('location'), '/admin/login');
+  } finally {
+    await server.close();
+  }
+});
+
+void test('admin login redirects to the independent Operations Portal', async () => {
+  const app = express();
+  registerTestAdminRoutes(app);
+  const server = await startApp(app);
+  try {
+    const response = await fetch(server.baseUrl + '/admin/login', { redirect: 'manual' });
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get('location'), 'http://localhost:5099/login');
+  } finally {
+    await server.close();
+  }
+});
+
+void test('system-admin exchange creates a one-time opaque handoff without returning a JWT', async () => {
+  const app = express();
+  const setup = registerTestAdminRoutes(app);
   const server = await startApp(app);
   try {
     const exchange = await fetch(server.baseUrl + '/admin/auth/system-token', {
       method: 'POST',
-      headers: { authorization: 'Bearer system-token' },
+      headers: { authorization: 'Bearer valid-token' },
     });
     assert.equal(exchange.status, 200);
     const body = (await exchange.json()) as { handoffCode?: string; token?: string };
     assert.equal(body.handoffCode, 'opaque-handoff-code');
     assert.equal(body.token, undefined);
+    assert.equal(setup.replayConsumer.calls[0]?.jti, claims.jti);
 
     const handoff = await fetch(server.baseUrl + '/admin/auth/handoff?code=opaque-handoff-code', {
       redirect: 'manual',
@@ -332,6 +170,24 @@ void test('system-admin exchange creates an opaque one-time browser handoff with
     });
     assert.equal(replay.status, 302);
     assert.equal(replay.headers.get('set-cookie'), null);
+  } finally {
+    await server.close();
+  }
+});
+
+void test('invalid or missing system-admin token is rejected without a cookie', async () => {
+  const app = express();
+  registerTestAdminRoutes(app);
+  const server = await startApp(app);
+  try {
+    const missing = await fetch(server.baseUrl + '/admin/auth/system-token', { method: 'POST' });
+    assert.equal(missing.status, 401);
+    const invalid = await fetch(server.baseUrl + '/admin/auth/system-token', {
+      method: 'POST',
+      headers: { authorization: 'Bearer invalid-token' },
+    });
+    assert.equal(invalid.status, 401);
+    assert.equal(invalid.headers.has('set-cookie'), false);
   } finally {
     await server.close();
   }
