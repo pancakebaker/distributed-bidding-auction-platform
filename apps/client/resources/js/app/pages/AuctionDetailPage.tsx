@@ -30,6 +30,12 @@ type WinnerState = {
     selectedAtUtc?: string;
     auctionVersion: number;
 };
+
+function loginHref(): string {
+    const returnPath = window.location.pathname + window.location.search;
+
+    return '/login?return=' + encodeURIComponent(returnPath);
+}
 /**
  * Renders detail state, bid submission, and live auction updates.
  */
@@ -552,7 +558,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                             </h2>
                             {!auth.authenticated && (
                                 <p className="muted">
-                                    <a href="/login">Sign in to bid or buy</a> to participate.
+                                    <a href={loginHref()}>Sign in to bid or buy</a> to participate.
                                 </p>
                             )}
                             {auth.authenticated && auction.saleMode !== 'BuyNowOnly' && (

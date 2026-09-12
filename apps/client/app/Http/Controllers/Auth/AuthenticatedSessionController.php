@@ -14,8 +14,13 @@ class AuthenticatedSessionController extends Controller
     /**
      * Show the session login form.
      */
-    public function create(): View
+    public function create(Request $request): View
     {
+        $return = (string) $request->query('return', '');
+        if (! $request->session()->has('url.intended') && $this->isSafeLocalPath($return)) {
+            $request->session()->put('url.intended', $return);
+        }
+
         return view('auth.login');
     }
 
@@ -37,7 +42,9 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('admin.dashboard'));
+        return redirect()->intended(
+            $request->user()->is_admin ? route('admin.dashboard') : route('auctions.index'),
+        );
     }
 
     /**
@@ -51,5 +58,15 @@ class AuthenticatedSessionController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
+    }
+
+    private function isSafeLocalPath(string $path): bool
+    {
+        return $path !== ''
+            && str_starts_with($path, '/')
+            && ! str_starts_with($path, '//')
+            && ! str_contains($path, '\\')
+            && parse_url($path, PHP_URL_HOST) === null
+            && preg_match('/[\x00-\x1F\x7F]/', $path) !== 1;
     }
 }

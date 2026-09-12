@@ -23,6 +23,7 @@ class AuthenticationFlowTest extends TestCase
         $this->get('/login')
             ->assertOk()
             ->assertSee('Sign in')
+            ->assertSee('Distributed Bidding Auction Platform')
             ->assertSee('Email')
             ->assertSee('Password');
     }
@@ -53,7 +54,7 @@ class AuthenticationFlowTest extends TestCase
         $this->post('/login', [
             'email' => 'bidder@example.test',
             'password' => 'correct-password',
-        ])->assertRedirect('/admin');
+        ])->assertRedirect('/auctions');
 
         $this->assertAuthenticatedAs($bidder);
         $this->get('/admin')->assertForbidden();
@@ -86,7 +87,7 @@ class AuthenticationFlowTest extends TestCase
         $this->post('/login', [
             'email' => 'user@example.com',
             'password' => 'correct-password',
-        ])->assertRedirect('/admin');
+        ])->assertRedirect('/auctions');
 
         $this->assertAuthenticatedAs($user);
         $this->get('/admin')->assertForbidden();
@@ -100,6 +101,58 @@ class AuthenticationFlowTest extends TestCase
 
         $this->assertGuest();
         $this->get('/admin')->assertRedirect('/login');
+    }
+
+    public function test_bidder_login_returns_to_a_safe_intended_auction(): void
+    {
+        $bidder = User::factory()->create([
+            'email' => 'bidder@example.test',
+            'password' => Hash::make('correct-password'),
+        ]);
+
+        $this->withSession(['url.intended' => '/auctions/auction-123'])
+            ->post('/login', [
+                'email' => 'bidder@example.test',
+                'password' => 'correct-password',
+            ])
+            ->assertRedirect('/auctions/auction-123');
+
+        $this->assertAuthenticatedAs($bidder);
+    }
+
+    public function test_admin_login_preserves_an_intended_admin_page(): void
+    {
+        $admin = User::factory()->admin()->create([
+            'email' => 'admin@example.com',
+            'password' => Hash::make('correct-password'),
+        ]);
+
+        $this->withSession(['url.intended' => '/admin/auctions'])
+            ->post('/login', [
+                'email' => 'admin@example.com',
+                'password' => 'correct-password',
+            ])
+            ->assertRedirect('/admin/auctions');
+
+        $this->assertAuthenticatedAs($admin);
+    }
+
+    public function test_login_return_path_accepts_only_local_paths(): void
+    {
+        $bidder = User::factory()->create([
+            'email' => 'bidder@example.test',
+            'password' => Hash::make('correct-password'),
+        ]);
+
+        $this->get('/login?return=https://external.example.test');
+
+        $this->post('/login', [
+            'email' => 'bidder@example.test',
+            'password' => 'correct-password',
+        ])
+            ->assertRedirect('/auctions');
+
+        $this->assertAuthenticatedAs($bidder);
     }
 
     public function test_public_registration_is_not_available(): void

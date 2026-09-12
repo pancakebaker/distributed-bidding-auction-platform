@@ -9,7 +9,7 @@
     <body>
         <main class="auth-shell">
             <section class="auth-card" aria-labelledby="login-title">
-                <p class="eyebrow">Laravel administration</p>
+                <p class="eyebrow">Distributed Bidding Auction Platform</p>
                 <h1 id="login-title">Sign in</h1>
                 <form method="post" action="{{ route('login.store') }}" class="auth-form">
                     @csrf

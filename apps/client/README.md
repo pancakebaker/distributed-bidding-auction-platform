@@ -152,11 +152,27 @@ The client is part of a larger distributed auction platform that includes:
 - **Auction Scheduler** — handles time-based auction lifecycle actions
 - **Outbox Publisher** — publishes persisted domain events to the messaging infrastructure
 
-Laravel remains the identity authority. Authenticated bid and Buy Now commands now use same-origin Laravel routes, which mint a short-lived RS256 Bidding Service token server-side and proxy the command. The browser never chooses or stores the authoritative bidder identity. Public auction reads and Socket.IO events remain anonymous; management writes remain outside this BFF until AUTH3. The protected `/admin/auction-operations` route performs the separate short-lived RS256 handoff to the portal; the client does not store either downstream JWT. See the [repository README](../../README.md) for the final architecture, local infrastructure setup, and end-to-end demo instructions.
+Laravel remains the identity authority. Authenticated bid, Buy Now, and tenant auction-management commands use same-origin Laravel routes, which mint short-lived RS256 Bidding Service tokens server-side and proxy the commands. The browser never chooses or stores authoritative identity or downstream tokens. Public auction reads and Socket.IO events remain anonymous; the protected `/admin/auction-operations` route performs the separate short-lived RS256 handoff to the portal. See the [repository README](../../README.md) for the final architecture, local infrastructure setup, and end-to-end demo instructions.
 
 ### Authenticated auction commands
 
 Signed-in users can bid or use Buy Now through the Laravel session and CSRF-protected BFF. The Bidding Service validates the Laravel-issued token and derives `BidderId`/`FinalWinnerId` from the token `sub`; browser payloads contain only the bid amount or an empty Buy Now command. Seeded local bidder accounts are provisioned for development, and public signup is intentionally unavailable. The HTTP auction read API remains the recovery authority after stale or missed live updates.
+
+## Local demo accounts
+
+The shared `/login` page is used by both bidders and administrators. Local
+development seeders provision these non-admin bidder accounts:
+
+- `bidder1@example.test`
+- `bidder2@example.test`
+- `bidder3@example.test`
+
+`LocalBidderSeeder` reads `DEMO_BIDDER_PASSWORD`; when it is unset, the
+documented fallback is `bidder-password`. These credentials are for local/demo
+use only. There is no public signup, and production deployments must not rely
+on demo credentials. Bidder login returns to a safe intended auction page when
+available, otherwise it falls back to `/auctions`; admin login falls back to
+`/admin`.
 
 ## License
 
