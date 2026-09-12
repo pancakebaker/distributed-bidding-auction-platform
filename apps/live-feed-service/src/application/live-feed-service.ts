@@ -16,6 +16,7 @@ import { loadConfig } from '../config/config.js';
 import { LiveFeedEventProcessor } from './processors/live-feed-event-processor.js';
 import { LiveFeedRabbitMqConsumer } from '../infrastructure/messaging/rabbitmq-consumer.js';
 import { auctionRoom, parseAuctionSubscription } from '../transport/websocket/rooms.js';
+import { adminSocketEvents, adminSocketRooms, auctionSocketEvents } from '../domain/transport.js';
 import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
 import { RedisAdminTokenReplayConsumer } from '../infrastructure/cache/redis-admin-token-replay-consumer.js';
 import { SocketIoLiveFeedPublisher } from '../transport/websocket/socketio-live-feed-publisher.js';
@@ -38,7 +39,6 @@ import { RecentActivityStore } from './diagnostics/recent-activity-store.js';
 import {
   LiveFeedActivityObserver,
   SocketIoAdminLiveFeedPublisher,
-  adminLiveFeedRoom,
 } from '../transport/websocket/admin-live-feed-publisher.js';
 import { registerRuntimeThreadPoolRoute } from '../transport/http/runtime-thread-pool-route.js';
 import { registerRuntimeChildProcessRoute } from '../transport/http/runtime-child-process-route.js';
@@ -182,14 +182,14 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
 
   io.on('connection', (socket) => {
     socket.on(
-      'admin:subscribe',
+      adminSocketEvents.subscribe,
       (acknowledge?: (response: { ok: boolean; error?: string }) => void) => {
         if (!adminAuth.isAuthorizedCookie(socket.handshake.headers.cookie)) {
           acknowledge?.({ ok: false, error: 'admin_authorization_required' });
           return;
         }
 
-        void socket.join(adminLiveFeedRoom);
+        void socket.join(adminSocketRooms.liveFeed);
         acknowledge?.({ ok: true });
       },
     );
@@ -199,13 +199,13 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     });
 
     socket.on(
-      'auction:subscribe',
+      auctionSocketEvents.subscribe,
       (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
         const auctionId = parseAuctionSubscription(value);
 
         if (!auctionId) {
           acknowledge?.({ ok: false, error: 'invalid_auction_id' });
-          socket.emit('subscription:error', { code: 'invalid_auction_id' });
+          socket.emit(adminSocketEvents.subscriptionError, { code: 'invalid_auction_id' });
           return;
         }
 
@@ -216,7 +216,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     );
 
     socket.on(
-      'auction:unsubscribe',
+      auctionSocketEvents.unsubscribe,
       (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
         const auctionId = parseAuctionSubscription(value);
 

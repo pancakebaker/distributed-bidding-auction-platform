@@ -1,5 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { liveFeedSocketEvents } from './contracts/liveFeedTransport';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AuctionApp as App } from './app/AuctionApp';
@@ -146,15 +147,15 @@ function renderAt(path: string) {
 }
 
 function live(event: LiveBidAccepted) {
-    socketHandlers.get('bid:accepted')?.(event);
+    socketHandlers.get(liveFeedSocketEvents.bidAccepted)?.(event);
 }
 
 function liveClosed(event: LiveAuctionClosed) {
-    socketHandlers.get('auction:closed')?.(event);
+    socketHandlers.get(liveFeedSocketEvents.auctionClosed)?.(event);
 }
 
 function liveWinner(event: LiveWinnerSelected) {
-    socketHandlers.get('winner:selected')?.(event);
+    socketHandlers.get(liveFeedSocketEvents.winnerSelected)?.(event);
 }
 describe('auction UI', () => {
     beforeEach(() => {
@@ -375,7 +376,7 @@ describe('auction UI', () => {
 
         socketHandlers.get('connect')?.();
 
-        expect(emitMock).toHaveBeenCalledWith('auction:subscribe', macBook.id);
+        expect(emitMock).toHaveBeenCalledWith(liveFeedSocketEvents.subscribe, macBook.id);
     });
 
     it('disconnects the live feed subscription when the auction detail unmounts', async () => {

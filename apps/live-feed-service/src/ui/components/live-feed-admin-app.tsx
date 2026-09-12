@@ -5,10 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import type { LiveFeedHistoryResult } from '../../application/history/live-feed-history-types.js';
 import type { LiveFeedDashboardSnapshot } from '../../application/diagnostics/get-live-feed-dashboard.js';
-import {
-  adminActivityEvent,
-  adminLiveFeedRoom,
-} from '../../transport/websocket/admin-live-feed-publisher.js';
+import { adminSocketEvents, adminSocketRooms } from '../../domain/transport.js';
 import { mergeRecentActivity } from './live-feed-admin-state.js';
 
 export type LiveFeedAdminAppProps = {
@@ -66,13 +63,13 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
 
   useEffect(() => {
     const socket = io();
-    socket.emit('admin:subscribe', (result: { ok: boolean }) => {
+    socket.emit(adminSocketEvents.subscribe, (result: { ok: boolean }) => {
       if (!result.ok) {
         socket.disconnect();
       }
     });
     socket.on(
-      adminActivityEvent,
+      adminSocketEvents.activity,
       (activity: LiveFeedDashboardSnapshot['recentActivity'][number]) => {
         setState((current) => ({
           ...current,
@@ -82,7 +79,7 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
     );
 
     return () => {
-      socket.off(adminActivityEvent);
+      socket.off(adminSocketEvents.activity);
       socket.disconnect();
     };
   }, []);
@@ -331,4 +328,4 @@ export function LiveFeedAdminApp({ initialState }: LiveFeedAdminAppProps): React
   );
 }
 
-export const adminSocketRoom = adminLiveFeedRoom;
+export const adminSocketRoom = adminSocketRooms.liveFeed;

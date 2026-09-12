@@ -3,6 +3,7 @@
  */
 import { io, type Socket } from 'socket.io-client';
 import type { LiveAuctionClosed, LiveBidAccepted, LiveWinnerSelected } from './types';
+import { liveFeedSocketEvents } from './contracts/liveFeedTransport';
 
 const liveFeedUrl = import.meta.env.VITE_LIVE_FEED_URL ?? 'http://localhost:3001';
 
@@ -27,15 +28,15 @@ export function connectAuctionFeed(auctionId: string, handlers: LiveFeedHandlers
 
     socket.on('connect', () => {
         handlers.onStatus('connected');
-        socket.emit('auction:subscribe', auctionId);
+        socket.emit(liveFeedSocketEvents.subscribe, auctionId);
     });
 
     socket.io.on('reconnect_attempt', () => handlers.onStatus('reconnecting'));
     socket.on('disconnect', () => handlers.onStatus('offline'));
     socket.on('connect_error', () => handlers.onStatus('offline'));
-    socket.on('bid:accepted', handlers.onBidAccepted);
-    socket.on('auction:closed', handlers.onAuctionClosed);
-    socket.on('winner:selected', handlers.onWinnerSelected);
+    socket.on(liveFeedSocketEvents.bidAccepted, handlers.onBidAccepted);
+    socket.on(liveFeedSocketEvents.auctionClosed, handlers.onAuctionClosed);
+    socket.on(liveFeedSocketEvents.winnerSelected, handlers.onWinnerSelected);
 
     return socket;
 }

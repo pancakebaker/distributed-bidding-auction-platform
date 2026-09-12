@@ -3,6 +3,7 @@
  */
 import type { IntegrationEventType, LiveFeedEnvelope } from '../../domain/events.js';
 import { integrationEventTypes, toSocketPayload } from '../../domain/events.js';
+import { auctionSocketEvents } from '../../domain/transport.js';
 import type { ActivityRecorder } from '../ports/activity-recorder.js';
 import type { LiveFeedPublisher } from '../ports/live-feed-publisher.js';
 import type { LiveStateStore } from '../ports/live-state-store.js';
@@ -126,14 +127,17 @@ export class LiveFeedEventProcessor {
 
 function socketEventName(
   eventType: IntegrationEventType,
-): 'bid:accepted' | 'auction:closed' | 'winner:selected' {
+):
+  | typeof auctionSocketEvents.bidAccepted
+  | typeof auctionSocketEvents.auctionClosed
+  | typeof auctionSocketEvents.winnerSelected {
   if (eventType === integrationEventTypes.bidAccepted) {
-    return 'bid:accepted';
+    return auctionSocketEvents.bidAccepted;
   }
 
   if (eventType === integrationEventTypes.auctionClosed) {
-    return 'auction:closed';
+    return auctionSocketEvents.auctionClosed;
   }
 
-  return 'winner:selected';
+  return auctionSocketEvents.winnerSelected;
 }

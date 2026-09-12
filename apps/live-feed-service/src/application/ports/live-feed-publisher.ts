@@ -6,11 +6,15 @@ import type {
   BidAcceptedSocketPayload,
   WinnerSelectedSocketPayload,
 } from '../../domain/events.js';
+import type { auctionSocketEvents } from '../../domain/transport.js';
 
 /**
  * Names of the existing browser-facing live-feed events.
  */
-export type LiveFeedSocketEvent = 'bid:accepted' | 'auction:closed' | 'winner:selected';
+export type LiveFeedSocketEvent =
+  | typeof auctionSocketEvents.bidAccepted
+  | typeof auctionSocketEvents.auctionClosed
+  | typeof auctionSocketEvents.winnerSelected;
 
 /**
  * Existing browser-facing live-feed payload union.

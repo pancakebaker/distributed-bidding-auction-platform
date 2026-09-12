@@ -6,11 +6,12 @@ import type { OperationalActivity } from '../../application/diagnostics/recent-a
 import type { LiveFeedHistoryRecord } from '../../application/history/live-feed-history-types.js';
 import type { LiveFeedHistoryStore } from '../../application/ports/live-feed-history-store.js';
 import type { ActivityRecorder } from '../../application/ports/activity-recorder.js';
+import { adminSocketEvents, adminSocketRooms } from '../../domain/transport.js';
 
 /** Socket.IO room reserved for authorized operational admin sockets. */
-export const adminLiveFeedRoom = 'admin:live-feed';
+export const adminLiveFeedRoom = adminSocketRooms.liveFeed;
 /** Socket.IO event carrying safe operational activity metadata. */
-export const adminActivityEvent = 'admin:activity';
+export const adminActivityEvent = adminSocketEvents.activity;
 
 /**
  * Publishes operational activity only to the separate admin room.
