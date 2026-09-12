@@ -60,6 +60,14 @@ Route::middleware(['auth', 'can:access-admin'])
         Route::get('/exports/{export}/download', [AdminExportController::class, 'download'])
             ->name('exports.download');
         Route::get('/auctions', AdminAuctionController::class)->name('auctions');
+        Route::post('/api/auctions', [AdminAuctionController::class, 'create'])
+            ->name('api.auctions.create');
+        Route::put('/api/auctions/{auction}', [AdminAuctionController::class, 'update'])
+            ->name('api.auctions.update');
+        Route::delete('/api/auctions/{auction}', [AdminAuctionController::class, 'delete'])
+            ->name('api.auctions.delete');
+        Route::post('/api/auctions/{auction}/cancel', [AdminAuctionController::class, 'cancel'])
+            ->name('api.auctions.cancel');
 
         Route::get('/pages', [AdminPageController::class, 'index'])->name('pages.index');
         Route::get('/pages/create', [AdminPageController::class, 'create'])->name('pages.create');

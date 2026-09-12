@@ -91,6 +91,8 @@ React browser
   ↓
 resources/js/api.ts
   ↓
+Laravel BFF for commands and management writes
+  ↓
 Bidding Service
 ```
 
@@ -188,8 +190,8 @@ The client keeps Laravel as the Blade/web boundary and does not own authoritativ
 
 ## Auction Management Boundary
 
-The `/admin/auctions` page writes auction configuration through the Bidding
-Service management API. Laravel/React does not write BiddingDb directly, and
+The `/admin/auctions` page writes auction configuration through the authenticated
+Laravel BFF to the Bidding Service management API. Laravel/React does not write BiddingDb directly, and
 the existing live operations surface remains an event-consumer/read-only view.
 Only untouched future `Scheduled` auctions are presented as editable or
 deletable; the Bidding Service remains authoritative when lifecycle state has
@@ -198,6 +200,7 @@ changed since the page loaded.
 Sale-mode forms use `BuyNowPrice` as the authoritative Buy Now value. For
 `BuyNowOnly`, a persisted `StartingPrice` equal to `BuyNowPrice` is a schema
 compatibility detail rather than a second purchase price. Management API
-authorization remains a production hardening requirement because the current
-repository does not yet provide a dedicated authenticated Bidding Service
-management principal.
+authorization is enforced by the Laravel admin gate and the Bidding Service
+`AuctionManage` policy. Multi-tenant resource authorization is intentionally
+deferred; the current Laravel admin identity is the future tenant-side manager
+boundary.

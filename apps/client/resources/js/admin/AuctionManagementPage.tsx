@@ -252,8 +252,8 @@ export function AuctionManagementPage() {
                 </button>
             </div>
             <div className="admin-management-note" role="note">
-                Configuration is written through the authoritative Bidding Service API. Management
-                API authorization remains a production hardening requirement.
+                Configuration is written through the Laravel admin boundary to the authoritative
+                Bidding Service API.
             </div>
             {message && (
                 <p className="admin-flash" role="status">

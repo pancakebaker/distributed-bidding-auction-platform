@@ -105,7 +105,7 @@ The portal’s history query is UTC-based, bounded to a 31-day range, filtered b
 
 ## Client Application
 
-The Laravel client is the browser-facing web shell. React renders the demo auction list and auction detail routes, calls the Bidding Service REST API directly for auction reads, ordinary bids, and explicit Buy Now commands, and subscribes to the Live Feed Service for `bid:accepted`, `auction:purchased`, `auction:closed`, and `winner:selected` projections. SaleMode controls rendered actions; the client preserves ordinary CurrentBid* separately from terminal Final* state.
+The Laravel client is the browser-facing web shell. React renders the demo auction list and auction detail routes, calls the Bidding Service REST API directly for public auction reads, sends ordinary bids and explicit Buy Now commands through Laravel's authenticated BFF, and subscribes to the Live Feed Service for `bid:accepted`, `auction:purchased`, `auction:closed`, and `winner:selected` projections. SaleMode controls rendered actions; the client preserves ordinary CurrentBid* separately from terminal Final* state.
 
 The client never decides whether a bid is valid. It submits commands to the Bidding Service, handles structured REST responses, and updates local UI state from accepted command responses. Socket.IO events are used for multi-browser convergence and live awareness.
 

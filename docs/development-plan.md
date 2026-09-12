@@ -26,7 +26,7 @@ Implemented: RabbitMQ `BidAccepted` consumer, durable shared live-feed queue, ma
 
 ## Phase 6: Laravel + React auction UI
 
-Implemented: Laravel routes for the React app shell, auction list/detail screens, direct REST integration with the Bidding Service, demo bidder selector, bid validation/error handling, Socket.IO live updates, client-side auction version protection, responsive styling, and Vitest/Testing Library coverage.
+Implemented: Laravel routes for the React app shell, auction list/detail screens, direct REST integration with the Bidding Service for public reads, authenticated Laravel BFF commands for bids and Buy Now, authenticated Laravel BFF management writes, bid validation/error handling, Socket.IO live updates, client-side auction version protection, responsive styling, and Vitest/Testing Library coverage.
 
 ## Phase 7: Auction scheduler
 

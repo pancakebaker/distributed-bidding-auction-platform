@@ -27,12 +27,14 @@ public static class AuctionEndpoints
 
         group.MapPost("/", CreateAuction)
             .WithName("CreateAuction")
+            .RequireAuthorization("AuctionManage")
             .Produces<AuctionDetailResponse>(StatusCodes.Status201Created)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
 
         group.MapPut("/{id:guid}", UpdateAuction)
             .WithName("UpdateAuction")
+            .RequireAuthorization("AuctionManage")
             .Produces<AuctionDetailResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
@@ -40,12 +42,14 @@ public static class AuctionEndpoints
 
         group.MapDelete("/{id:guid}", DeleteAuction)
             .WithName("DeleteAuction")
+            .RequireAuthorization("AuctionManage")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
             .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
 
         group.MapPost("/{id:guid}/cancel", CancelAuction)
             .WithName("CancelAuction")
+            .RequireAuthorization("AuctionManage")
             .Produces<AuctionDetailResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
             .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);

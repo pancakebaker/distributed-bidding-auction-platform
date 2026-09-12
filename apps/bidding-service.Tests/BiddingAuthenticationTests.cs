@@ -113,4 +113,53 @@ public sealed class BiddingAuthenticationTests : IClassFixture<AuctionApiFactory
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
+
+    [Theory]
+    [InlineData("POST", "/api/auctions")]
+    [InlineData("PUT", "/api/auctions/00000000-0000-0000-0000-000000000001")]
+    [InlineData("DELETE", "/api/auctions/00000000-0000-0000-0000-000000000001")]
+    [InlineData("POST", "/api/auctions/00000000-0000-0000-0000-000000000001/cancel")]
+    public async Task ManagementEndpointsRequireAuthentication(string method, string path)
+    {
+        client.DefaultRequestHeaders.Authorization = null;
+
+        using var request = new HttpRequestMessage(new HttpMethod(method), path)
+        {
+            Content = JsonContent.Create(new { version = 1 })
+        };
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("POST", "/api/auctions")]
+    [InlineData("PUT", "/api/auctions/00000000-0000-0000-0000-000000000001")]
+    [InlineData("DELETE", "/api/auctions/00000000-0000-0000-0000-000000000001")]
+    [InlineData("POST", "/api/auctions/00000000-0000-0000-0000-000000000001/cancel")]
+    public async Task ManagementEndpointsRejectBidderPermission(string method, string path)
+    {
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTestKeys.CreateToken(permissions: ["auction.bid", "auction.buy"]));
+
+        using var request = new HttpRequestMessage(new HttpMethod(method), path)
+        {
+            Content = JsonContent.Create(new
+            {
+                title = "Unauthorized",
+                description = "Unauthorized",
+                saleMode = "AuctionOnly",
+                startingPrice = 100m,
+                minimumBidIncrement = 10m,
+                startTimeUtc = DateTimeOffset.UtcNow.AddHours(1),
+                endTimeUtc = DateTimeOffset.UtcNow.AddHours(2)
+            })
+        };
+
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
 }

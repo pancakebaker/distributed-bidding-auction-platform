@@ -22,7 +22,7 @@ Blade host / serialized bootstrap data
 React/Vite admin UI
 ```
 
-The public auction experience remains a React/Vite SPA mounted by Laravel Blade. The browser continues to call the Bidding Service directly for auction queries and bid commands, and it continues to subscribe to the Live Feed Service through Socket.IO.
+The public auction experience remains a React/Vite SPA mounted by Laravel Blade. The browser calls the Bidding Service directly for public auction queries, sends bid and Buy Now commands through Laravel's authenticated BFF, and continues to subscribe to the Live Feed Service through Socket.IO. The `/admin/auctions` surface sends management writes through the same Laravel admin boundary; the browser never receives a Bidding Service token.
 
 ## Request Lifecycle
 

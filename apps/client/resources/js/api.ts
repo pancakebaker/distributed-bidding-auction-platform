@@ -96,9 +96,9 @@ export function getAuctions(): Promise<AuctionSummary[]> {
     return request<AuctionSummary[]>('/api/auctions');
 }
 
-/** Creates an auction through the authoritative Bidding Service management API. */
+/** Creates an auction through the authenticated Laravel BFF. */
 export function createAuction(payload: CreateAuctionRequest): Promise<AuctionDetail> {
-    return request<AuctionDetail>('/api/auctions', {
+    return bffRequest<AuctionDetail>('/admin/api/auctions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -110,7 +110,7 @@ export function updateAuction(
     auctionId: string,
     update: UpdateAuctionRequest,
 ): Promise<AuctionDetail> {
-    return request<AuctionDetail>(`/api/auctions/${auctionId}`, {
+    return bffRequest<AuctionDetail>(`/admin/api/auctions/${auctionId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(update),
@@ -119,12 +119,12 @@ export function updateAuction(
 
 /** Deletes an untouched future Scheduled auction when the server permits it. */
 export function deleteAuction(auctionId: string): Promise<void> {
-    return request<void>(`/api/auctions/${auctionId}`, { method: 'DELETE' });
+    return bffRequest<void>(`/admin/api/auctions/${auctionId}`, { method: 'DELETE' });
 }
 
 /** Cancels an eligible auction using its expected aggregate version. */
 export function cancelAuction(auctionId: string, version: number): Promise<AuctionDetail> {
-    return request<AuctionDetail>(`/api/auctions/${auctionId}/cancel`, {
+    return bffRequest<AuctionDetail>(`/admin/api/auctions/${auctionId}/cancel`, {
         method: 'POST',
         body: JSON.stringify({ version }),
     });
