@@ -161,6 +161,48 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         Assert.Equal(0, await GetOutboxCountAsync());
     }
 
+    [Fact]
+    public async Task BiddingSchema_IsCompatibleWithSchedulerSql()
+    {
+        await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
+        await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
+
+        await AssertColumnsAsync(connection, "auctions", new Dictionary<string, ColumnExpectation>
+        {
+            ["id"] = new("uuid", false),
+            ["status"] = new("string", false),
+            ["end_time_utc"] = new("timestamptz", false),
+            ["current_bid_amount"] = new("numeric", true),
+            ["current_bidder_id"] = new("string", true),
+            ["version"] = new("bigint", false),
+            ["updated_at_utc"] = new("timestamptz", false)
+        });
+        await AssertColumnsAsync(connection, "bids", new Dictionary<string, ColumnExpectation>
+        {
+            ["id"] = new("uuid", false),
+            ["auction_id"] = new("uuid", false),
+            ["bidder_id"] = new("string", false),
+            ["amount"] = new("numeric", false),
+            ["created_at_utc"] = new("timestamptz", false)
+        });
+        await AssertColumnsAsync(connection, "outbox_messages", new Dictionary<string, ColumnExpectation>
+        {
+            ["id"] = new("uuid", false),
+            ["event_type"] = new("string", false),
+            ["aggregate_type"] = new("string", false),
+            ["aggregate_id"] = new("uuid", false),
+            ["aggregate_version"] = new("bigint", false),
+            ["occurred_at_utc"] = new("timestamptz", false),
+            ["correlation_id"] = new("string", true),
+            ["payload"] = new("jsonb", false),
+            ["created_at_utc"] = new("timestamptz", false),
+            ["publish_attempts"] = new("integer", false)
+        });
+
+        await AssertIndexExistsAsync(connection, "auctions", "ix_auctions_status_end_time_utc");
+        await AssertIndexExistsAsync(connection, "bids", "ix_bids_auction_id_created_at_utc");
+    }
+
     private static AuctionClosingService CreateService()
     {
         var dataSource = NpgsqlDataSource.Create(ConnectionString);
@@ -214,6 +256,85 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
 
         await using var db = CreateDbContext();
         await db.Database.MigrateAsync(CancellationToken.None);
+    }
+
+    private static async Task AssertColumnsAsync(
+        NpgsqlConnection connection,
+        string tableName,
+        IReadOnlyDictionary<string, ColumnExpectation> expectations)
+    {
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT column_name, data_type, udt_name, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = @tableName;
+            """,
+            connection);
+        command.Parameters.AddWithValue("tableName", tableName);
+
+        var columns = new Dictionary<string, ColumnMetadata>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        while (await reader.ReadAsync(CancellationToken.None))
+        {
+            columns[reader.GetString(0)] = new(
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3) == "YES");
+        }
+
+        foreach (var (columnName, expectation) in expectations)
+        {
+            Assert.True(
+                columns.TryGetValue(columnName, out var actual),
+                $"Expected {tableName}.{columnName} to exist. Available columns: {string.Join(", ", columns.Keys)}");
+            Assert.True(
+                expectation.TypeCategory == GetTypeCategory(actual!),
+                $"Unexpected type for {tableName}.{columnName}: expected={expectation.TypeCategory}, data_type={actual!.DataType}, udt_name={actual.UdtName}");
+            Assert.True(
+                expectation.Nullable == actual.IsNullable,
+                $"Unexpected nullability for {tableName}.{columnName}: expected_nullable={expectation.Nullable}, actual_nullable={actual.IsNullable}");
+        }
+    }
+
+    private static async Task AssertIndexExistsAsync(
+        NpgsqlConnection connection,
+        string tableName,
+        string indexName)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = @tableName AND indexname = @indexName;",
+            connection);
+        command.Parameters.AddWithValue("tableName", tableName);
+        command.Parameters.AddWithValue("indexName", indexName);
+        var exists = await command.ExecuteScalarAsync(CancellationToken.None) is not null;
+        Assert.True(exists, $"Expected index {indexName} on {tableName} to exist in the migrated schema.");
+    }
+
+    private static string GetTypeCategory(ColumnMetadata metadata)
+    {
+        if (metadata.UdtName == "uuid")
+        {
+            return "uuid";
+        }
+
+        if (metadata.UdtName == "jsonb")
+        {
+            return "jsonb";
+        }
+
+        if (metadata.DataType is "character varying" or "character" or "text")
+        {
+            return "string";
+        }
+
+        return metadata.DataType switch
+        {
+            "timestamp with time zone" => "timestamptz",
+            "numeric" => "numeric",
+            "bigint" => "bigint",
+            "integer" => "integer",
+            _ => metadata.DataType
+        };
     }
 
     private static async Task DropOutboxTableAsync()
@@ -347,4 +468,6 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
 
     private sealed record AuctionRow(string Status, long Version);
     private sealed record OutboxRow(string EventType, long AggregateVersion, string? CorrelationId, string Payload);
+    private sealed record ColumnExpectation(string TypeCategory, bool Nullable);
+    private sealed record ColumnMetadata(string DataType, string UdtName, bool IsNullable);
 }

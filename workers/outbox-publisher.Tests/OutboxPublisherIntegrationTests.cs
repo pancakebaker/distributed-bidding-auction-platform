@@ -162,6 +162,31 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
         Assert.Equal(second, Assert.Single(secondBatch.Messages).Id);
     }
 
+    [Fact]
+    public async Task BiddingSchema_IsCompatibleWithOutboxPublisherSql()
+    {
+        await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
+        await using var connection = await dataSource.OpenConnectionAsync(CancellationToken.None);
+
+        await AssertColumnsAsync(connection, new Dictionary<string, ColumnExpectation>
+        {
+            ["id"] = new("uuid", false),
+            ["event_type"] = new("string", false),
+            ["aggregate_type"] = new("string", false),
+            ["aggregate_id"] = new("uuid", false),
+            ["aggregate_version"] = new("bigint", false),
+            ["occurred_at_utc"] = new("timestamptz", false),
+            ["correlation_id"] = new("string", true),
+            ["payload"] = new("jsonb", false),
+            ["created_at_utc"] = new("timestamptz", false),
+            ["published_at_utc"] = new("timestamptz", true),
+            ["publish_attempts"] = new("integer", false),
+            ["last_error"] = new("string", true)
+        });
+
+        await AssertIndexExistsAsync(connection, "ix_outbox_messages_published_at_created_at");
+    }
+
 
     private RabbitMqOptions RabbitOptions(int port = 5672)
     {
@@ -220,6 +245,81 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
             .UseNpgsql(ConnectionString)
             .Options;
         return new BiddingDbContext(options);
+    }
+
+    private static async Task AssertColumnsAsync(
+        NpgsqlConnection connection,
+        IReadOnlyDictionary<string, ColumnExpectation> expectations)
+    {
+        const string tableName = "outbox_messages";
+        await using var command = new NpgsqlCommand(
+            """
+            SELECT column_name, data_type, udt_name, is_nullable
+            FROM information_schema.columns
+            WHERE table_schema = 'public' AND table_name = @tableName;
+            """,
+            connection);
+        command.Parameters.AddWithValue("tableName", tableName);
+
+        var columns = new Dictionary<string, ColumnMetadata>(StringComparer.Ordinal);
+        await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        while (await reader.ReadAsync(CancellationToken.None))
+        {
+            columns[reader.GetString(0)] = new(
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3) == "YES");
+        }
+
+        foreach (var (columnName, expectation) in expectations)
+        {
+            Assert.True(
+                columns.TryGetValue(columnName, out var actual),
+                $"Expected {tableName}.{columnName} to exist. Available columns: {string.Join(", ", columns.Keys)}");
+            Assert.True(
+                expectation.TypeCategory == GetTypeCategory(actual!),
+                $"Unexpected type for {tableName}.{columnName}: expected={expectation.TypeCategory}, data_type={actual!.DataType}, udt_name={actual.UdtName}");
+            Assert.True(
+                expectation.Nullable == actual.IsNullable,
+                $"Unexpected nullability for {tableName}.{columnName}: expected_nullable={expectation.Nullable}, actual_nullable={actual.IsNullable}");
+        }
+    }
+
+    private static async Task AssertIndexExistsAsync(NpgsqlConnection connection, string indexName)
+    {
+        await using var command = new NpgsqlCommand(
+            "SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'outbox_messages' AND indexname = @indexName;",
+            connection);
+        command.Parameters.AddWithValue("indexName", indexName);
+        var exists = await command.ExecuteScalarAsync(CancellationToken.None) is not null;
+        Assert.True(exists, $"Expected index {indexName} on outbox_messages to exist in the migrated schema.");
+    }
+
+    private static string GetTypeCategory(ColumnMetadata metadata)
+    {
+        if (metadata.UdtName == "uuid")
+        {
+            return "uuid";
+        }
+
+        if (metadata.UdtName == "jsonb")
+        {
+            return "jsonb";
+        }
+
+        if (metadata.DataType is "character varying" or "character" or "text")
+        {
+            return "string";
+        }
+
+        return metadata.DataType switch
+        {
+            "timestamp with time zone" => "timestamptz",
+            "numeric" => "numeric",
+            "bigint" => "bigint",
+            "integer" => "integer",
+            _ => metadata.DataType
+        };
     }
 
     private async Task ResetRabbitMqAsync()
@@ -315,6 +415,8 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
 
     private sealed record OutboxRow(DateTimeOffset? PublishedAtUtc, int PublishAttempts, string? LastError);
     private sealed record BrokerMessage(string Body, IReadOnlyBasicProperties Properties);
+    private sealed record ColumnExpectation(string TypeCategory, bool Nullable);
+    private sealed record ColumnMetadata(string DataType, string UdtName, bool IsNullable);
 }
 
 
