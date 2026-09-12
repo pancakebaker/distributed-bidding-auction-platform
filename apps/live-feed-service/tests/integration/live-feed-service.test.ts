@@ -418,11 +418,7 @@ void test('AuctionCancelled is consumed, projected, and delivered without termin
       auctionVersion: number;
       occurredAtUtc: string;
       correlationId: string | null;
-    }>(
-      client,
-      'auction:cancelled',
-      1500,
-    );
+    }>(client, 'auction:cancelled', 1500);
     publish(context, auctionCancelled({ aggregateId: auctionId }));
     const payload = await received;
     assert.deepEqual(payload, {

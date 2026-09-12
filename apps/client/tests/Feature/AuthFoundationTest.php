@@ -61,7 +61,10 @@ class AuthFoundationTest extends TestCase
         $this->assertCount(3, $bidders);
         $this->assertSame(3, $bidders->pluck('subject_id')->filter()->unique()->count());
         $this->assertTrue($bidders->every(fn (User $user): bool => ! $user->is_admin));
-        $this->assertTrue(Hash::check('bidder-password', (string) $bidders->first()->password));
+        $this->assertTrue(Hash::check(
+            (string) env('DEMO_BIDDER_PASSWORD', LocalBidderSeeder::DEFAULT_PASSWORD),
+            (string) $bidders->first()->password,
+        ));
     }
 
     public function test_bidding_service_token_uses_stable_subject_and_server_permissions(): void

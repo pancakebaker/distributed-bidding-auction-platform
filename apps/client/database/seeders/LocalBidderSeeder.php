@@ -9,6 +9,8 @@ use RuntimeException;
 
 class LocalBidderSeeder extends Seeder
 {
+    public const DEFAULT_PASSWORD = 'bidder-password';
+
     /**
      * Create deterministic non-admin bidder accounts for local/demo use.
      */
@@ -18,7 +20,7 @@ class LocalBidderSeeder extends Seeder
             throw new RuntimeException('LocalBidderSeeder may only run in the local or testing environment.');
         }
 
-        $password = (string) env('DEMO_BIDDER_PASSWORD', 'bidder-password');
+        $password = (string) env('DEMO_BIDDER_PASSWORD', self::DEFAULT_PASSWORD);
 
         foreach ([
             ['email' => 'bidder1@example.test', 'name' => 'Bidder One'],
