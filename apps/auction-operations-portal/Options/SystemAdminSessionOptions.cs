@@ -15,16 +15,21 @@ public sealed class SystemAdminSessionOptions
     /// <summary>Gets or sets the interactive session lifetime in minutes.</summary>
     public int LifetimeMinutes { get; set; } = 20;
 
+    /// <summary>Gets or sets the shared ASP.NET Data Protection key directory.</summary>
+    public string? DataProtectionKeysPath { get; set; }
+
     /// <summary>Validates production session settings.</summary>
     public void Validate(bool allowDevelopmentDefaults)
     {
         if (allowDevelopmentDefaults)
             return;
 
-        if (string.IsNullOrWhiteSpace(CookieName) || LifetimeMinutes is < 15 or > 30)
+        if (string.IsNullOrWhiteSpace(CookieName) || LifetimeMinutes is < 15 or > 30
+            || string.IsNullOrWhiteSpace(DataProtectionKeysPath)
+            || !Directory.Exists(DataProtectionKeysPath))
         {
             throw new InvalidOperationException(
-                "SystemAdminSession requires a cookie name and a 15-30 minute lifetime.");
+                "SystemAdminSession requires a cookie name, a 15-30 minute lifetime, and an existing shared Data Protection key directory.");
         }
     }
 }

@@ -28,9 +28,11 @@ export type LiveFeedConfig = {
   liveFeedDbIdleTimeoutMs: number;
   liveFeedDbConnectionTimeoutMs: number;
   systemAdminTokenPublicKeyPath: string;
+  systemAdminTokenPublicKeys?: Record<string, string>;
   systemAdminTokenIssuer: string;
   systemAdminTokenAudience: string;
   systemAdminTokenKid: string;
+  adminSessionSecret?: string;
 };
 
 function numberFromEnv(name: string, fallback: number): number {
@@ -82,11 +84,43 @@ function rabbitMqUrlFromEnv(): string {
   return `amqp://${username}:${password}@${host}:${port}${virtualHost}`;
 }
 
+function publicKeysFromEnv(fallbackPath: string, fallbackKid: string): Record<string, string> {
+  const raw = process.env.SYSTEM_ADMIN_TOKEN_PUBLIC_KEYS;
+  if (!raw) return { [fallbackKid]: fallbackPath };
+
+  const entries = raw
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const keys: Record<string, string> = {};
+  for (const entry of entries) {
+    const separator = entry.indexOf('=');
+    if (separator <= 0 || separator === entry.length - 1) {
+      throw new Error('SYSTEM_ADMIN_TOKEN_PUBLIC_KEYS must contain kid=path entries.');
+    }
+    const kid = entry.slice(0, separator).trim();
+    const path = entry.slice(separator + 1).trim();
+    if (!kid || !path || keys[kid])
+      throw new Error('SYSTEM_ADMIN_TOKEN_PUBLIC_KEYS contains an invalid or duplicate kid.');
+    keys[kid] = resolve(serviceRootForConfig(), path);
+  }
+  return keys;
+}
+
+function serviceRootForConfig(): string {
+  return resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+}
+
 /**
  * Loads live-feed configuration from environment variables with optional test overrides.
  */
 export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedConfig {
-  const serviceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const serviceRoot = serviceRootForConfig();
+  const publicKeyPath = resolve(
+    serviceRoot,
+    process.env.SYSTEM_ADMIN_TOKEN_PUBLIC_KEY_PATH ?? 'config/system-admin-public.pem',
+  );
+  const publicKeyKid = process.env.SYSTEM_ADMIN_TOKEN_KID ?? 'system-admin-development-1';
   const config: LiveFeedConfig = {
     port: numberFromEnv('PORT', 3001),
     clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:8000',
@@ -104,13 +138,12 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     liveFeedDbPoolMax: numberFromEnv('LIVE_FEED_DB_POOL_MAX', 5),
     liveFeedDbIdleTimeoutMs: numberFromEnv('LIVE_FEED_DB_IDLE_TIMEOUT_MS', 10000),
     liveFeedDbConnectionTimeoutMs: numberFromEnv('LIVE_FEED_DB_CONNECTION_TIMEOUT_MS', 2000),
-    systemAdminTokenPublicKeyPath: resolve(
-      serviceRoot,
-      process.env.SYSTEM_ADMIN_TOKEN_PUBLIC_KEY_PATH ?? 'config/system-admin-public.pem',
-    ),
+    systemAdminTokenPublicKeyPath: publicKeyPath,
+    systemAdminTokenPublicKeys: publicKeysFromEnv(publicKeyPath, publicKeyKid),
     systemAdminTokenIssuer: process.env.SYSTEM_ADMIN_TOKEN_ISSUER ?? 'dbap-system-admin',
     systemAdminTokenAudience: process.env.SYSTEM_ADMIN_TOKEN_AUDIENCE ?? 'live-feed-admin',
-    systemAdminTokenKid: process.env.SYSTEM_ADMIN_TOKEN_KID ?? 'system-admin-development-1',
+    systemAdminTokenKid: publicKeyKid,
+    adminSessionSecret: process.env.LIVE_FEED_ADMIN_SESSION_SECRET,
     ...overrides,
   };
 
@@ -119,8 +152,14 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
       !config.systemAdminTokenIssuer ||
       !config.systemAdminTokenAudience ||
       !config.systemAdminTokenKid ||
-      !isAbsolute(config.systemAdminTokenPublicKeyPath) ||
-      !existsSync(config.systemAdminTokenPublicKeyPath)
+      !config.adminSessionSecret ||
+      config.adminSessionSecret.length < 32 ||
+      !config.systemAdminTokenPublicKeys ||
+      Object.keys(config.systemAdminTokenPublicKeys).length === 0 ||
+      Object.entries(config.systemAdminTokenPublicKeys).some(
+        ([kid, path]) => !kid || !isAbsolute(path) || !existsSync(path),
+      ) ||
+      !config.systemAdminTokenPublicKeys[config.systemAdminTokenKid]
     ) {
       throw new Error('System-admin Live Feed authentication configuration is incomplete.');
     }

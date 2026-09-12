@@ -25,7 +25,7 @@ public sealed class LiveFeedAdminOptions
             return;
 
         if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out var baseUri)
-            || baseUri.Scheme is not ("http" or "https")
+            || baseUri.Scheme != Uri.UriSchemeHttps
             || string.IsNullOrWhiteSpace(SystemTokenEndpoint)
             || string.IsNullOrWhiteSpace(BrowserHandoffEndpoint))
         {

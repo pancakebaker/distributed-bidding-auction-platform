@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import type { Express, Response } from 'express';
 import { createNdjsonTransform } from '../../infrastructure/streams/ndjson-transform.js';
 import type { LiveFeedStreamRecord } from '../../application/streams/create-live-feed-stream.js';
+import { requireAdminAuthorization } from './admin/admin-security.js';
 
 const sourceHighWaterMark = 1;
 
@@ -16,8 +17,10 @@ const sourceHighWaterMark = 1;
 export function registerLiveFeedStreamRoute(
   app: Express,
   createRecords: () => Iterable<LiveFeedStreamRecord>,
+  isAuthorized: (cookieHeader: string | undefined) => boolean = () => true,
 ): void {
-  app.get('/diagnostics/live-feed/stream', (_request, response, next) => {
+  app.get('/diagnostics/live-feed/stream', (request, response, next) => {
+    if (!requireAdminAuthorization(response, request.get('cookie'), isAuthorized)) return;
     const controller = new AbortController();
     const abortOnDisconnect = () => {
       if (!response.writableEnded) {

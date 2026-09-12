@@ -24,10 +24,16 @@ export class AdminAuth {
   private readonly sessionLifetimeSeconds: number;
 
   public constructor(options: AdminAuthOptions = {}) {
-    this.secret =
-      options.secret ??
-      process.env.LIVE_FEED_ADMIN_SESSION_SECRET ??
-      randomBytes(32).toString('hex');
+    const configuredSecret = options.secret ?? process.env.LIVE_FEED_ADMIN_SESSION_SECRET;
+    if (
+      process.env.NODE_ENV === 'production' &&
+      (!configuredSecret || configuredSecret.length < 32)
+    ) {
+      throw new Error(
+        'LIVE_FEED_ADMIN_SESSION_SECRET must be configured with at least 32 characters in production.',
+      );
+    }
+    this.secret = configuredSecret ?? randomBytes(32).toString('hex');
     this.secure = options.secure ?? process.env.NODE_ENV === 'production';
     this.now = options.now ?? (() => Date.now());
     this.sessionLifetimeSeconds = options.sessionLifetimeSeconds ?? 900;
@@ -69,7 +75,7 @@ export class AdminAuth {
       !Number.isInteger(expiresAt) ||
       !nonce ||
       !signature ||
-      expiresAt < Math.floor(this.now() / 1000)
+      expiresAt <= Math.floor(this.now() / 1000)
     )
       return false;
 
@@ -85,7 +91,8 @@ export class AdminAuth {
    * Returns a deletion cookie for logout.
    */
   public clearCookie(): string {
-    return 'live_feed_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0';
+    const secure = this.secure ? '; Secure' : '';
+    return 'live_feed_admin=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0' + secure;
   }
 
   private sign(payload: string): string {

@@ -4,6 +4,7 @@
 import type { Express } from 'express';
 import type { ActivityInput } from '../../application/activity/calculate-auction-activity.js';
 import type { ActivityCalculator } from '../../application/ports/activity-calculator.js';
+import { requireAdminAuthorization } from './admin/admin-security.js';
 
 /**
  * Registers the bounded CPU diagnostic endpoint with request-local cancellation.
@@ -12,8 +13,10 @@ export function registerLiveFeedActivityRoute(
   app: Express,
   calculator: ActivityCalculator,
   createInput: () => ActivityInput,
+  isAuthorized: (cookieHeader: string | undefined) => boolean = () => true,
 ): void {
-  app.get('/diagnostics/live-feed/activity', async (_request, response, next) => {
+  app.get('/diagnostics/live-feed/activity', async (request, response, next) => {
+    if (!requireAdminAuthorization(response, request.get('cookie'), isAuthorized)) return;
     const controller = new AbortController();
     const abortOnDisconnect = () => {
       if (!response.writableEnded) {

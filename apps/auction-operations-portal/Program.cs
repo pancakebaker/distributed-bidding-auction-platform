@@ -2,6 +2,7 @@
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
 using System.Diagnostics;
+using System.Net;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 using AuctionOperationsPortal.Auth;
@@ -19,6 +20,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using OpenTelemetry.Metrics;
@@ -84,6 +86,12 @@ systemAdminAuthOptions.Validate(
 var systemAdminSessionOptions = builder.Configuration
     .GetSection(SystemAdminSessionOptions.SectionName)
     .Get<SystemAdminSessionOptions>() ?? new();
+var configuredDataProtectionPath = builder.Configuration["DATA_PROTECTION_KEYS_PATH"];
+if (!string.IsNullOrWhiteSpace(configuredDataProtectionPath))
+{
+    systemAdminSessionOptions.DataProtectionKeysPath = Path.GetFullPath(
+        Path.Combine(builder.Environment.ContentRootPath, configuredDataProtectionPath));
+}
 systemAdminSessionOptions.Validate(
     builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
 var liveFeedAdminOptions = builder.Configuration
@@ -176,7 +184,28 @@ builder.Services.AddAuthorizationBuilder()
         .RequireClaim("permission", SystemAdminPermissions.LiveFeedAdmin));
 builder.Services.AddCascadingAuthenticationState();
 if (builder.Environment.IsEnvironment("Testing"))
+{
     builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
+}
+else if (!string.IsNullOrWhiteSpace(systemAdminSessionOptions.DataProtectionKeysPath))
+{
+    builder.Services.AddDataProtection().PersistKeysToFileSystem(
+        new DirectoryInfo(systemAdminSessionOptions.DataProtectionKeysPath));
+}
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    var configuredProxies = builder.Configuration["TRUSTED_PROXY_IPS"]?
+        .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+    foreach (var proxy in configuredProxies)
+    {
+        if (!IPAddress.TryParse(proxy, out var address))
+            throw new InvalidOperationException("TRUSTED_PROXY_IPS contains an invalid IP address.");
+        options.KnownProxies.Add(address);
+    }
+});
 builder.Services.AddScoped<IActivityPersistence, ActivityPersistence>();
 builder.Services.AddScoped<IRecentActivityQuery, RecentActivityQuery>();
 builder.Services.AddScoped<IActivityHistoryQueryService, ActivityHistoryQueryService>();
@@ -217,6 +246,16 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    options.AddPolicy("SystemAdminLiveFeedAccess", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? context.Connection.RemoteIpAddress?.ToString()
+            ?? "anonymous",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = builder.Environment.IsEnvironment("Testing") ? 1_000 : 10,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
 });
 builder.Services.AddRazorComponents().AddInteractiveServerComponents();
 
@@ -234,6 +273,7 @@ if (!app.Environment.IsDevelopment() && !app.Environment.IsEnvironment("Testing"
     app.UseHsts();
 }
 
+app.UseForwardedHeaders();
 if (!app.Environment.IsEnvironment("Testing"))
     app.UseHttpsRedirection();
 app.UseRouting();
@@ -254,6 +294,20 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.UseAntiforgery();
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/auth")
+        || context.Request.Path.StartsWithSegments("/activity")
+        || context.Request.Path.StartsWithSegments("/hubs"))
+    {
+        context.Response.Headers.CacheControl = "no-store";
+        context.Response.Headers.Pragma = "no-cache";
+        context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        context.Response.Headers["Referrer-Policy"] = "no-referrer";
+        context.Response.Headers["X-Frame-Options"] = "DENY";
+    }
+    await next();
+});
 app.MapHealthChecks("/health", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
 {
     ResponseWriter = async (context, report) =>
@@ -348,6 +402,7 @@ app.MapPost(
         }
     })
     .RequireAuthorization("SystemAdminLiveFeed")
+    .RequireRateLimiting("SystemAdminLiveFeedAccess")
     .WithMetadata(new RequireAntiforgeryTokenAttribute());
 app.MapPost("/auth/logout", async (HttpContext context) =>
 {

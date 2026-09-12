@@ -79,3 +79,16 @@ void test('rejects issuer, audience, kid, role, permission, expiry, and signatur
     (error: unknown) => (error as { code?: string }).code === 'invalid_admin_token',
   );
 });
+
+void test('accepts any configured key-ring kid and rejects unknown kids', () => {
+  const keyRingVerifier = new SystemAdminJwtTokenVerifier({
+    publicKeys: { current: publicPem, previous: publicPem },
+    issuer: 'dbap-system-admin',
+    audience: 'live-feed-admin',
+    expectedKid: 'current',
+    now: () => 1_500,
+  });
+  assert.doesNotThrow(() => keyRingVerifier.verify(token({}, { kid: 'current' })));
+  assert.doesNotThrow(() => keyRingVerifier.verify(token({}, { kid: 'previous' })));
+  assert.throws(() => keyRingVerifier.verify(token({}, { kid: 'unknown' })), /Invalid admin token/);
+});

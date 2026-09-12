@@ -21,6 +21,7 @@ import type {
 } from '../../src/domain/events.js';
 import type { LiveFeedConfig } from '../../src/config/config.js';
 import { integrationEventRoutingKeys } from '../../src/domain/transport.js';
+import { AdminAuth } from '../../src/transport/http/admin/admin-auth.js';
 
 const rabbitMqUrl =
   process.env.RABBITMQ_URL ?? 'amqp://auction:change_me_in_local_env@localhost:5672';
@@ -43,6 +44,7 @@ type TestContext = {
   rabbitConnection: ChannelModel;
   rabbitChannel: Channel;
   redis: RedisClientType;
+  adminCookie: string;
 };
 
 function bidAccepted(overrides: Partial<BidAcceptedEnvelope> = {}): BidAcceptedEnvelope {
@@ -219,12 +221,17 @@ async function createContext(): Promise<TestContext> {
     rabbitMqDeadLetterExchange: dlx,
     rabbitMqDeadLetterQueue: dlq,
     idempotencyTtlSeconds: 120,
+    adminSessionSecret: 'integration-test-admin-session-secret-0123456789',
   };
 
   const service = createLiveFeedService(config);
   await service.start();
 
-  return { queue, dlq, dlx, service, rabbitConnection, rabbitChannel, redis };
+  const adminCookie = new AdminAuth({
+    secret: config.adminSessionSecret,
+    secure: false,
+  }).createSession();
+  return { queue, dlq, dlx, service, rabbitConnection, rabbitChannel, redis, adminCookie };
 }
 
 async function cleanup(context: TestContext): Promise<void> {
@@ -689,8 +696,11 @@ void test('runtime diagnostics are read-only and expose expected sections', asyn
   const context = await createContext();
 
   try {
+    const anonymousResponse = await fetch(`${context.service.url()}/diagnostics/runtime`);
+    assert.equal(anonymousResponse.status, 401);
+
     const response = await fetch(`${context.service.url()}/diagnostics/runtime`, {
-      headers: { 'x-correlation-id': 'http-correlation-a' },
+      headers: { 'x-correlation-id': 'http-correlation-a', cookie: context.adminCookie },
     });
     assert.equal(response.status, 200);
     const body = (await response.json()) as {
@@ -710,13 +720,19 @@ void test('runtime diagnostics are read-only and expose expected sections', asyn
     assert.equal(body.requestContext.correlationId, 'http-correlation-a');
 
     const secondResponse = await fetch(`${context.service.url()}/diagnostics/runtime`, {
-      headers: { 'x-correlation-id': 'http-correlation-b' },
+      headers: { 'x-correlation-id': 'http-correlation-b', cookie: context.adminCookie },
     });
     const secondBody = (await secondResponse.json()) as {
       requestContext: { correlationId?: string };
     };
     assert.equal(secondBody.requestContext.correlationId, 'http-correlation-b');
     assert.equal('env' in body, false);
+
+    const healthResponse = await fetch(`${context.service.url()}/health`);
+    const healthBody = (await healthResponse.json()) as Record<string, unknown>;
+    assert.equal(healthResponse.status, 200);
+    assert.equal('redisConnected' in healthBody, false);
+    assert.equal('rabbitMqConnected' in healthBody, false);
   } finally {
     await cleanup(context);
   }

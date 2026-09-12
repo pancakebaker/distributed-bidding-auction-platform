@@ -2,6 +2,26 @@
 
 This is the operations-facing .NET subsystem of the [Distributed Bidding Auction Platform](../../README.md). It is a separate event consumer and projection, not an administrative write API for auction state.
 
+## Production boundary hardening
+
+Outside Development/Testing, the portal requires an existing shared
+`DATA_PROTECTION_KEYS_PATH` directory so its HttpOnly authentication cookie can
+be validated by every replica. The portal requires HTTPS for the Live Feed base
+URL and trusts forwarded headers only from `TRUSTED_PROXY_IPS`. Configure TLS,
+WebSocket upgrades, and synchronized clocks before production deployment.
+
+The portal cookie is HttpOnly, non-persistent, SameSite=Lax, Secure outside
+development, and expires after 20 minutes by default. Login and Live Feed admin
+access are rate limited. All replicas must use the same Live Feed session
+secret, Redis, and public-key trust configuration. Live Feed diagnostics require
+the system-admin session while anonymous `/health` remains minimal.
+
+For key rotation, add the new public key to the Live Feed `kid=path` key ring,
+deploy it, switch the portal active `KeyId` and private key, deploy the portal,
+then remove the old key after token/session overlap. Private signing keys never
+leave the portal. OIDC, MFA, centralized secret management, and edge DDoS
+controls remain future deployment concerns.
+
 The portal is an independent ASP.NET Core Blazor consumer of the existing `auction.events` exchange. It owns the `auction_activity` projection in the separate `auction_operations` PostgreSQL database and does not update authoritative auction state.
 
 It consumes through the dedicated durable `auction-operations.activity` queue, bound to `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. Invalid messages are dead-lettered through `auction-operations.dead-letter` / `auction-operations.activity.dlq`; transient failures are requeued up to the configured limit.

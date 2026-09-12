@@ -44,6 +44,7 @@ import {
 import { registerRuntimeThreadPoolRoute } from '../transport/http/runtime-thread-pool-route.js';
 import { registerRuntimeChildProcessRoute } from '../transport/http/runtime-child-process-route.js';
 import { createLiveFeedHistoryStore } from '../infrastructure/database/live-feed-history-store-factory.js';
+import { requireAdminAuthorization } from '../transport/http/admin/admin-security.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -100,9 +101,10 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     historyStore,
   );
   const processor = new LiveFeedEventProcessor(publisher, stateStore, activityObserver);
-  const adminAuth = new AdminAuth();
+  const adminAuth = new AdminAuth({ secret: config.adminSessionSecret });
   const systemAdminTokenVerifier = new SystemAdminJwtTokenVerifier({
     publicKeyPath: config.systemAdminTokenPublicKeyPath,
+    publicKeys: config.systemAdminTokenPublicKeys,
     issuer: config.systemAdminTokenIssuer,
     audience: config.systemAdminTokenAudience,
     expectedKid: config.systemAdminTokenKid,
@@ -117,7 +119,15 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     runWithContext({ requestId, correlationId }, next);
   });
 
-  app.get('/diagnostics/runtime', (_request, response) => {
+  app.get('/diagnostics/runtime', (request, response) => {
+    if (
+      !requireAdminAuthorization(
+        response,
+        request.get('cookie'),
+        adminAuth.isAuthorizedCookie.bind(adminAuth),
+      )
+    )
+      return;
     const processMetrics = getProcessMetrics();
     response.json({
       service: 'live-feed-service',
@@ -132,37 +142,45 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   });
 
   app.get('/health', (_request, response) => {
+    response.setHeader('Cache-Control', 'no-store');
     response.json({
       status: redis.isOpen && redisPub.isOpen && redisSub.isOpen ? 'ok' : 'degraded',
       service: 'live-feed-service',
-      rabbitMqConnected: consumer.connected,
-      redisConnected: redis.isOpen && redisPub.isOpen && redisSub.isOpen,
       checkedAtUtc: new Date().toISOString(),
     });
   });
 
-  registerLiveFeedStreamRoute(app, () => {
-    const processMetrics = getProcessMetrics();
-    return createLiveFeedStreamRecords({
-      nodeVersion: processMetrics.nodeVersion,
-      uptimeSeconds: processMetrics.uptimeSeconds,
-      memory: processMetrics.memory,
-      eventLoop: eventLoopMonitor.snapshot(),
-    });
-  });
-  registerLiveFeedActivityRoute(app, activityCalculator, () => {
-    const processMetrics = getProcessMetrics();
-    const eventLoop = eventLoopMonitor.snapshot();
-    return {
-      samples: [
-        ...Object.values(processMetrics.memory),
-        eventLoop.utilization,
-        ...Object.values(eventLoop.delayMs),
-      ],
-    };
-  });
-  registerRuntimeThreadPoolRoute(app);
-  registerRuntimeChildProcessRoute(app);
+  registerLiveFeedStreamRoute(
+    app,
+    () => {
+      const processMetrics = getProcessMetrics();
+      return createLiveFeedStreamRecords({
+        nodeVersion: processMetrics.nodeVersion,
+        uptimeSeconds: processMetrics.uptimeSeconds,
+        memory: processMetrics.memory,
+        eventLoop: eventLoopMonitor.snapshot(),
+      });
+    },
+    adminAuth.isAuthorizedCookie.bind(adminAuth),
+  );
+  registerLiveFeedActivityRoute(
+    app,
+    activityCalculator,
+    () => {
+      const processMetrics = getProcessMetrics();
+      const eventLoop = eventLoopMonitor.snapshot();
+      return {
+        samples: [
+          ...Object.values(processMetrics.memory),
+          eventLoop.utilization,
+          ...Object.values(eventLoop.delayMs),
+        ],
+      };
+    },
+    adminAuth.isAuthorizedCookie.bind(adminAuth),
+  );
+  registerRuntimeThreadPoolRoute(app, adminAuth.isAuthorizedCookie.bind(adminAuth));
+  registerRuntimeChildProcessRoute(app, adminAuth.isAuthorizedCookie.bind(adminAuth));
   registerAdminHistoryRoutes(app, { auth: adminAuth, store: historyStore });
   registerAdminRoutes(app, {
     auth: adminAuth,

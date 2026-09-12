@@ -13,6 +13,7 @@ import type {
 export type SystemAdminJwtTokenVerifierOptions = {
   publicKeyPath?: string;
   publicKey?: string;
+  publicKeys?: Record<string, string>;
   issuer: string;
   audience: string;
   expectedKid: string;
@@ -34,12 +35,19 @@ export class SystemAdminJwtTokenVerifier implements AdminTokenVerifier {
     const [encodedHeader, encodedPayload, encodedSignature] = parts;
     const header = parseJson<Record<string, unknown>>(encodedHeader);
     const payload = parseJson<Record<string, unknown>>(encodedPayload);
-    if (header.alg !== 'RS256' || header.typ !== 'JWT' || header.kid !== this.options.expectedKid)
+    if (header.alg !== 'RS256' || header.typ !== 'JWT' || typeof header.kid !== 'string')
       throw invalidToken();
+
+    const keyPath = this.options.publicKeys?.[header.kid];
+    if (this.options.publicKeys && !keyPath) throw invalidToken();
+    if (!this.options.publicKeys && header.kid !== this.options.expectedKid) throw invalidToken();
 
     let publicKey: string | Buffer;
     try {
-      publicKey = this.options.publicKey ?? readFileSync(this.options.publicKeyPath ?? '');
+      const configuredKey = keyPath ?? this.options.publicKeyPath;
+      publicKey =
+        this.options.publicKey ??
+        (configuredKey?.includes('-----BEGIN') ? configuredKey : readFileSync(configuredKey ?? ''));
     } catch (error) {
       throw new ApplicationError(
         'Admin token verification is unavailable.',

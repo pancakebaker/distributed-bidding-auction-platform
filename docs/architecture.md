@@ -483,3 +483,25 @@ The Phase 8 in-memory activity ring remains separate from durable history. It is
 ### Transitional and independent admin identity for Live Feed Operations
 
 The browser path is `SystemAdministrator → Operations Portal cookie → portal server → POST /admin/auth/system-token → opaque one-time code → GET /admin/auth/handoff → Live Feed cookie`. The Node system-admin boundary accepts only the independent `dbap-system-admin` issuer, `live-feed-admin` audience, configured `kid`, `SystemAdministrator` role, and `livefeed.admin` permission. The portal private key stays portal-side; Node receives only the public key. The browser never sees the JWT. The local cookie protects `/admin/live-feed`, `/admin/api/history`, `/admin/api/history.pdf`, and the server-side `admin:live-feed` Socket.IO authorization. Public auction rooms remain anonymous.
+
+### SYS5 production boundary hardening
+
+Operational diagnostics require the Live Feed system-admin session. Anonymous
+`/health` exposes only status, service name, and a timestamp; it does not expose
+Redis, RabbitMQ, process, queue, or signing details. Admin responses are
+`no-store` and use defensive browser headers.
+
+Live Feed admin cookies are HMAC-signed, HttpOnly, SameSite=Lax, root-scoped,
+short-lived, and Secure in production. Production requires an explicit session
+secret. Portal Data Protection keys, the Live Feed session secret, and Redis
+must be shared across replicas. Opaque handoff codes are high entropy, short
+lived, and atomically consumed; JWT JTIs use atomic Redis replay keys, so Redis
+failure fails closed.
+
+Live Feed accepts a configured public-key ring indexed by explicit `kid`; unknown
+key IDs are rejected. Rotate by adding and deploying the new public key,
+switching and deploying the portal signing key, then removing the old key after
+overlap. Forwarded headers are honored only from explicitly trusted proxy IPs.
+TLS, WebSocket upgrades, clock synchronization, and shared state are deployment
+requirements; external OIDC, MFA, centralized secret management, and edge DDoS
+controls remain deferred.

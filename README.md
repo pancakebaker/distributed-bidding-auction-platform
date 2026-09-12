@@ -332,6 +332,23 @@ auction Socket.IO rooms remain anonymous.
 
 The PostgreSQL initialization creates `auction_operations` on a fresh volume. For an existing volume created before the portal was added, create that database idempotently with the documented PostgreSQL setup; do not destroy the volume to rerun initialization.
 
+### Production system-admin boundary notes
+
+Outside Development/Testing, use TLS through a trusted reverse proxy, configure
+`TRUSTED_PROXY_IPS` only with proxy addresses allowed to set forwarded headers,
+and enable WebSocket upgrades. Portal cookie Data Protection keys must be
+persisted in a shared mounted directory via `DATA_PROTECTION_KEYS_PATH`; Live
+Feed replicas must share `LIVE_FEED_ADMIN_SESSION_SECRET` and Redis. Redis
+unavailability fails closed for replay and opaque handoff operations.
+
+Live Feed operational diagnostics are system-admin protected; `/health` remains
+a minimal anonymous liveness/readiness response. Configure
+`SYSTEM_ADMIN_TOKEN_PUBLIC_KEYS` as a `kid=path` key ring for rotation: add the
+new public key and deploy Live Feed, switch the portal signing key, deploy the
+portal, then remove the old key after overlap expires. Private signing keys stay
+portal-side. Login and Live Feed access are rate limited; external OIDC, MFA,
+centralized secret management, and edge DDoS controls remain deferred.
+
 ## Testing and Validation
 
 The current repository validation includes:

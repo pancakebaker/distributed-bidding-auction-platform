@@ -43,6 +43,7 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
 
   app.get('/admin/auth/handoff', async (request, response) => {
     applyAdminSecurityHeaders(response);
+    applyAdminSecurityHeaders(response);
     const code = typeof request.query.code === 'string' ? request.query.code : '';
     if (!dependencies.handoffStore || !code) {
       response.redirect('/admin/login');
@@ -61,6 +62,7 @@ export function registerAdminRoutes(app: Express, dependencies: AdminRouteDepend
     '/admin/auth/system-token',
     express.urlencoded({ extended: false }),
     async (request, response) => {
+      applyAdminSecurityHeaders(response);
       if (!dependencies.systemTokenVerifier || !dependencies.handoffStore) {
         response.status(404).end();
         return;

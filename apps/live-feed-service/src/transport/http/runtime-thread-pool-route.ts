@@ -3,12 +3,17 @@
  */
 import type { Express } from 'express';
 import { runLibuvThreadPoolDiagnostic } from '../../infrastructure/runtime/libuv-thread-pool-diagnostic.js';
+import { requireAdminAuthorization } from './admin/admin-security.js';
 
 /**
  * Registers the bounded libuv thread-pool diagnostic endpoint.
  */
-export function registerRuntimeThreadPoolRoute(app: Express): void {
-  app.get('/diagnostics/runtime/thread-pool', (_request, response, next) => {
+export function registerRuntimeThreadPoolRoute(
+  app: Express,
+  isAuthorized: (cookieHeader: string | undefined) => boolean = () => true,
+): void {
+  app.get('/diagnostics/runtime/thread-pool', (request, response, next) => {
+    if (!requireAdminAuthorization(response, request.get('cookie'), isAuthorized)) return;
     const controller = new AbortController();
     const abortOnDisconnect = () => {
       if (!response.writableEnded) {

@@ -8,6 +8,7 @@ const routingKeyEnvironmentNames = [
   'LIVE_FEED_RABBITMQ_ROUTING_KEY',
   'LIVE_FEED_RABBITMQ_ROUTING_KEYS',
   'SYSTEM_ADMIN_TOKEN_PUBLIC_KEY_PATH',
+  'SYSTEM_ADMIN_TOKEN_PUBLIC_KEYS',
   'RABBITMQ_EXCHANGE',
   'LIVE_FEED_RABBITMQ_QUEUE',
   'LIVE_FEED_RABBITMQ_DLX',
@@ -46,6 +47,19 @@ void test('configured public-key path is honored', () => {
   );
 
   assert.equal(config.systemAdminTokenPublicKeyPath, resolve(process.cwd(), configuredPath));
+});
+void test('parses a configured public-key ring indexed by kid', () => {
+  const config = withRoutingKeyEnvironment(
+    {
+      SYSTEM_ADMIN_TOKEN_PUBLIC_KEYS: 'current=config/current.pem,previous=config/previous.pem',
+    },
+    () => loadConfig(),
+  );
+
+  assert.deepEqual(config.systemAdminTokenPublicKeys, {
+    current: resolve(process.cwd(), 'config/current.pem'),
+    previous: resolve(process.cwd(), 'config/previous.pem'),
+  });
 });
 void test('defaults to every integration routing key', () => {
   const config = withRoutingKeyEnvironment({}, () => loadConfig());

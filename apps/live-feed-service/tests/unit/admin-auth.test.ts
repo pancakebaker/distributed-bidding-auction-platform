@@ -27,4 +27,20 @@ void test('admin auth rejects expired sessions and adds Secure in production mod
   assert.equal(auth.isAuthorizedCookie(cookie), true);
   now += 11_000;
   assert.equal(auth.isAuthorizedCookie(cookie), false);
+  assert.match(auth.clearCookie(), /Secure/);
+});
+
+void test('admin auth requires a configured strong secret in production', () => {
+  const previousEnvironment = process.env.NODE_ENV;
+  const previousSecret = process.env.LIVE_FEED_ADMIN_SESSION_SECRET;
+  process.env.NODE_ENV = 'production';
+  delete process.env.LIVE_FEED_ADMIN_SESSION_SECRET;
+  try {
+    assert.throws(() => new AdminAuth(), /LIVE_FEED_ADMIN_SESSION_SECRET/);
+  } finally {
+    if (previousEnvironment === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousEnvironment;
+    if (previousSecret === undefined) delete process.env.LIVE_FEED_ADMIN_SESSION_SECRET;
+    else process.env.LIVE_FEED_ADMIN_SESSION_SECRET = previousSecret;
+  }
 });
