@@ -14,4 +14,7 @@ public static class IntegrationEventTypes
 
     /// <summary>Identifies a winner-selected event.</summary>
     public const string WinnerSelected = "WinnerSelected";
+
+    /// <summary>Identifies an explicit Buy Now purchase event.</summary>
+    public const string AuctionPurchased = "AuctionPurchased";
 }

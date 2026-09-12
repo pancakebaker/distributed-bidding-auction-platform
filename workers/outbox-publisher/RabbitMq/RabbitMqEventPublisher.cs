@@ -29,6 +29,7 @@ public sealed class RabbitMqEventPublisher(
         IntegrationEventTypes.BidAccepted => IntegrationEventRoutingKeys.BidAccepted,
         IntegrationEventTypes.AuctionClosed => IntegrationEventRoutingKeys.AuctionClosed,
         IntegrationEventTypes.WinnerSelected => IntegrationEventRoutingKeys.WinnerSelected,
+        IntegrationEventTypes.AuctionPurchased => IntegrationEventRoutingKeys.AuctionPurchased,
         _ => $"auction.{message.EventType.ToLowerInvariant()}"
     };
 

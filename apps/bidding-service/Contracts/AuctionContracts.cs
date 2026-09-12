@@ -62,6 +62,11 @@ public sealed record BidResponse(
 public sealed record PlaceBidRequest(string BidderId, decimal Amount);
 
 /// <summary>
+/// Carries the buyer identity for an explicit Buy Now command.
+/// </summary>
+public sealed record BuyNowRequest(string BidderId);
+
+/// <summary>
 /// Describes the accepted bid and resulting auction state.
 /// </summary>
 public sealed record PlaceBidResponse(
@@ -77,6 +82,17 @@ public sealed record PlaceBidResponse(
     string CorrelationId);
 
 /// <summary>
+/// Describes a committed Buy Now purchase and resulting auction state.
+/// </summary>
+public sealed record BuyNowResponse(
+    Guid AuctionId,
+    string BidderId,
+    decimal FinalPrice,
+    long AuctionVersion,
+    DateTimeOffset PurchasedAtUtc,
+    string CorrelationId);
+
+/// <summary>
 /// Provides a stable error shape for API clients.
 /// </summary>
 public sealed record ApiErrorResponse(string Code, string Message, object? Details = null);
@@ -87,6 +103,7 @@ public sealed record ApiErrorResponse(string Code, string Message, object? Detai
 public sealed record BidRuleErrorDetails(
     decimal? CurrentBidAmount,
     decimal MinimumValidBid,
-    long AuctionVersion);
+    long AuctionVersion,
+    decimal? BuyNowPrice = null);
 
 

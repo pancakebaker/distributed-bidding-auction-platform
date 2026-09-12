@@ -117,6 +117,200 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
+    [Theory]
+    [InlineData(SaleMode.BuyNowOnly)]
+    [InlineData(SaleMode.AuctionAndBuyNow)]
+    public async Task BuyNow_WhenEligible_CommitsTerminalStateAndSiblingEvents(SaleMode saleMode)
+    {
+        var auctionId = await AddBuyNowAuctionAsync(saleMode);
+
+        var response = await BuyNowAsync(auctionId, "buyer-123", "buy-now-correlation");
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var purchase = await response.Content.ReadFromJsonAsync<BuyNowResponse>(JsonOptions);
+        Assert.NotNull(purchase);
+        Assert.Equal(auctionId, purchase.AuctionId);
+        Assert.Equal("buyer-123", purchase.BidderId);
+        Assert.Equal(1500m, purchase.FinalPrice);
+        Assert.Equal(2, purchase.AuctionVersion);
+        Assert.Equal("buy-now-correlation", purchase.CorrelationId);
+        Assert.Equal("buy-now-correlation", response.Headers.GetValues("X-Correlation-ID").Single());
+
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal("buyer-123", auction.FinalWinnerId);
+        Assert.Equal(1500m, auction.FinalPrice);
+        Assert.Equal(2, auction.Version);
+        Assert.Null(auction.CurrentBidAmount);
+        Assert.Null(auction.CurrentBidderId);
+        Assert.Empty(await GetBidsAsync(auctionId));
+
+        var messages = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal(2, messages.Count);
+        Assert.Equal(IntegrationEventTypes.AuctionPurchased, messages[0].EventType);
+        Assert.Equal(IntegrationEventTypes.AuctionClosed, messages[1].EventType);
+        Assert.All(messages, message =>
+        {
+            Assert.Equal(2, message.AggregateVersion);
+            Assert.Equal("buy-now-correlation", message.CorrelationId);
+        });
+        Assert.NotEqual(messages[0].Id, messages[1].Id);
+        Assert.DoesNotContain(messages, message => message.EventType == IntegrationEventTypes.WinnerSelected);
+
+        var purchasedPayload = JsonSerializer.Deserialize<AuctionPurchasedPayload>(messages[0].Payload, JsonOptions);
+        Assert.NotNull(purchasedPayload);
+        Assert.Equal(auctionId, purchasedPayload.AuctionId);
+        Assert.Equal("buyer-123", purchasedPayload.BidderId);
+        Assert.Equal(1500m, purchasedPayload.FinalPrice);
+        Assert.Equal(2, purchasedPayload.AuctionVersion);
+    }
+
+    [Fact]
+    public async Task BuyNow_OnAuctionOnly_IsRejectedWithoutChangingState()
+    {
+        var response = await BuyNowAsync(TestAuctionData.OpenAuctionId, "buyer-123");
+
+        await AssertBuyNowRejectedAsync(response, "buy_now_not_available");
+        var auction = await GetAuctionAsync(TestAuctionData.OpenAuctionId);
+        Assert.Equal("Open", auction.Status);
+        Assert.Equal(3, auction.Version);
+        Assert.Null(auction.FinalWinnerId);
+        Assert.Null(auction.FinalPrice);
+        Assert.Empty(await GetOutboxMessagesAsync(TestAuctionData.OpenAuctionId));
+    }
+
+    [Fact]
+    public async Task BuyNow_InvalidOrUnavailableRequestsUseSpecificErrors()
+    {
+        var invalidBidder = await BuyNowAsync(TestAuctionData.OpenAuctionId, " ");
+        var missingAuction = await BuyNowAsync(Guid.NewGuid(), "buyer-123");
+        var scheduled = await BuyNowAsync(TestAuctionData.ScheduledAuctionId, "buyer-123");
+        var beforeStart = await AddBuyNowAuctionAsync(
+            SaleMode.BuyNowOnly,
+            startTimeUtc: TestAuctionData.Now.AddMinutes(1));
+        var ended = await AddBuyNowAuctionAsync(
+            SaleMode.BuyNowOnly,
+            endTimeUtc: TestAuctionData.Now);
+        var closed = await AddBuyNowAuctionAsync(
+            SaleMode.BuyNowOnly,
+            status: AuctionStatus.Closed);
+
+        Assert.Equal(HttpStatusCode.BadRequest, invalidBidder.StatusCode);
+        Assert.Equal("invalid_bidder", (await invalidBidder.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions))?.Code);
+        Assert.Equal(HttpStatusCode.NotFound, missingAuction.StatusCode);
+        Assert.Equal("auction_not_found", (await missingAuction.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions))?.Code);
+        await AssertBuyNowRejectedAsync(scheduled, "auction_not_open");
+        await AssertBuyNowRejectedAsync(await BuyNowAsync(beforeStart, "buyer-123"), "auction_not_started");
+        await AssertBuyNowRejectedAsync(await BuyNowAsync(ended, "buyer-123"), "auction_ended");
+        await AssertBuyNowRejectedAsync(await BuyNowAsync(closed, "buyer-123"), "auction_not_open");
+    }
+
+    [Fact]
+    public async Task BuyNowOnly_RejectsOrdinaryBids()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.BuyNowOnly);
+
+        var response = await PlaceBidAsync(auctionId, "bidder-123", 1100m);
+
+        await AssertBidRejectedAsync(response, "bidding_not_available");
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal(1, auction.Version);
+        Assert.Empty(await GetBidsAsync(auctionId));
+        Assert.Empty(await GetOutboxMessagesAsync(auctionId));
+    }
+
+    [Fact]
+    public async Task AuctionAndBuyNow_AcceptsBelowPriceAndRejectsAtOrAbovePrice()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.AuctionAndBuyNow);
+
+        var accepted = await PlaceBidAsync(auctionId, "bidder-123", 1250m);
+        var equal = await PlaceBidAsync(auctionId, "bidder-456", 1500m);
+        var above = await PlaceBidAsync(auctionId, "bidder-789", 1501m);
+
+        Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
+        await AssertBidRejectedAsync(equal, "bid_at_or_above_buy_now_price", HttpStatusCode.BadRequest);
+        await AssertBidRejectedAsync(above, "bid_at_or_above_buy_now_price", HttpStatusCode.BadRequest);
+
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal(1250m, auction.CurrentBidAmount);
+        Assert.Equal("bidder-123", auction.CurrentBidderId);
+        Assert.Equal(2, auction.Version);
+        Assert.Single(await GetBidsAsync(auctionId));
+        Assert.Single(await GetOutboxMessagesAsync(auctionId));
+    }
+
+    [Fact]
+    public async Task AuctionAndBuyNow_WhenNextMinimumReachesPrice_RemainsValidWithoutLegalNextBid()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(
+            SaleMode.AuctionAndBuyNow,
+            startingPrice: 100m,
+            minimumBidIncrement: 100m,
+            buyNowPrice: 500m,
+            currentBidAmount: 450m,
+            currentBidderId: "existing-bidder",
+            version: 2);
+
+        var response = await PlaceBidAsync(auctionId, "bidder-123", 550m);
+
+        await AssertBidRejectedAsync(response, "bid_at_or_above_buy_now_price", HttpStatusCode.BadRequest);
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal("Open", auction.Status);
+        Assert.Equal(2, auction.Version);
+        Assert.Equal(450m, auction.CurrentBidAmount);
+        Assert.Empty(await GetOutboxMessagesAsync(auctionId));
+    }
+
+    [Fact]
+    public async Task ConcurrentBuyNowRequestsCommitOnePurchaseAndReturnSpecificLoserError()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.BuyNowOnly);
+
+        var responses = await Task.WhenAll(
+            BuyNowAsync(auctionId, "buyer-1"),
+            BuyNowAsync(auctionId, "buyer-2"));
+
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+        var rejected = Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
+        var rejectedError = await rejected.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
+        Assert.True(rejectedError?.Code is "auction_not_open" or "buy_now_not_available");
+
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(2, auction.Version);
+        Assert.NotNull(auction.FinalWinnerId);
+        Assert.Equal(1500m, auction.FinalPrice);
+        var messages = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal(2, messages.Count);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionPurchased);
+    }
+
+    [Fact]
+    public async Task BuyNowAndOrdinaryBidRaceLeavesOnePurchaseAndConsistentTerminalState()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.AuctionAndBuyNow);
+
+        var responses = await Task.WhenAll(
+            BuyNowAsync(auctionId, "buyer-1"),
+            PlaceBidAsync(auctionId, "bidder-1", 1250m));
+
+        var acceptedBid = responses[1].StatusCode == HttpStatusCode.Created ? 1 : 0;
+        var auction = await GetAuctionAsync(auctionId);
+        var bids = await GetBidsAsync(auctionId);
+        var messages = await GetOutboxMessagesAsync(auctionId);
+
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(2 + acceptedBid, auction.Version);
+        Assert.NotNull(auction.FinalWinnerId);
+        Assert.Equal(1500m, auction.FinalPrice);
+        Assert.Equal(acceptedBid, bids.Count);
+        Assert.Equal(acceptedBid + 2, messages.Count);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionPurchased);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionClosed);
+        Assert.DoesNotContain(messages, message => message.EventType == IntegrationEventTypes.WinnerSelected);
+    }
+
     [Fact]
     public async Task GetAuction_WhenMissing_ReturnsNotFound()
     {
@@ -466,9 +660,20 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
 
     private async Task<List<OutboxMessage>> GetOutboxMessagesAsync()
     {
+        return await GetOutboxMessagesAsync(null);
+    }
+
+    private async Task<List<OutboxMessage>> GetOutboxMessagesAsync(Guid? auctionId)
+    {
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
-        return await db.OutboxMessages.AsNoTracking().OrderBy(m => m.CreatedAtUtc).ToListAsync();
+        var query = db.OutboxMessages.AsNoTracking();
+        if (auctionId.HasValue)
+        {
+            query = query.Where(message => message.AggregateId == auctionId.Value);
+        }
+
+        return await query.OrderBy(m => m.CreatedAtUtc).ThenBy(m => m.Id).ToListAsync();
     }
 
     private async Task<int> GetOutboxMessageCountAsync()
@@ -480,12 +685,26 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
 
     private Task<HttpResponseMessage> PlaceBidAsync(string bidderId, decimal amount)
     {
-        return PlaceBidAsync(bidderId, amount, correlationId: null);
+        return PlaceBidAsync(TestAuctionData.OpenAuctionId, bidderId, amount, correlationId: null);
     }
 
     private Task<HttpResponseMessage> PlaceBidAsync(string bidderId, decimal amount, string? correlationId)
     {
-        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{TestAuctionData.OpenAuctionId}/bids")
+        return PlaceBidAsync(TestAuctionData.OpenAuctionId, bidderId, amount, correlationId);
+    }
+
+    private Task<HttpResponseMessage> PlaceBidAsync(Guid auctionId, string bidderId, decimal amount)
+    {
+        return PlaceBidAsync(auctionId, bidderId, amount, correlationId: null);
+    }
+
+    private Task<HttpResponseMessage> PlaceBidAsync(
+        Guid auctionId,
+        string bidderId,
+        decimal amount,
+        string? correlationId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{auctionId}/bids")
         {
             Content = JsonContent.Create(new PlaceBidRequest(bidderId, amount), options: JsonOptions)
         };
@@ -498,18 +717,100 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         return _client.SendAsync(request);
     }
 
+    private Task<HttpResponseMessage> BuyNowAsync(Guid auctionId, string bidderId, string? correlationId = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{auctionId}/buy-now")
+        {
+            Content = JsonContent.Create(new BuyNowRequest(bidderId), options: JsonOptions)
+        };
+
+        if (!string.IsNullOrWhiteSpace(correlationId))
+        {
+            request.Headers.TryAddWithoutValidation("X-Correlation-ID", correlationId);
+        }
+
+        return _client.SendAsync(request);
+    }
+
     private async Task<AuctionDetailResponse> GetOpenAuctionAsync()
     {
-        var auction = await _client.GetFromJsonAsync<AuctionDetailResponse>($"/api/auctions/{TestAuctionData.OpenAuctionId}", JsonOptions);
+        return await GetAuctionAsync(TestAuctionData.OpenAuctionId);
+    }
+
+    private async Task<AuctionDetailResponse> GetAuctionAsync(Guid auctionId)
+    {
+        var auction = await _client.GetFromJsonAsync<AuctionDetailResponse>($"/api/auctions/{auctionId}", JsonOptions);
         Assert.NotNull(auction);
         return auction;
     }
 
     private async Task<List<BidResponse>> GetOpenAuctionBidsAsync()
     {
-        var bids = await _client.GetFromJsonAsync<List<BidResponse>>($"/api/auctions/{TestAuctionData.OpenAuctionId}/bids", JsonOptions);
+        return await GetBidsAsync(TestAuctionData.OpenAuctionId);
+    }
+
+    private async Task<List<BidResponse>> GetBidsAsync(Guid auctionId)
+    {
+        var bids = await _client.GetFromJsonAsync<List<BidResponse>>($"/api/auctions/{auctionId}/bids", JsonOptions);
         Assert.NotNull(bids);
         return bids;
+    }
+
+    private async Task<Guid> AddBuyNowAuctionAsync(
+        SaleMode saleMode,
+        decimal startingPrice = 1000m,
+        decimal minimumBidIncrement = 50m,
+        decimal buyNowPrice = 1500m,
+        decimal? currentBidAmount = null,
+        string? currentBidderId = null,
+        long version = 1,
+        AuctionStatus status = AuctionStatus.Open,
+        DateTimeOffset? startTimeUtc = null,
+        DateTimeOffset? endTimeUtc = null)
+    {
+        var auctionId = Guid.NewGuid();
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        db.Auctions.Add(new Auction
+        {
+            Id = auctionId,
+            Title = "BN2 API test auction",
+            Description = "BN2 Buy Now integration test.",
+            StartingPrice = startingPrice,
+            SaleMode = saleMode,
+            BuyNowPrice = buyNowPrice,
+            MinimumBidIncrement = minimumBidIncrement,
+            CurrentBidAmount = currentBidAmount,
+            CurrentBidderId = currentBidderId,
+            StartTimeUtc = startTimeUtc ?? TestAuctionData.Now.AddHours(-1),
+            EndTimeUtc = endTimeUtc ?? TestAuctionData.Now.AddHours(1),
+            Status = status,
+            Version = version,
+            CreatedAtUtc = TestAuctionData.Now.AddDays(-1),
+            UpdatedAtUtc = TestAuctionData.Now
+        });
+        await db.SaveChangesAsync();
+        return auctionId;
+    }
+
+    private async Task AssertBuyNowRejectedAsync(
+        HttpResponseMessage response,
+        string expectedCode,
+        HttpStatusCode expectedStatus = HttpStatusCode.Conflict)
+    {
+        Assert.Equal(expectedStatus, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
+        Assert.Equal(expectedCode, error?.Code);
+    }
+
+    private async Task AssertBidRejectedAsync(
+        HttpResponseMessage response,
+        string expectedCode,
+        HttpStatusCode expectedStatus = HttpStatusCode.Conflict)
+    {
+        Assert.Equal(expectedStatus, response.StatusCode);
+        var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
+        Assert.Equal(expectedCode, error?.Code);
     }
 }
 

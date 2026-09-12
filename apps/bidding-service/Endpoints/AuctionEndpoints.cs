@@ -46,6 +46,13 @@ public static class AuctionEndpoints
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
             .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
 
+        group.MapPost("/{id:guid}/buy-now", BuyNow)
+            .WithName("BuyNow")
+            .Produces<BuyNowResponse>(StatusCodes.Status201Created)
+            .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
+            .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
+            .Produces<ApiErrorResponse>(StatusCodes.Status409Conflict);
+
         return group;
     }
 
@@ -305,6 +312,39 @@ public static class AuctionEndpoints
                     ToBidRuleDetails(auction)));
         }
 
+        if (auction.SaleMode == SaleMode.BuyNowOnly)
+        {
+            return new BidValidationError(
+                StatusCodes.Status409Conflict,
+                new ApiErrorResponse(
+                    "bidding_not_available",
+                    "Ordinary bidding is not available for this auction.",
+                    ToBidRuleDetails(auction)));
+        }
+
+        if (auction.SaleMode == SaleMode.AuctionAndBuyNow)
+        {
+            if (auction.BuyNowPrice is null || auction.BuyNowPrice <= 0)
+            {
+                return new BidValidationError(
+                    StatusCodes.Status409Conflict,
+                    new ApiErrorResponse(
+                        "buy_now_not_available",
+                        "Buy Now is not correctly configured for this auction.",
+                        ToBidRuleDetails(auction)));
+            }
+
+            if (amount >= auction.BuyNowPrice.Value)
+            {
+                return new BidValidationError(
+                    StatusCodes.Status400BadRequest,
+                    new ApiErrorResponse(
+                        "bid_at_or_above_buy_now_price",
+                        "Ordinary bids must be below the Buy Now price.",
+                        ToBidRuleDetails(auction)));
+            }
+        }
+
         var minimumValidBid = BidRules.GetMinimumValidBid(auction);
         if (amount < minimumValidBid)
         {
@@ -313,6 +353,213 @@ public static class AuctionEndpoints
                 new ApiErrorResponse(
                     "bid_below_minimum",
                     "Bid amount does not satisfy the minimum bid.",
+                    ToBidRuleDetails(auction)));
+        }
+
+        return null;
+    }
+
+    private static async Task<
+        Results<
+            Created<BuyNowResponse>,
+            BadRequest<ApiErrorResponse>,
+            NotFound<ApiErrorResponse>,
+            Conflict<ApiErrorResponse>>>
+        BuyNow(
+        Guid id,
+        BuyNowRequest request,
+        BiddingDbContext db,
+        TimeProvider timeProvider,
+        IOptions<BidPlacementOptions> options,
+        ILoggerFactory loggerFactory,
+        HttpContext httpContext,
+        CancellationToken cancellationToken)
+    {
+        var logger = loggerFactory.CreateLogger("BuyNow");
+        var correlationId = ResolveCorrelationId(httpContext);
+        httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
+
+        var bidderId = request.BidderId?.Trim();
+        if (string.IsNullOrWhiteSpace(bidderId))
+        {
+            return TypedResults.BadRequest(
+                new ApiErrorResponse("invalid_bidder", "BidderId is required."));
+        }
+
+        var maxRetries = Math.Max(0, options.Value.MaxConcurrencyRetries);
+        for (var attempt = 0; attempt <= maxRetries; attempt++)
+        {
+            await using var transaction = await db.Database
+                .BeginTransactionAsync(cancellationToken);
+            var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+            if (auction is null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                return TypedResults.NotFound(
+                    new ApiErrorResponse("auction_not_found", "Auction not found."));
+            }
+
+            var now = timeProvider.GetUtcNow();
+            var validationError = ValidateBuyNow(auction, now);
+            if (validationError is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                logger.LogInformation(
+                    "Buy Now rejected after validation for auction {AuctionId}. Code: {Code}. Version: {AuctionVersion}. CorrelationId: {CorrelationId}",
+                    auction.Id,
+                    validationError.Code,
+                    auction.Version,
+                    correlationId);
+
+                return TypedResults.Conflict(validationError.Error);
+            }
+
+            if (options.Value.ArtificialProcessingDelayMilliseconds > 0)
+            {
+                await Task.Delay(
+                    options.Value.ArtificialProcessingDelayMilliseconds,
+                    cancellationToken);
+            }
+
+            auction.FinalWinnerId = bidderId;
+            auction.FinalPrice = auction.BuyNowPrice;
+            auction.Status = AuctionStatus.Closed;
+            auction.Version += 1;
+            auction.UpdatedAtUtc = now;
+
+            var purchasedMessage = OutboxMessageFactory.AuctionPurchased(
+                auction,
+                bidderId,
+                correlationId,
+                now);
+            var closedMessage = OutboxMessageFactory.AuctionClosed(
+                auction,
+                correlationId,
+                now.AddMilliseconds(1));
+            db.OutboxMessages.AddRange(purchasedMessage, closedMessage);
+
+            try
+            {
+                await db.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+
+                logger.LogInformation(
+                    "Completed Buy Now for auction {AuctionId}. Version advanced to {AuctionVersion}. PurchaseMessageId: {PurchaseMessageId}. CorrelationId: {CorrelationId}",
+                    auction.Id,
+                    auction.Version,
+                    purchasedMessage.Id,
+                    correlationId);
+
+                var response = new BuyNowResponse(
+                    auction.Id,
+                    bidderId,
+                    auction.FinalPrice!.Value,
+                    auction.Version,
+                    now,
+                    correlationId);
+
+                return TypedResults.Created($"/api/auctions/{auction.Id}", response);
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+                db.ChangeTracker.Clear();
+
+                logger.LogWarning(
+                    "Buy Now concurrency conflict detected for auction {AuctionId} on attempt {Attempt} of {MaxAttempts}. CorrelationId: {CorrelationId}",
+                    id,
+                    attempt + 1,
+                    maxRetries + 1,
+                    correlationId);
+
+                if (attempt == maxRetries)
+                {
+                    var currentAuction = await db.Auctions
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+                    if (currentAuction is null)
+                    {
+                        return TypedResults.NotFound(
+                            new ApiErrorResponse("auction_not_found", "Auction not found."));
+                    }
+
+                    var currentError = ValidateBuyNow(currentAuction, timeProvider.GetUtcNow());
+                    return TypedResults.Conflict(
+                        currentError?.Error
+                        ?? new ApiErrorResponse(
+                            "auction_concurrency_conflict",
+                            "Auction state changed while the Buy Now purchase was being placed.",
+                            ToBidRuleDetails(currentAuction)));
+                }
+            }
+        }
+
+        return TypedResults.Conflict(new ApiErrorResponse(
+            "auction_concurrency_conflict",
+            "Auction state changed while the Buy Now purchase was being placed."));
+    }
+
+    private static BuyNowValidationError? ValidateBuyNow(
+        Auction auction,
+        DateTimeOffset now)
+    {
+        if (auction.Status != AuctionStatus.Open)
+        {
+            return new BuyNowValidationError(
+                "auction_not_open",
+                new ApiErrorResponse(
+                    "auction_not_open",
+                    "Auction is not open for Buy Now.",
+                    ToBidRuleDetails(auction)));
+        }
+
+        if (now < auction.StartTimeUtc)
+        {
+            return new BuyNowValidationError(
+                "auction_not_started",
+                new ApiErrorResponse(
+                    "auction_not_started",
+                    "Auction has not started yet.",
+                    ToBidRuleDetails(auction)));
+        }
+
+        if (now >= auction.EndTimeUtc)
+        {
+            return new BuyNowValidationError(
+                "auction_ended",
+                new ApiErrorResponse(
+                    "auction_ended",
+                    "Auction has already ended.",
+                    ToBidRuleDetails(auction)));
+        }
+
+        if (auction.SaleMode is not (SaleMode.BuyNowOnly or SaleMode.AuctionAndBuyNow))
+        {
+            return new BuyNowValidationError(
+                "buy_now_not_available",
+                new ApiErrorResponse(
+                    "buy_now_not_available",
+                    "Buy Now is not available for this auction.",
+                    ToBidRuleDetails(auction)));
+        }
+
+        if (auction.BuyNowPrice is null || auction.BuyNowPrice <= 0)
+        {
+            return new BuyNowValidationError(
+                "buy_now_not_available",
+                new ApiErrorResponse(
+                    "buy_now_not_available",
+                    "Buy Now is not correctly configured for this auction.",
+                    ToBidRuleDetails(auction)));
+        }
+
+        if (auction.FinalWinnerId is not null || auction.FinalPrice is not null)
+        {
+            return new BuyNowValidationError(
+                "buy_now_not_available",
+                new ApiErrorResponse(
+                    "buy_now_not_available",
+                    "Buy Now is no longer available for this auction.",
                     ToBidRuleDetails(auction)));
         }
 
@@ -347,7 +594,8 @@ public static class AuctionEndpoints
         return new BidRuleErrorDetails(
             auction.CurrentBidAmount,
             BidRules.GetMinimumValidBid(auction),
-            auction.Version);
+            auction.Version,
+            auction.BuyNowPrice);
     }
 
     private static string ResolveCorrelationId(HttpContext httpContext)
@@ -357,4 +605,5 @@ public static class AuctionEndpoints
     }
 
     private sealed record BidValidationError(int StatusCode, ApiErrorResponse Error);
+    private sealed record BuyNowValidationError(string Code, ApiErrorResponse Error);
 }

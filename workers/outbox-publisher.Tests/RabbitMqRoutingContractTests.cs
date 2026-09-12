@@ -12,6 +12,7 @@ public sealed class RabbitMqRoutingContractTests
     [InlineData("BidAccepted", "auction.bid.accepted")]
     [InlineData("AuctionClosed", "auction.closed")]
     [InlineData("WinnerSelected", "auction.winner.selected")]
+    [InlineData("AuctionPurchased", "auction.purchased")]
     public void RoutingKeyFor_UsesStableIntegrationRoutingKeys(string eventType, string expectedRoutingKey)
     {
         var publisher = new RabbitMqEventPublisher(

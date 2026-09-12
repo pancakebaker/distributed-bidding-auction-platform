@@ -291,6 +291,31 @@ This additive, backward-compatible sequence allows service and worker versions
 to overlap safely while a migration is being rolled out. It does not add
 executable deployment automation.
 
+## Buy Now command contract
+
+Buy Now is an explicit command exposed by the Bidding Service at:
+
+```text
+POST /api/auctions/{id}/buy-now
+```
+
+The request identifies the buyer but does not submit a price. The service reads
+the authoritative `BuyNowPrice` from BiddingDb. A bid at or above
+`BuyNowPrice` never means Buy Now and is rejected as an ordinary bid.
+
+The command is eligible only for `BuyNowOnly` and `AuctionAndBuyNow` auctions
+that are open, started, unexpired, correctly priced, and not already in a
+terminal outcome. A successful command closes the auction atomically, writes
+`FinalWinnerId` and `FinalPrice`, increments `Version` once, and persists
+`AuctionPurchased` followed by `AuctionClosed` in the transactional outbox.
+Both events use the same resulting aggregate version. `WinnerSelected` is not
+emitted for Buy Now, and no synthetic `Bid` is created.
+
+`CurrentBidAmount` and `CurrentBidderId` remain the highest ordinary-bid state;
+`FinalPrice` and `FinalWinnerId` remain the terminal auction outcome. This
+separation is required for accurate bid history and for concurrent Buy Now,
+ordinary-bid, and scheduler transitions.
+
 ## Planned follow-up
 
 The next persistence-boundary work should be small and behavior-preserving:

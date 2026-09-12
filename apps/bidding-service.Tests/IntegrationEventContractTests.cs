@@ -10,9 +10,11 @@ public sealed class IntegrationEventContractTests
         Assert.Equal("BidAccepted", IntegrationEventTypes.BidAccepted);
         Assert.Equal("AuctionClosed", IntegrationEventTypes.AuctionClosed);
         Assert.Equal("WinnerSelected", IntegrationEventTypes.WinnerSelected);
+        Assert.Equal("AuctionPurchased", IntegrationEventTypes.AuctionPurchased);
         Assert.Equal("Auction", AggregateTypes.Auction);
         Assert.Equal("auction.bid.accepted", IntegrationEventRoutingKeys.BidAccepted);
         Assert.Equal("auction.closed", IntegrationEventRoutingKeys.AuctionClosed);
         Assert.Equal("auction.winner.selected", IntegrationEventRoutingKeys.WinnerSelected);
+        Assert.Equal("auction.purchased", IntegrationEventRoutingKeys.AuctionPurchased);
     }
 }
