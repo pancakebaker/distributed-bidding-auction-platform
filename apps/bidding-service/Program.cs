@@ -39,6 +39,11 @@ builder.Services.AddDbContext<BiddingDbContext>(options =>
 });
 builder.Services.AddScoped<DatabaseInitializer>();
 builder.Services.AddScoped<IClientCredentialProvisioningService, ClientCredentialProvisioningService>();
+if (ClientCredentialProvisioningCommand.IsCommand(args))
+{
+    await ClientCredentialProvisioningCommand.RunAsync(builder, args);
+    return;
+}
 builder.Services.AddScoped<IClientAssertionValidator, ClientAssertionValidator>();
 builder.Services.AddSingleton<IConnectionMultiplexer>(services =>
 {

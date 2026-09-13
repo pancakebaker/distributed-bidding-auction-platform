@@ -243,6 +243,24 @@ enabled, missing or invalid configuration fails the outbound request closed;
 the client never silently sends a request without the assertion. Assertions
 are generated per request, and Laravel must be restarted/reloaded after key
 or KeyId rotation if the deployment changes its mounted configuration.
+
+MT5.4 adds an operator-only bootstrap boundary for this deployment workflow.
+The internal `provision`/`revoke` command runs from the Bidding Service
+executable and resolves the authoritative `ClientApplication` by `client_id`.
+It accepts only an operator-supplied public SubjectPublicKeyInfo PEM, reuses
+`IClientCredentialProvisioningService`, and prints non-secret credential
+metadata. It is not an HTTP endpoint, has no browser or Operations Portal
+surface, and never reads or stores the Laravel private key. The rollout
+runbook is in `docs/runbooks/client-assertion-rollout.md`.
+
+The bootstrap sequence is: generate the keypair on the Laravel/client side,
+provision the public key, mount the private key and configure Laravel, smoke
+test with admission disabled, then enable the deployment-only
+`ClientAssertionAdmission__Enabled=true` override. Rotation provisions the new
+public credential before switching Laravel to the new private key and `KeyId`;
+the old credential remains available until the overlap is verified and is then
+revoked. Both Laravel issuance and Bidding Service admission remain false by
+default in this phase.
 ### MT5.3d runtime client admission
 
 The Bidding Service now has a temporary `ClientAssertionAdmission:Enabled`

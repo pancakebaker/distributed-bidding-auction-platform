@@ -209,7 +209,7 @@ Portal metrics use bounded dimensions only; EventId, CorrelationId, AggregateId,
 
 - Laravel owns bidder and tenant-admin identity; the portal owns independent SystemAdministrator identity and accepts only the dedicated RS256 audience and permission for Live Feed access.
 - The configured Laravel installation tenant is carried through trusted Bidding Service read and command tokens. Public auction reads are tenant-scoped through the Laravel BFF; browsers do not choose tenant ownership.
-- Auction integration events carry the authoritative `tenantId`. Live Feed uses it for validation, tenant-aware Redis state/history, and Socket.IO rooms; the Operations Portal persists it with each activity record. Tenant status enforcement, client admission, and broader tenant-aware system-admin views remain future work.
+- Auction integration events carry the authoritative `tenantId`. Live Feed uses it for validation, tenant-aware Redis state/history, and Socket.IO rooms; the Operations Portal persists it with each activity record. Tenant status enforcement and broader tenant-aware system-admin views remain future work; client admission is implemented behind the temporary MT5.3d rollout gate and operationalized by the MT5.4 bootstrap runbook.
 - Portal sessions use short-lived HttpOnly cookies that are Secure outside Development/Testing.
 - Authorization is enforced server-side for pages, the SignalR hub, and report endpoints.
 - Live Feed consumes system-admin token JTIs once through Redis before issuing an opaque browser handoff code.

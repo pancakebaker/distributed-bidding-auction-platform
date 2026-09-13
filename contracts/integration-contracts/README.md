@@ -112,6 +112,18 @@ when its opt-in signing configuration is invalid. The header carries a fresh RS2
 outage respectively; `/health` and system-administration surfaces are not
 covered by this gate.
 
+MT5.4 documents the controlled bootstrap workflow. An operator runs the
+Bidding Service's internal `provision` command with a public key PEM and the
+registered `client_id`/`kid`; the command reuses the service-owned provisioning
+boundary and never receives a private key. Laravel keeps the matching private
+key in a mounted server-side file and remains the only assertion issuer. The
+operator enables `ClientAssertionAdmission__Enabled=true` only after a fresh
+assertion smoke test and keeps the default false during migration. Rotation
+provisions a new public credential before switching Laravel's `KeyId`, then
+revokes the old credential after overlap is verified. There is still no public
+provisioning endpoint, browser credential flow, WordPress implementation, or
+later rollout activation in this contract phase.
+
 ## What belongs here
 
 Add a value only when multiple independently deployed components must agree on
