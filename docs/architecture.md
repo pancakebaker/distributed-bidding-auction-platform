@@ -122,7 +122,7 @@ Public auction reads use a server-side tenant-bound read token, while public Soc
 
 The Bidding Service now owns a `tenants` registry with an opaque UUID, display name, explicit `Active`/`Suspended`/`Disabled` status, and UTC timestamps. `Auction.TenantId` is persisted as the authoritative ownership field. Existing demo auctions are backfilled to the deterministic `Local Demo Tenant` (`aaaaaaaa-1111-4111-8111-111111111111`), and new single-tenant compatibility API creations use that server-controlled default.
 
-MT1 did not provide tenant isolation. MT2 bound Laravel users to the server-configured installation tenant and added `tenant_id` to Laravel-issued Bidding Service tokens. MT3 added tenant isolation for authenticated mutations; MT4 adds tenant-scoped public reads, tenant-bearing events, and tenant-aware Live Feed/portal projections. Tenant status is stored but not enforced, and ClientApplication, admission control, provisioning, and WordPress integration remain future work.
+MT1 did not provide tenant isolation. MT2 bound Laravel users to the server-configured installation tenant and added `tenant_id` to Laravel-issued Bidding Service tokens. MT3 added tenant isolation for authenticated mutations; MT4 adds tenant-scoped public reads, tenant-bearing events, and tenant-aware Live Feed/portal projections. Tenant status is stored but not enforced. MT5.1 adds the ClientApplication registry foundation; credentials, admission control, provisioning UI, and WordPress integration remain future work.
 
 ### MT3 authenticated tenant resource enforcement
 
@@ -162,6 +162,27 @@ updates to `tenant:{tenantId}:auction:{auctionId}` rooms. The Operations Portal
 persists `tenant_id` on activity records and backfills existing activity to the
 local demo tenant. Tenant status enforcement, client admission, and external
 OIDC remain future work.
+
+### MT5.1 ClientApplication registry foundation
+
+The Bidding Service owns a `client_applications` registry with a stable,
+globally unique `client_id`, immutable `TenantId`, display name, explicit
+`Active`/`Disabled`/`Revoked` status, and UTC timestamps. A tenant may own many
+registered applications, such as Laravel and a future WordPress client. The
+local demo seeds `local-laravel-client` (application ID
+`aaaaaaaa-7777-4777-8777-777777777777`) for the deterministic demo tenant.
+
+`client_id` is application identity, not a tenant ID, human `sub`, secret, or
+credential. MT5.1 does not add credentials, client JWT claims, admission
+enforcement, provisioning UI, or public self-registration. Client status is
+stored but not enforced; those concerns belong to later MT5 phases.
+
+The intended future provisioning flow is administrative: identify a tenant,
+register an application with a stable `client_id`, configure the corresponding
+server-side Laravel `BIDDING_SERVICE_CLIENT_ID`, then attach credentials in
+MT5.2 and enforce admission in MT5.3. MT5.1 does not add that Laravel setting
+because no runtime component consumes application identity yet; the seeded
+registry record is the authoritative preparation point.
 
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority

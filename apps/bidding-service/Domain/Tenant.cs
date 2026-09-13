@@ -49,4 +49,7 @@ public sealed class Tenant
 
     /// <summary>Gets or sets the last update timestamp.</summary>
     public DateTimeOffset UpdatedAtUtc { get; set; }
+
+    /// <summary>Gets the registered applications owned by this tenant.</summary>
+    public ICollection<ClientApplication> ClientApplications { get; } = new List<ClientApplication>();
 }

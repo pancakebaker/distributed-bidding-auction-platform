@@ -306,6 +306,131 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     [Fact]
+    public async Task ClientApplication_PersistsStatusAndSupportsMultipleApplicationsPerTenant()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var tenantId = Guid.Parse("bbbbbbbb-2222-4222-8222-222222222222");
+        db.Tenants.Add(Tenant.Create(tenantId, "Client Registry Tenant", TenantStatus.Active, TestAuctionData.Now));
+        db.ClientApplications.AddRange(
+            ClientApplication.Create(
+                Guid.Parse("cccccccc-3333-4333-8333-333333333333"),
+                "customer-a-laravel",
+                tenantId,
+                "Customer A Laravel",
+                ClientApplicationStatus.Active,
+                TestAuctionData.Now),
+            ClientApplication.Create(
+                Guid.Parse("dddddddd-4444-4444-8444-444444444444"),
+                "customer-a-wordpress",
+                tenantId,
+                "Customer A WordPress",
+                ClientApplicationStatus.Disabled,
+                TestAuctionData.Now),
+            ClientApplication.Create(
+                Guid.Parse("eeeeeeee-5555-4555-8555-555555555555"),
+                "customer-a-reporting",
+                tenantId,
+                "Customer A Reporting",
+                ClientApplicationStatus.Revoked,
+                TestAuctionData.Now));
+
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var persisted = await db.Tenants
+            .Include(tenant => tenant.ClientApplications)
+            .SingleAsync(tenant => tenant.Id == tenantId);
+
+        Assert.Equal(3, persisted.ClientApplications.Count);
+        Assert.Contains(persisted.ClientApplications, item =>
+            item.ClientId == "customer-a-laravel" && item.Status == ClientApplicationStatus.Active);
+        Assert.Contains(persisted.ClientApplications, item =>
+            item.ClientId == "customer-a-wordpress" && item.Status == ClientApplicationStatus.Disabled);
+        Assert.Contains(persisted.ClientApplications, item =>
+            item.ClientId == "customer-a-reporting" && item.Status == ClientApplicationStatus.Revoked);
+
+        var foreignKey = db.Model
+            .FindEntityType(typeof(ClientApplication))!
+            .GetForeignKeys()
+            .Single(key => key.PrincipalEntityType.ClrType == typeof(Tenant));
+        Assert.Equal(DeleteBehavior.Restrict, foreignKey.DeleteBehavior);
+    }
+
+    [Fact]
+    public async Task ClientApplication_RejectsDuplicateClientIdAndUnknownTenant()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var tenantId = Guid.Parse("bbbbbbbb-2222-4222-8222-222222222222");
+        db.Tenants.Add(Tenant.Create(tenantId, "Client Registry Tenant", TenantStatus.Active, TestAuctionData.Now));
+        db.ClientApplications.Add(ClientApplication.Create(
+            Guid.Parse("cccccccc-3333-4333-8333-333333333333"),
+            "duplicate-client",
+            tenantId,
+            "First application",
+            ClientApplicationStatus.Active,
+            TestAuctionData.Now));
+        await db.SaveChangesAsync();
+
+        db.ClientApplications.Add(ClientApplication.Create(
+            Guid.Parse("dddddddd-4444-4444-8444-444444444444"),
+            "DUPLICATE-CLIENT",
+            tenantId,
+            "Duplicate application",
+            ClientApplicationStatus.Revoked,
+            TestAuctionData.Now));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        db.ClientApplications.Add(ClientApplication.Create(
+            Guid.Parse("eeeeeeee-5555-4555-8555-555555555555"),
+            "unknown-tenant-client",
+            Guid.Parse("ffffffff-6666-4666-8666-666666666666"),
+            "Unknown tenant application",
+            ClientApplicationStatus.Active,
+            TestAuctionData.Now));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
+    public void ClientApplication_ValidatesAndNormalizesClientId()
+    {
+        var application = ClientApplication.Create(
+            Guid.Parse("cccccccc-3333-4333-8333-333333333333"),
+            " Customer-A-Laravel ",
+            TenantDefaults.DemoTenantId,
+            "Customer A Laravel",
+            ClientApplicationStatus.Active,
+            TestAuctionData.Now);
+
+        Assert.Equal("customer-a-laravel", application.ClientId);
+        Assert.Throws<ArgumentException>(() => ClientApplication.NormalizeClientId("contains spaces"));
+        Assert.Throws<ArgumentException>(() => ClientApplication.NormalizeClientId("-starts-with-hyphen"));
+        Assert.Throws<ArgumentException>(() => ClientApplication.NormalizeClientId(new string('a', 64)));
+        Assert.Throws<ArgumentException>(() => ClientApplication.NormalizeClientId(string.Empty));
+    }
+
+    [Fact]
+    public async Task DatabaseSeeder_SeedsDeterministicClientApplicationIdempotently()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");
+        await db.Database.MigrateAsync();
+
+        await DatabaseSeeder.SeedAsync(db, new FixedTimeProvider(TestAuctionData.Now));
+        await DatabaseSeeder.SeedAsync(db, new FixedTimeProvider(TestAuctionData.Now));
+
+        var applications = await db.ClientApplications.ToListAsync();
+        Assert.Single(applications);
+        Assert.Equal(TenantDefaults.DemoClientApplicationId, applications[0].Id);
+        Assert.Equal(TenantDefaults.DemoClientId, applications[0].ClientId);
+        Assert.Equal(TenantDefaults.DemoTenantId, applications[0].TenantId);
+        Assert.Equal(ClientApplicationStatus.Active, applications[0].Status);
+    }
+
+    [Fact]
     public async Task AuctionForeignKeyRejectsAnUnknownTenant()
     {
         using var scope = _factory.Services.CreateScope();

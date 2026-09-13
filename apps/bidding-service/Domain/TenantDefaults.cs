@@ -14,4 +14,14 @@ public static class TenantDefaults
 
     /// <summary>Stable display name for the current local/demo tenant.</summary>
     public const string DemoTenantName = "Local Demo Tenant";
+
+    /// <summary>Stable identifier for the local Laravel client registry record.</summary>
+    public static readonly Guid DemoClientApplicationId =
+        Guid.Parse("aaaaaaaa-7777-4777-8777-777777777777");
+
+    /// <summary>Stable application identifier used by the local Laravel installation.</summary>
+    public const string DemoClientId = "local-laravel-client";
+
+    /// <summary>Stable display name for the local Laravel client.</summary>
+    public const string DemoClientApplicationName = "Local Laravel Client";
 }

@@ -63,6 +63,21 @@ public static class DatabaseSeeder
             await db.SaveChangesAsync(cancellationToken);
         }
 
+        var clientApplication = await db.ClientApplications.SingleOrDefaultAsync(
+            item => item.Id == TenantDefaults.DemoClientApplicationId,
+            cancellationToken);
+        if (clientApplication is null)
+        {
+            db.ClientApplications.Add(ClientApplication.Create(
+                TenantDefaults.DemoClientApplicationId,
+                TenantDefaults.DemoClientId,
+                TenantDefaults.DemoTenantId,
+                TenantDefaults.DemoClientApplicationName,
+                ClientApplicationStatus.Active,
+                now));
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
         if (await db.Auctions.AnyAsync(cancellationToken))
         {
             return;

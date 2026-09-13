@@ -28,6 +28,10 @@ public sealed class BiddingDbContext(
     /// </summary>
     public DbSet<Tenant> Tenants => Set<Tenant>();
     /// <summary>
+    /// Gets the registered client applications.
+    /// </summary>
+    public DbSet<ClientApplication> ClientApplications => Set<ClientApplication>();
+    /// <summary>
     /// Gets or sets the accepted bid history for the auction.
     /// </summary>
     public DbSet<Bid> Bids => Set<Bid>();
@@ -127,6 +131,40 @@ public sealed class BiddingDbContext(
                 .IsRequired();
             tenant.Property(t => t.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             tenant.Property(t => t.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            tenant.HasMany(t => t.ClientApplications)
+                .WithOne()
+                .HasForeignKey(application => application.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ClientApplication>(application =>
+        {
+            application.ToTable("client_applications", table => table.HasCheckConstraint(
+                "CK_client_applications_status",
+                "status IN ('Active', 'Disabled', 'Revoked')"));
+            application.HasKey(item => item.Id);
+            application.Property(item => item.Id).HasColumnName("id");
+            application.Property(item => item.ClientId)
+                .HasColumnName("client_id")
+                .HasMaxLength(63)
+                .IsRequired();
+            application.Property(item => item.TenantId).HasColumnName("tenant_id").IsRequired();
+            application.Property(item => item.Name)
+                .HasColumnName("name")
+                .HasMaxLength(200)
+                .IsRequired();
+            application.Property(item => item.Status)
+                .HasColumnName("status")
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+            application.Property(item => item.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            application.Property(item => item.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            application.HasIndex(item => item.ClientId)
+                .IsUnique()
+                .HasDatabaseName("ux_client_applications_client_id");
+            application.HasIndex(item => item.TenantId)
+                .HasDatabaseName("ix_client_applications_tenant_id");
         });
 
         modelBuilder.Entity<Bid>(bid =>
