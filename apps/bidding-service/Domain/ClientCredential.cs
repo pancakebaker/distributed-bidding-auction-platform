@@ -75,15 +75,19 @@ public sealed class ClientCredential
     }
 
     /// <summary>Returns whether this credential is usable at the supplied UTC instant.</summary>
-    public bool IsUsableAt(DateTimeOffset now) =>
-        Status == ClientCredentialStatus.Active
-        && RevokedAtUtc is null
-        && now >= ValidFromUtc
-        && (ExpiresAtUtc is null || now < ExpiresAtUtc);
+    public bool IsUsableAt(DateTimeOffset now)
+    {
+        EnsureUtc(now, nameof(now));
+        return Status == ClientCredentialStatus.Active
+            && RevokedAtUtc is null
+            && now >= ValidFromUtc
+            && (ExpiresAtUtc is null || now < ExpiresAtUtc);
+    }
 
     /// <summary>Revokes this credential without deleting its audit history.</summary>
     public void Revoke(DateTimeOffset now)
     {
+        EnsureUtc(now, nameof(now));
         if (Status == ClientCredentialStatus.Revoked)
             return;
 

@@ -485,6 +485,50 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     [Fact]
+    public void ClientCredential_RejectsNonUtcRevocationWithoutChangingState()
+    {
+        using var rsa = RSA.Create(2048);
+        var credential = ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "utc-revocation-key",
+            rsa.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now);
+        var nonUtc = new DateTimeOffset(2026, 9, 13, 12, 0, 0, TimeSpan.FromHours(8));
+
+        Assert.Throws<ArgumentException>(() => credential.Revoke(nonUtc));
+        Assert.Equal(ClientCredentialStatus.Active, credential.Status);
+        Assert.Null(credential.RevokedAtUtc);
+        Assert.True(credential.IsUsableAt(TestAuctionData.Now));
+
+        credential.Revoke(TestAuctionData.Now.AddHours(1));
+        var revokedAt = credential.RevokedAtUtc;
+        Assert.Throws<ArgumentException>(() => credential.Revoke(nonUtc));
+        Assert.Equal(ClientCredentialStatus.Revoked, credential.Status);
+        Assert.Equal(revokedAt, credential.RevokedAtUtc);
+    }
+
+    [Fact]
+    public void ClientCredential_RejectsNonUtcUsabilityInput()
+    {
+        using var rsa = RSA.Create(2048);
+        var credential = ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "utc-usability-key",
+            rsa.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now);
+
+        Assert.Throws<ArgumentException>(() => credential.IsUsableAt(
+            new DateTimeOffset(2026, 9, 13, 12, 0, 0, TimeSpan.FromHours(8))));
+        Assert.True(credential.IsUsableAt(TestAuctionData.Now));
+    }
+
+    [Fact]
     public async Task ClientCredential_PersistsRotationAndRevocationWithoutDeletingHistory()
     {
         using var scope = _factory.Services.CreateScope();
