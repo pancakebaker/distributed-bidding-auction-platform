@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using auction_scheduler.Options;
 using bidding_service.Data;
+using bidding_service.Domain;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -456,17 +457,18 @@ public sealed class AuctionSchedulerIntegrationTests : IAsyncLifetime
         await using var command = new NpgsqlCommand(
             """
             INSERT INTO auctions
-                (id, title, description, starting_price, minimum_bid_increment, current_bid_amount, current_bidder_id,
+                (id, tenant_id, title, description, starting_price, minimum_bid_increment, current_bid_amount, current_bidder_id,
                  start_time_utc, end_time_utc, status, sale_mode, buy_now_price, final_winner_id, final_price,
                  version, created_at_utc, updated_at_utc)
             VALUES
-                (@id, 'Scheduler Test Auction', 'Integration test auction', 10000, 500, @currentBidAmount, @currentBidderId,
+                (@id, @tenantId, 'Scheduler Test Auction', 'Integration test auction', 10000, 500, @currentBidAmount, @currentBidderId,
                 @startTimeUtc, @endTimeUtc, @status, @saleMode, @buyNowPrice, @finalWinnerId, @finalPrice,
                 @version, @createdAtUtc, @updatedAtUtc);
             """,
             connection);
 
         command.Parameters.AddWithValue("id", auctionId);
+        command.Parameters.AddWithValue("tenantId", TenantDefaults.DemoTenantId);
         command.Parameters.AddWithValue("currentBidAmount", currentBidAmount is null ? DBNull.Value : currentBidAmount.Value);
         command.Parameters.AddWithValue("currentBidderId", string.IsNullOrWhiteSpace(currentBidderId) ? DBNull.Value : currentBidderId);
         command.Parameters.AddWithValue("startTimeUtc", now.AddHours(-1));

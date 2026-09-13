@@ -205,12 +205,12 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
                  final_winner_id, final_price, start_time_utc, end_time_utc,
                  status, version, created_at_utc, updated_at_utc)
             VALUES
-                ('{auctionId}', 'Legacy auction', 'Pre-MT1 row', 100, 'AuctionOnly', NULL,
+                ({auctionId}, 'Legacy auction', 'Pre-MT1 row', 100, 'AuctionOnly', NULL,
                  10, 100, 'legacy-bidder', NULL, NULL,
                  TIMESTAMPTZ '2026-09-05 11:00:00+00', TIMESTAMPTZ '2026-09-05 13:00:00+00',
                  'Open', 2, TIMESTAMPTZ '2026-09-04 12:00:00+00', TIMESTAMPTZ '2026-09-05 12:00:00+00');
             INSERT INTO bids (id, auction_id, bidder_id, amount, created_at_utc)
-            VALUES ('{bidId}', '{auctionId}', 'legacy-bidder', 100,
+            VALUES ({bidId}, {auctionId}, 'legacy-bidder', 100,
                     TIMESTAMPTZ '2026-09-05 11:30:00+00');
             """);
 
