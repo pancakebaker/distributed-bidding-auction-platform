@@ -147,12 +147,15 @@ if (app.Environment.IsProduction()
     && !admissionOptions.Enabled
     && admissionOptions.AllowInsecureProductionDisable)
 {
-    const string warning = "Client assertion admission is disabled in Production by the temporary "
+    const string warningTemplate = "Client assertion admission is disabled in Production by the temporary "
         + "ClientAssertionAdmission:AllowInsecureProductionDisable override. "
-        + "Tenant-facing requests are not protected; remove the override after migration.";
+        + "Tenant-facing requests are not protected; remove the override after migration. "
+        + "Reason: {BypassReason}";
+    var bypassReason = admissionOptions.InsecureProductionDisableReason?.Trim() ?? string.Empty;
+    var warning = warningTemplate.Replace("{BypassReason}", bypassReason, StringComparison.Ordinal);
     try
     {
-        app.Logger.LogCritical(warning);
+        app.Logger.LogCritical(warningTemplate, bypassReason);
     }
     catch (Exception)
     {

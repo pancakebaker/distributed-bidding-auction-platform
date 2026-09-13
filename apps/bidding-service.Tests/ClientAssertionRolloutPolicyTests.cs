@@ -25,9 +25,26 @@ public sealed class ClientAssertionRolloutPolicyTests
     [Fact]
     public void ProductionAllowsExplicitTemporaryOverride()
     {
-        var result = Validate(isProduction: true, enabled: false, bypass: true);
+        var result = Validate(isProduction: true, enabled: false, bypass: true, reason: "controlled migration");
 
         Assert.True(result.Succeeded);
+    }
+
+    [Fact]
+    public void ProductionRejectsTemporaryOverrideWithoutReason()
+    {
+        var result = Validate(isProduction: true, enabled: false, bypass: true);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Reason", result.FailureMessage);
+    }
+
+    [Fact]
+    public void ProductionRejectsMultilineTemporaryOverrideReason()
+    {
+        var result = Validate(isProduction: true, enabled: false, bypass: true, reason: "incident\nfollow-up");
+
+        Assert.False(result.Succeeded);
     }
 
     [Fact]
@@ -38,12 +55,13 @@ public sealed class ClientAssertionRolloutPolicyTests
         Assert.True(result.Succeeded);
     }
 
-    private static ValidateOptionsResult Validate(bool isProduction, bool enabled, bool bypass) =>
+    private static ValidateOptionsResult Validate(bool isProduction, bool enabled, bool bypass, string? reason = null) =>
         new ClientAssertionAdmissionOptionsValidator(isProduction).Validate(
             Microsoft.Extensions.Options.Options.DefaultName,
             new ClientAssertionAdmissionOptions
             {
                 Enabled = enabled,
-                AllowInsecureProductionDisable = bypass
+                AllowInsecureProductionDisable = bypass,
+                InsecureProductionDisableReason = reason
             });
 }

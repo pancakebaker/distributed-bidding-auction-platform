@@ -36,9 +36,18 @@ ClientAssertionAdmission__AllowInsecureProductionDisable=true
 ```
 
 These overrides default to `false`, are server-side deployment configuration
-only, and emit a high-severity startup warning when used. They are emergency
-migration controls, not a runtime toggle or a permanent production mode; each
-use should have an owner and removal date.
+only, and are deprecated emergency migration controls. When used, each
+application also requires a single-line, non-secret reason of 1 to 256
+characters and emits a high-severity startup warning containing that reason.
+They are not a runtime toggle or a permanent production mode; each use must
+have an owner, incident/change reference, and removal date.
+
+The Laravel reason is configured with
+`BIDDING_SERVICE_CLIENT_ASSERTION_PRODUCTION_BYPASS_REASON`. The Bidding
+Service reason is configured with
+`ClientAssertionAdmission__InsecureProductionDisableReason`. Empty,
+overlong, or multi-line reasons fail production startup. Do not put JWTs,
+keys, passwords, or other secrets in a reason.
 
 The secured target is `Laravel ON / Server ON`. A `Server ON / Laravel OFF`
 deployment returns `401` to tenant-facing requests. During a rolling upgrade,
@@ -50,9 +59,45 @@ provisioned. Do not revoke the only active credential as the first rollback
 step.
 
 The bypasses may be removed after all supported installations are migrated,
-credentials are provisioned, legacy callers are gone, and production has run
-in `ON / ON` mode for the agreed operational period. That removal is deferred
-to a later hardening phase.
+credentials are provisioned, legacy callers are gone, production has run in
+`ON / ON` mode for at least the agreed observation period (recommended: 30
+days), and the rotation, rollback, and staging smoke tests are proven. Future
+WordPress or other clients must use their own registered application and this
+same assertion contract; they are not a reason to retain a hidden exemption.
+Complete bypass removal is deferred to a later hardening phase.
+
+## Caller and deployment policy
+
+Laravel is currently the production tenant-facing Bidding Service caller. The
+browser calls the Laravel BFF and does not call Bidding Service directly. Live
+Feed and Operations Portal use separate paths and are not silently exempted
+from the contract if they later become tenant-facing callers. Any future
+tenant-facing production caller must be a registered `ClientApplication` and
+send the same `X-Client-Assertion` contract.
+
+Development and testing may keep both gates off without real client secrets.
+Staging should run with both gates on. In production, the target is:
+
+```text
+Laravel issuance: true
+Bidding admission: true
+Laravel bypass: false
+Bidding bypass: false
+```
+
+For multi-instance or blue/green rollout, deploy assertion-capable Laravel
+instances everywhere, enable issuance, verify them, then enable Bidding
+admission. Older callers that send no assertion receive `401` once admission
+is enabled. If an emergency mixed-fleet rollback is required, provide an
+explicit reason, disable admission, redeploy, investigate, and remove the
+override after restoring `ON / ON`.
+
+Retirement criteria are: all supported production installations issue
+assertions; all credentials are provisioned and rotation-tested; no legacy
+no-assertion callers remain; no bypass has been used during the observation
+period; staging and rollback have been validated; and the future WordPress
+client plan is covered by the same contract. A later MT5.7 removal phase can
+then delete both bypasses.
 
 ## Bootstrap a registered application
 

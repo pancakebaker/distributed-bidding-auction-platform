@@ -14,4 +14,7 @@ public sealed class ClientAssertionAdmissionOptions
 
     /// <summary>Gets or sets whether a temporary production migration may disable admission.</summary>
     public bool AllowInsecureProductionDisable { get; set; }
+
+    /// <summary>Gets or sets the required auditable reason for a production bypass.</summary>
+    public string? InsecureProductionDisableReason { get; set; }
 }

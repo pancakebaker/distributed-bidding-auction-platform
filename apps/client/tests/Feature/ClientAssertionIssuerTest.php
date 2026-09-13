@@ -26,6 +26,7 @@ class ClientAssertionIssuerTest extends TestCase
         config()->set('app.env', 'testing');
         config()->set('bidding_service.client_assertion_enabled', false);
         config()->set('bidding_service.client_assertion_production_bypass', false);
+        config()->set('bidding_service.client_assertion_production_bypass_reason', null);
         config()->set('bidding_service.token_private_key_path', $this->privateKeyPath);
         config()->set('bidding_service.token_issuer', 'dbap-laravel');
         config()->set('bidding_service.token_audience', 'dbap-bidding-service');
@@ -187,11 +188,23 @@ class ClientAssertionIssuerTest extends TestCase
         config()->set('app.env', 'production');
         config()->set('bidding_service.client_assertion_enabled', false);
         config()->set('bidding_service.client_assertion_production_bypass', true);
+        config()->set('bidding_service.client_assertion_production_bypass_reason', 'controlled migration');
         Log::spy();
 
         app(ClientAssertionProductionPolicy::class)->enforce();
 
         Log::shouldHaveReceived('critical')->once();
+    }
+
+    public function test_production_bypass_requires_a_single_line_reason(): void
+    {
+        config()->set('app.env', 'production');
+        config()->set('bidding_service.client_assertion_enabled', false);
+        config()->set('bidding_service.client_assertion_production_bypass', true);
+        config()->set('bidding_service.client_assertion_production_bypass_reason', "incident\nfollow-up");
+
+        $this->expectException(RuntimeException::class);
+        app(ClientAssertionProductionPolicy::class)->enforce();
     }
 
     public function test_non_production_allows_disabled_issuance_without_key_configuration(): void
