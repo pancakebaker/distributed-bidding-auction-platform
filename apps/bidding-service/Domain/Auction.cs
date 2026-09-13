@@ -15,7 +15,7 @@ public sealed class Auction
     /// <summary>
     /// Gets or sets the tenant that owns this auction.
     /// </summary>
-    public Guid? TenantId { get; set; }
+    public required Guid TenantId { get; init; }
     /// <summary>
     /// Gets or sets the auction title shown to clients.
     /// </summary>

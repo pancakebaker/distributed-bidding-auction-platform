@@ -46,7 +46,7 @@ public sealed class BiddingDbContext(
             auction.ToTable("auctions", table => table.HasCheckConstraint(SaleModeConstraintName, SaleModeConstraintSql));
             auction.HasKey(a => a.Id);
             auction.Property(a => a.Id).HasColumnName("id");
-            auction.Property(a => a.TenantId).HasColumnName("tenant_id");
+            auction.Property(a => a.TenantId).HasColumnName("tenant_id").IsRequired();
             auction.Property(a => a.Title)
                 .HasColumnName("title")
                 .HasMaxLength(200)

@@ -120,6 +120,7 @@ public static class AuctionEndpoints
         var auction = new Auction
         {
             Id = Guid.NewGuid(),
+            TenantId = TenantDefaults.DemoTenantId,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
             StartingPrice = configuration.StartingPrice,

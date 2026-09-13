@@ -33,6 +33,7 @@ public sealed class IntegrationEventContractTests
         var auction = new Auction
         {
             Id = auctionId,
+            TenantId = TenantDefaults.DemoTenantId,
             Title = "Contract test auction",
             Description = "Contract test",
             FinalWinnerId = "buyer-123",
@@ -73,6 +74,7 @@ public sealed class IntegrationEventContractTests
         var auction = new Auction
         {
             Id = Guid.NewGuid(),
+            TenantId = TenantDefaults.DemoTenantId,
             Title = "Cancellation contract auction",
             Description = "Contract test",
             Version = 4

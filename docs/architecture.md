@@ -116,7 +116,13 @@ Browser countdowns are visual only. Server-side UTC validation in the Bidding Se
 
 Human command identity is established by the Laravel session and conveyed to the Bidding Service only through a short-lived, server-issued RS256 bearer token. Laravel keeps the private signing key; the Bidding Service validates the signature, configured `kid`, issuer, audience, lifetime, and permission claims using public verification material. `sub` is the actor identity, while permissions are derived from trusted Laravel user state. Browsers do not receive or store these downstream tokens, and CSRF protects browser-to-Laravel state changes.
 
-Public auction reads and public Socket.IO auction events remain anonymous. All human state-changing commands use the Laravel BFF; the Bidding Service remains the final policy boundary (`AuctionBid`, `AuctionBuy`, and `AuctionManage`). Current tenant ownership/resource matching and tenant claims are not implemented; future multi-tenancy must add tenant context without overloading `sub`. System-administration and live-feed-admin authentication remain separate SYS0+ work.
+Public auction reads and public Socket.IO auction events remain anonymous. All human state-changing commands use the Laravel BFF; the Bidding Service remains the final policy boundary (`AuctionBid`, `AuctionBuy`, and `AuctionManage`). Current tenant authorization and tenant claims are not implemented; future multi-tenancy must add tenant context without overloading `sub`. System-administration and live-feed-admin authentication remain separate SYS0+ work.
+
+### MT1 tenant persistence foundation
+
+The Bidding Service now owns a `tenants` registry with an opaque UUID, display name, explicit `Active`/`Suspended`/`Disabled` status, and UTC timestamps. `Auction.TenantId` is persisted as the authoritative ownership field. Existing demo auctions are backfilled to the deterministic `Local Demo Tenant` (`aaaaaaaa-1111-4111-8111-111111111111`), and new single-tenant compatibility API creations use that server-controlled default.
+
+MT1 does not yet provide tenant isolation. JWTs still do not contain `tenant_id`, public reads remain global, events do not contain `tenantId`, Live Feed keys and rooms are not tenant-namespaced, Laravel users are not tenant-bound, and tenant status is stored but not enforced. ClientApplication, admission control, provisioning, and WordPress integration remain future work.
 
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority

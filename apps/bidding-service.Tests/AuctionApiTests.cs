@@ -121,6 +121,109 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     [Fact]
+    public async Task CreateAuctionAssignsTheServerControlledCompatibilityTenant()
+    {
+        var response = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Tenant ownership test",
+            "The tenant is assigned by the service compatibility context.",
+            "AuctionOnly",
+            100m,
+            10m,
+            null,
+            TestAuctionData.Now.AddHours(-1),
+            TestAuctionData.Now.AddHours(1)));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var auction = await db.Auctions.SingleAsync(
+            item => item.Title == "Tenant ownership test");
+
+        Assert.Equal(TenantDefaults.DemoTenantId, auction.TenantId);
+    }
+
+    [Fact]
+    public async Task TenantStatusAndAuctionOwnershipPersist()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var tenantId = Guid.Parse("bbbbbbbb-2222-4222-8222-222222222222");
+        var tenant = Tenant.Create(
+            tenantId,
+            "Tenant Persistence Test",
+            TenantStatus.Suspended,
+            TestAuctionData.Now);
+
+        db.Tenants.Add(tenant);
+        await db.SaveChangesAsync();
+
+        var persisted = await db.Tenants.SingleAsync(item => item.Id == tenantId);
+        Assert.Equal(TenantStatus.Suspended, persisted.Status);
+        Assert.Equal("Tenant Persistence Test", persisted.Name);
+    }
+
+    [Fact]
+    public async Task AuctionForeignKeyRejectsAnUnknownTenant()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        db.Auctions.Add(new Auction
+        {
+            Id = Guid.NewGuid(),
+            TenantId = Guid.Parse("cccccccc-3333-4333-8333-333333333333"),
+            Title = "Invalid tenant auction",
+            Description = "The tenant foreign key must reject this row.",
+            StartingPrice = 100m,
+            SaleMode = SaleMode.AuctionOnly,
+            MinimumBidIncrement = 10m,
+            StartTimeUtc = TestAuctionData.Now,
+            EndTimeUtc = TestAuctionData.Now.AddHours(1),
+            Status = AuctionStatus.Scheduled,
+            Version = 1,
+            CreatedAtUtc = TestAuctionData.Now,
+            UpdatedAtUtc = TestAuctionData.Now
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task TenantMigrationBackfillsExistingAuctionWithoutChangingAuctionOrBidIds()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await db.Database.ExecuteSqlRawAsync("DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;");
+        await db.Database.MigrateAsync("20260912052227_AddBuyNowDomainFoundation");
+
+        var auctionId = Guid.Parse("dddddddd-4444-4444-8444-444444444444");
+        var bidId = Guid.Parse("eeeeeeee-5555-4555-8555-555555555555");
+        await db.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO auctions
+                (id, title, description, starting_price, sale_mode, buy_now_price,
+                 minimum_bid_increment, current_bid_amount, current_bidder_id,
+                 final_winner_id, final_price, start_time_utc, end_time_utc,
+                 status, version, created_at_utc, updated_at_utc)
+            VALUES
+                ('{auctionId}', 'Legacy auction', 'Pre-MT1 row', 100, 'AuctionOnly', NULL,
+                 10, 100, 'legacy-bidder', NULL, NULL,
+                 TIMESTAMPTZ '2026-09-05 11:00:00+00', TIMESTAMPTZ '2026-09-05 13:00:00+00',
+                 'Open', 2, TIMESTAMPTZ '2026-09-04 12:00:00+00', TIMESTAMPTZ '2026-09-05 12:00:00+00');
+            INSERT INTO bids (id, auction_id, bidder_id, amount, created_at_utc)
+            VALUES ('{bidId}', '{auctionId}', 'legacy-bidder', 100,
+                    TIMESTAMPTZ '2026-09-05 11:30:00+00');
+            """);
+
+        await db.Database.MigrateAsync();
+
+        var migratedAuction = await db.Auctions.SingleAsync(item => item.Id == auctionId);
+        var migratedBid = await db.Bids.SingleAsync(item => item.Id == bidId);
+        Assert.Equal(TenantDefaults.DemoTenantId, migratedAuction.TenantId);
+        Assert.Equal(auctionId, migratedBid.AuctionId);
+        Assert.Equal(bidId, migratedBid.Id);
+    }
+
+    [Fact]
     public async Task CreateAuction_RejectsInvalidConfigurationAndDoesNotCreateState()
     {
         var requests = new[]
@@ -352,6 +455,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         db.Auctions.Add(new Auction
         {
             Id = auctionId,
+            TenantId = TenantDefaults.DemoTenantId,
             Title = "Buy Now test auction",
             Description = "Buy Now persistence foundation test.",
             StartingPrice = 1250m,
@@ -386,6 +490,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         db.Auctions.Add(new Auction
         {
             Id = Guid.NewGuid(),
+            TenantId = TenantDefaults.DemoTenantId,
             Title = "Invalid Buy Now auction",
             Description = "Invalid sale-mode combination.",
             StartingPrice = 1000m,
@@ -1127,6 +1232,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         db.Auctions.Add(new Auction
         {
             Id = auctionId,
+            TenantId = TenantDefaults.DemoTenantId,
             Title = "BN2 API test auction",
             Description = "BN2 Buy Now integration test.",
             StartingPrice = startingPrice,
@@ -1243,6 +1349,7 @@ public static class TestAuctionData
             new Auction
             {
                 Id = OpenAuctionId,
+                TenantId = TenantDefaults.DemoTenantId,
                 Title = "MacBook Pro",
                 Description = "Open test auction.",
                 StartingPrice = 1000m,
@@ -1260,6 +1367,7 @@ public static class TestAuctionData
             new Auction
             {
                 Id = ScheduledAuctionId,
+                TenantId = TenantDefaults.DemoTenantId,
                 Title = "Camera",
                 Description = "Scheduled test auction.",
                 StartingPrice = 500m,
@@ -1275,6 +1383,7 @@ public static class TestAuctionData
             new Auction
             {
                 Id = ClosedAuctionId,
+                TenantId = TenantDefaults.DemoTenantId,
                 Title = "Gaming Console",
                 Description = "Closed test auction.",
                 StartingPrice = 300m,
@@ -1292,6 +1401,7 @@ public static class TestAuctionData
             new Auction
             {
                 Id = EndedOpenAuctionId,
+                TenantId = TenantDefaults.DemoTenantId,
                 Title = "Ended Open Auction",
                 Description = "Status open but end time passed.",
                 StartingPrice = 300m,
@@ -1307,6 +1417,7 @@ public static class TestAuctionData
             new Auction
             {
                 Id = FutureOpenAuctionId,
+                TenantId = TenantDefaults.DemoTenantId,
                 Title = "Future Open Auction",
                 Description = "Status open but start time is future.",
                 StartingPrice = 300m,
