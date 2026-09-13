@@ -91,6 +91,12 @@ not add client credentials to event payloads or enforce application admission.
 Future client-held assertions belong to MT5.3 and must not be confused with
 the tenant field carried by these events.
 
+The MT5.3a validation foundation uses an RS256 JWT with `iss = client_id`, a
+credential-selecting `kid`, canonical `tenant_id`, a short bounded lifetime,
+and a required `jti`. It validates application proof without changing event
+contracts or enabling HTTP admission; replay protection and Laravel assertion
+issuance remain later phases.
+
 ## What belongs here
 
 Add a value only when multiple independently deployed components must agree on

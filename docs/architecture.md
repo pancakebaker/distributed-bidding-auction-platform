@@ -204,6 +204,21 @@ private key, verify the future admission path, then revoke the old credential.
 The local/test suite generates ephemeral keys; no private key is seeded or
 committed.
 
+### MT5.3a client assertion validation foundation
+
+The Bidding Service contains an internal reusable validator for signed client
+assertions. It accepts only RS256 JWTs with a required `kid`, resolves `iss` to
+a registered `ClientApplication`, verifies that the selected credential belongs
+to that application and is currently usable, checks the signature with the
+stored RSA public key, enforces the `dbap-bidding-service` audience and short
+bounded lifetime, and cross-checks signed `tenant_id` against the application's
+authoritative `TenantId`. It returns a typed application identity without raw
+key material.
+
+This is a validation boundary only. HTTP request admission is not enabled,
+Laravel does not issue client assertions, and JTI replay protection is not
+implemented yet; those are deferred to later MT5.3 phases.
+
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority
 

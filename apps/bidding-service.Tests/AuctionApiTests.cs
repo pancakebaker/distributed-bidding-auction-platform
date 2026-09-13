@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging;
 
 namespace bidding_service.Tests;
 
+[Collection("Bidding service database")]
 public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLifetime
 {
     private static readonly Guid TenantA = Guid.Parse("aaaaaaaa-2222-4222-8222-222222222222");

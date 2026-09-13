@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 
 namespace bidding_service.Tests;
 
+[Collection("Bidding service database")]
 public sealed class BiddingAuthenticationTests : IClassFixture<AuctionApiFactory>
 {
     private readonly HttpClient client;

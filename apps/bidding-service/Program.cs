@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using bidding_service.Data;
 using bidding_service.Endpoints;
 using bidding_service.Options;
+using bidding_service.Security.ClientAssertions;
 using bidding_service.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -35,6 +36,7 @@ builder.Services.AddDbContext<BiddingDbContext>(options =>
 });
 builder.Services.AddScoped<DatabaseInitializer>();
 builder.Services.AddScoped<IClientCredentialProvisioningService, ClientCredentialProvisioningService>();
+builder.Services.AddScoped<IClientAssertionValidator, ClientAssertionValidator>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var authenticationOptions = builder.Configuration
