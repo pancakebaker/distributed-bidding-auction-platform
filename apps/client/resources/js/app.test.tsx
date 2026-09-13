@@ -212,6 +212,11 @@ function livePurchased(event: LiveAuctionPurchased) {
 function liveCancelled(event: LiveAuctionCancelled) {
     socketHandlers.get(liveFeedSocketEvents.auctionCancelled)?.(event);
 }
+
+async function waitForSocketHandler(event: string) {
+    await waitFor(() => expect(socketHandlers.has(event)).toBe(true));
+}
+
 describe('auction UI', () => {
     beforeEach(() => {
         window.__AUTH_BOOTSTRAP__ = {
@@ -368,6 +373,7 @@ describe('auction UI', () => {
     it('live BidAccepted event updates current bid and history', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.bidAccepted);
 
         live({
             auctionId: macBook.id,
@@ -388,6 +394,7 @@ describe('auction UI', () => {
     it('stale live event is ignored', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.bidAccepted);
 
         live({
             auctionId: macBook.id,
@@ -406,6 +413,7 @@ describe('auction UI', () => {
     it('live event for another auction is ignored', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.bidAccepted);
 
         live({
             auctionId: '99999999-9999-9999-9999-999999999999',
@@ -424,10 +432,15 @@ describe('auction UI', () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
 
+        await waitForSocketHandler('connect');
         socketHandlers.get('connect')?.();
         expect(await screen.findByText('Live connected')).toBeInTheDocument();
+
+        await waitFor(() => expect(socketIoHandlers.has('reconnect_attempt')).toBe(true));
         socketIoHandlers.get('reconnect_attempt')?.();
         expect((await screen.findAllByText('Reconnecting')).length).toBeGreaterThan(0);
+
+        await waitForSocketHandler('disconnect');
         socketHandlers.get('disconnect')?.();
         expect((await screen.findAllByText('Offline')).length).toBeGreaterThan(0);
     });
@@ -477,6 +490,7 @@ describe('auction UI', () => {
     it('auction:closed updates status and disables bidding', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionClosed);
 
         liveClosed({
             auctionId: macBook.id,
@@ -497,6 +511,7 @@ describe('auction UI', () => {
     it('auction:cancelled preserves history and disables actions without a winner', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionCancelled);
 
         liveCancelled({
             auctionId: macBook.id,
@@ -524,9 +539,7 @@ describe('auction UI', () => {
     it('winner:selected displays winner state for the acting bidder', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
-        await waitFor(() =>
-            expect(socketHandlers.has(liveFeedSocketEvents.winnerSelected)).toBe(true),
-        );
+        await waitForSocketHandler(liveFeedSocketEvents.winnerSelected);
 
         liveWinner({
             auctionId: macBook.id,
@@ -546,6 +559,7 @@ describe('auction UI', () => {
     it('no-bid auction close renders without waiting for a winner event', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionClosed);
 
         liveClosed({
             auctionId: macBook.id,
@@ -564,6 +578,7 @@ describe('auction UI', () => {
     it('lower-version lifecycle event is ignored', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionClosed);
 
         liveClosed({
             auctionId: macBook.id,
@@ -581,6 +596,7 @@ describe('auction UI', () => {
     it('same-version sibling lifecycle event is accepted', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionClosed);
 
         liveClosed({
             auctionId: macBook.id,
@@ -590,6 +606,7 @@ describe('auction UI', () => {
             auctionVersion: 10,
             correlationId: 'same-version',
         });
+        await waitForSocketHandler(liveFeedSocketEvents.winnerSelected);
         liveWinner({
             auctionId: macBook.id,
             winningBidId: 'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
@@ -692,6 +709,7 @@ describe('auction UI', () => {
         });
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionPurchased);
 
         livePurchased({
             auctionId: macBook.id,
@@ -702,6 +720,7 @@ describe('auction UI', () => {
             occurredAtUtc: new Date().toISOString(),
             correlationId: 'purchase',
         });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionClosed);
         liveClosed({
             auctionId: macBook.id,
             closedAtUtc: new Date().toISOString(),
@@ -760,6 +779,7 @@ describe('auction UI', () => {
     it('stale bids do not regress a purchase and a ceiling leaves Buy Now available', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitForSocketHandler(liveFeedSocketEvents.auctionPurchased);
         livePurchased({
             auctionId: macBook.id,
             bidderId: 'buyer-b',
@@ -769,6 +789,7 @@ describe('auction UI', () => {
             occurredAtUtc: new Date().toISOString(),
             correlationId: 'purchase',
         });
+        await waitForSocketHandler(liveFeedSocketEvents.bidAccepted);
         live({
             auctionId: macBook.id,
             bidId: 'stale-bid',
