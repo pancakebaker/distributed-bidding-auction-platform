@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Contracts\CmsCache;
 use App\Models\User;
+use App\Support\ClientAssertionProductionPolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -23,6 +24,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        app(ClientAssertionProductionPolicy::class)->enforce();
+
         Gate::define('access-admin', fn (User $user): bool => (bool) $user->is_admin);
 
         View::composer(['welcome', 'cms'], function ($view): void {

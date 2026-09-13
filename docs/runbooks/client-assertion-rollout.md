@@ -18,6 +18,42 @@ The admission flag is a migration control, not a permanent security bypass.
 After rollout is validated, the deployment should keep both sides enabled and
 the flag should be removed or made mandatory in a later hardening phase.
 
+## Production rollout policy
+
+Development and testing may keep both gates disabled. They do not require a
+Redis connection or a client private key unless a test explicitly enables the
+corresponding feature. Staging should run with both gates enabled before a
+production rollout.
+
+Production must run with Laravel assertion issuance and Bidding Service
+admission enabled. Each application fails during startup/configuration
+validation if its protection is disabled, unless an operator explicitly sets
+the temporary migration override for that application:
+
+```text
+BIDDING_SERVICE_CLIENT_ASSERTION_PRODUCTION_BYPASS=true
+ClientAssertionAdmission__AllowInsecureProductionDisable=true
+```
+
+These overrides default to `false`, are server-side deployment configuration
+only, and emit a high-severity startup warning when used. They are emergency
+migration controls, not a runtime toggle or a permanent production mode; each
+use should have an owner and removal date.
+
+The secured target is `Laravel ON / Server ON`. A `Server ON / Laravel OFF`
+deployment returns `401` to tenant-facing requests. During a rolling upgrade,
+deploy assertion-capable Laravel instances first, enable issuance, verify fresh
+assertions, then enable server admission and remove the temporary override.
+If rollback is required, set the explicit production override, disable server
+admission, redeploy, investigate, and retain credentials until a replacement is
+provisioned. Do not revoke the only active credential as the first rollback
+step.
+
+The bypasses may be removed after all supported installations are migrated,
+credentials are provisioned, legacy callers are gone, and production has run
+in `ON / ON` mode for the agreed operational period. That removal is deferred
+to a later hardening phase.
+
 ## Bootstrap a registered application
 
 Generate the keypair on the Laravel/client host or in a deployment secret

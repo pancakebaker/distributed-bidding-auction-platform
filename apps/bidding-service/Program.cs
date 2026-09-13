@@ -10,6 +10,7 @@ using bidding_service.Security.ClientAssertions;
 using bidding_service.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
 
@@ -25,8 +26,21 @@ builder.Services.Configure<BidPlacementOptions>(
     builder.Configuration.GetSection(BidPlacementOptions.SectionName));
 builder.Services.Configure<BiddingAuthenticationOptions>(
     builder.Configuration.GetSection(BiddingAuthenticationOptions.SectionName));
-builder.Services.Configure<ClientAssertionAdmissionOptions>(
-    builder.Configuration.GetSection(ClientAssertionAdmissionOptions.SectionName));
+builder.Services.AddOptions<ClientAssertionAdmissionOptions>()
+    .Bind(builder.Configuration.GetSection(ClientAssertionAdmissionOptions.SectionName))
+    .ValidateOnStart();
+builder.Services.AddSingleton<IValidateOptions<ClientAssertionAdmissionOptions>>(
+    new ClientAssertionAdmissionOptionsValidator(builder.Environment.IsProduction()));
+if (!ClientCredentialProvisioningCommand.IsCommand(args))
+{
+    var configuredAdmissionOptions = builder.Configuration
+        .GetSection(ClientAssertionAdmissionOptions.SectionName)
+        .Get<ClientAssertionAdmissionOptions>() ?? new();
+    var rolloutValidation = new ClientAssertionAdmissionOptionsValidator(builder.Environment.IsProduction())
+        .Validate(Microsoft.Extensions.Options.Options.DefaultName, configuredAdmissionOptions);
+    if (rolloutValidation.Failed)
+        throw new InvalidOperationException(rolloutValidation.FailureMessage);
+}
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IBuyerIdentityResolver, BuyerIdentityResolver>();
 builder.Services.AddSingleton<ITenantIdentityAccessor, TenantIdentityAccessor>();
@@ -127,6 +141,24 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+var admissionOptions = app.Services.GetRequiredService<IOptions<ClientAssertionAdmissionOptions>>().Value;
+if (app.Environment.IsProduction()
+    && !admissionOptions.Enabled
+    && admissionOptions.AllowInsecureProductionDisable)
+{
+    const string warning = "Client assertion admission is disabled in Production by the temporary "
+        + "ClientAssertionAdmission:AllowInsecureProductionDisable override. "
+        + "Tenant-facing requests are not protected; remove the override after migration.";
+    try
+    {
+        app.Logger.LogCritical(warning);
+    }
+    catch (Exception)
+    {
+        Console.Error.WriteLine($"CRITICAL: {warning}");
+    }
+}
 
 if (app.Environment.IsDevelopment())
 {

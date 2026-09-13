@@ -11,4 +11,7 @@ public sealed class ClientAssertionAdmissionOptions
 
     /// <summary>Gets or sets whether tenant-facing auction APIs require client assertions.</summary>
     public bool Enabled { get; set; }
+
+    /// <summary>Gets or sets whether a temporary production migration may disable admission.</summary>
+    public bool AllowInsecureProductionDisable { get; set; }
 }

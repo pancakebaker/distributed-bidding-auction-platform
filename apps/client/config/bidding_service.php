@@ -14,6 +14,10 @@ return [
         env('BIDDING_SERVICE_CLIENT_ASSERTION_ENABLED', false),
         FILTER_VALIDATE_BOOLEAN,
     ),
+    'client_assertion_production_bypass' => filter_var(
+        env('BIDDING_SERVICE_CLIENT_ASSERTION_PRODUCTION_BYPASS', false),
+        FILTER_VALIDATE_BOOLEAN,
+    ),
     'client_assertion_client_id' => env('BIDDING_SERVICE_CLIENT_ID'),
     'client_assertion_key_id' => env('BIDDING_SERVICE_CLIENT_KEY_ID'),
     'client_assertion_private_key_path' => env('BIDDING_SERVICE_CLIENT_PRIVATE_KEY_PATH'),

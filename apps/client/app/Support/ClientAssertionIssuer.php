@@ -11,12 +11,56 @@ use RuntimeException;
  */
 final class ClientAssertionIssuer
 {
+    public function validateConfiguration(): void
+    {
+        $this->validatedConfiguration();
+    }
+
     /** @return array{token: string, expiresAt: string, jti: string} */
     public function issue(): array
     {
+        $configuration = $this->validatedConfiguration();
+        $clientId = $configuration['clientId'];
+        $keyId = $configuration['keyId'];
+        $tenantId = app(TenantContext::class)->id();
+        $privateKey = $configuration['privateKey'];
+        $ttl = $configuration['ttl'];
+        $issuedAt = time();
+        $expiresAt = $issuedAt + $ttl;
+        $jti = (string) Str::uuid();
+        $claims = [
+            'iss' => $clientId,
+            'aud' => 'dbap-bidding-service',
+            'tenant_id' => $tenantId,
+            'jti' => $jti,
+            'iat' => $issuedAt,
+            'nbf' => $issuedAt,
+            'exp' => $expiresAt,
+        ];
+        $header = $this->encode([
+            'alg' => 'RS256',
+            'typ' => 'JWT',
+            'kid' => $keyId,
+        ]);
+        $payload = $this->encode($claims);
+        $input = $header.'.'.$payload;
+        $signature = '';
+        if (! openssl_sign($input, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
+            throw new RuntimeException('Bidding Service client assertion signing failed.');
+        }
+
+        return [
+            'token' => $input.'.'.$this->base64UrlEncode($signature),
+            'expiresAt' => gmdate(DATE_ATOM, $expiresAt),
+            'jti' => $jti,
+        ];
+    }
+
+    /** @return array{clientId: string, keyId: string, privateKey: \OpenSSLAsymmetricKey, ttl: int} */
+    private function validatedConfiguration(): array
+    {
         $clientId = trim((string) config('bidding_service.client_assertion_client_id'));
         $keyId = trim((string) config('bidding_service.client_assertion_key_id'));
-        $tenantId = app(TenantContext::class)->id();
         $path = trim((string) config('bidding_service.client_assertion_private_key_path'));
         $ttl = (int) config('bidding_service.client_assertion_ttl_seconds', 30);
 
@@ -47,35 +91,7 @@ final class ClientAssertionIssuer
             throw new RuntimeException('Bidding Service client assertion key must be an RSA key of at least 2048 bits.');
         }
 
-        $issuedAt = time();
-        $expiresAt = $issuedAt + $ttl;
-        $jti = (string) Str::uuid();
-        $claims = [
-            'iss' => $clientId,
-            'aud' => 'dbap-bidding-service',
-            'tenant_id' => $tenantId,
-            'jti' => $jti,
-            'iat' => $issuedAt,
-            'nbf' => $issuedAt,
-            'exp' => $expiresAt,
-        ];
-        $header = $this->encode([
-            'alg' => 'RS256',
-            'typ' => 'JWT',
-            'kid' => $keyId,
-        ]);
-        $payload = $this->encode($claims);
-        $input = $header.'.'.$payload;
-        $signature = '';
-        if (! openssl_sign($input, $signature, $privateKey, OPENSSL_ALGO_SHA256)) {
-            throw new RuntimeException('Bidding Service client assertion signing failed.');
-        }
-
-        return [
-            'token' => $input.'.'.$this->base64UrlEncode($signature),
-            'expiresAt' => gmdate(DATE_ATOM, $expiresAt),
-            'jti' => $jti,
-        ];
+        return compact('clientId', 'keyId', 'privateKey', 'ttl');
     }
 
     private function validateClientId(string $clientId): void
