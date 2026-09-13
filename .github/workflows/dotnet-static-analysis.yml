@@ -75,6 +75,8 @@ jobs:
   laravel:
     name: Laravel/PHP quality gates
     runs-on: ubuntu-latest
+    env:
+      APP_ENV: testing
 
     steps:
       - name: Check out repository
