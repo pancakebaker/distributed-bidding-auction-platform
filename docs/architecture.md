@@ -224,6 +224,27 @@ fallback is used, and the raw assertion is never stored. Replay protection is
 still not wired into HTTP admission; Laravel assertion issuance remains a later
 phase.
 
+### MT5.3c Laravel client assertion issuance
+
+Laravel can optionally issue a fresh RS256 client assertion for each outbound
+Bidding Service request when `BIDDING_SERVICE_CLIENT_ASSERTION_ENABLED=true`.
+The server-only configuration identifies `local-laravel-client` (or the
+operator's registered `ClientApplication`), selects its credential with
+`BIDDING_SERVICE_CLIENT_KEY_ID`, and reads the RSA private key from a mounted
+file path. The private key is never stored in Laravel or exposed to the
+browser. Assertions use `iss = client_id`, the installation `tenant_id`, a
+fresh UUID JTI, `nbf = iat`, the `dbap-bidding-service` audience, and a 30-second
+TTL. They are sent in `X-Client-Assertion` alongside the existing human
+`Authorization` bearer token.
+
+The flag defaults to disabled so existing calls remain compatible. When
+enabled, missing or invalid configuration fails the outbound request closed;
+the client never silently sends a request without the assertion. Assertions
+are generated per request, and Laravel must be restarted/reloaded after key
+or KeyId rotation if the deployment changes its mounted configuration.
+MT5.3d will add Bidding Service request admission; this phase does not enforce
+the header there.
+
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority
 

@@ -97,7 +97,12 @@ and a required `jti`. It validates application proof without changing event
 contracts or enabling HTTP admission. MT5.3b adds reusable, atomic Redis
 consumption of validated application-scoped JTIs with bounded expiry and
 fail-closed storage errors; replay protection is still not wired into HTTP
-admission, and Laravel assertion issuance remains a later phase.
+admission. MT5.3c adds optional Laravel server-side issuance and the
+`X-Client-Assertion` outbound header; existing Bidding Service endpoints still
+do not enforce it, and Laravel fails closed when the opt-in signing
+configuration is invalid. The header carries a fresh RS256 assertion with
+`kid`, `iss = client_id`, `aud = dbap-bidding-service`, `tenant_id`, `jti`,
+`iat`, `nbf`, and `exp`. Human `Authorization` tokens remain separate.
 
 ## What belongs here
 

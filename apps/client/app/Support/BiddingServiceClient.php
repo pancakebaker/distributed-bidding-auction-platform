@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\User;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
 use Throwable;
@@ -12,7 +13,10 @@ use Throwable;
  */
 class BiddingServiceClient
 {
-    public function __construct(private readonly BiddingServiceTokenIssuer $tokenIssuer) {}
+    public function __construct(
+        private readonly BiddingServiceTokenIssuer $tokenIssuer,
+        private readonly ClientAssertionIssuer $clientAssertionIssuer,
+    ) {}
 
     /** @param array<string, mixed> $payload */
     public function postCommand(
@@ -46,6 +50,7 @@ class BiddingServiceClient
             $request = Http::acceptJson()
                 ->timeout((int) config('bidding_service.timeout_seconds', 10))
                 ->withToken($token);
+            $request = $this->withClientAssertion($request);
             if ($correlationId !== null && trim($correlationId) !== '') {
                 $request = $request->withHeaders(['X-Correlation-ID' => $correlationId]);
             }
@@ -75,6 +80,7 @@ class BiddingServiceClient
             $request = Http::acceptJson()
                 ->timeout((int) config('bidding_service.timeout_seconds', 10))
                 ->withToken($token);
+            $request = $this->withClientAssertion($request);
 
             if ($correlationId !== null && trim($correlationId) !== '') {
                 $request = $request->withHeaders(['X-Correlation-ID' => $correlationId]);
@@ -103,5 +109,18 @@ class BiddingServiceClient
                 'message' => 'The bidding service is temporarily unavailable.',
             ], 503);
         }
+    }
+
+    private function withClientAssertion(PendingRequest $request): PendingRequest
+    {
+        if (! (bool) config('bidding_service.client_assertion_enabled', false)) {
+            return $request;
+        }
+
+        $assertion = $this->clientAssertionIssuer->issue()['token'];
+
+        return $request
+            ->withoutRedirecting()
+            ->withHeaders(['X-Client-Assertion' => $assertion]);
     }
 }
