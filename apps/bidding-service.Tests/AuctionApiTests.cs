@@ -442,6 +442,14 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
             validFrom,
             validFrom,
             validFrom));
+        Assert.Throws<ArgumentException>(() => ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "non-utc-key",
+            rsa.ExportSubjectPublicKeyInfoPem(),
+            new DateTimeOffset(validFrom.DateTime, TimeSpan.FromHours(1)),
+            null,
+            validFrom));
     }
 
     [Fact]

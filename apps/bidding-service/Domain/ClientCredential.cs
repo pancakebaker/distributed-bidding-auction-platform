@@ -35,6 +35,11 @@ public sealed class ClientCredential
         if (clientApplicationId == Guid.Empty)
             throw new ArgumentException("Client application ID must not be empty.", nameof(clientApplicationId));
 
+        EnsureUtc(validFromUtc, nameof(validFromUtc));
+        EnsureUtc(now, nameof(now));
+        if (expiresAtUtc is not null)
+            EnsureUtc(expiresAtUtc.Value, nameof(expiresAtUtc));
+
         var normalizedKeyId = NormalizeKeyId(keyId);
         var canonicalPublicKeyPem = NormalizePublicKey(publicKeyPem, out var fingerprint);
         if (expiresAtUtc is not null && expiresAtUtc <= validFromUtc)
@@ -125,7 +130,7 @@ public sealed class ClientCredential
         if (string.IsNullOrWhiteSpace(publicKeyPem))
             throw new ArgumentException("A public key is required.", nameof(publicKeyPem));
 
-        if (publicKeyPem.Contains("PRIVATE KEY", StringComparison.Ordinal))
+        if (publicKeyPem.Contains("PRIVATE KEY", StringComparison.OrdinalIgnoreCase))
             throw new ArgumentException("Private key material must not be registered.", nameof(publicKeyPem));
 
         using var rsa = RSA.Create();
@@ -144,5 +149,11 @@ public sealed class ClientCredential
         var der = rsa.ExportSubjectPublicKeyInfo();
         fingerprint = Convert.ToHexString(SHA256.HashData(der)).ToLowerInvariant();
         return rsa.ExportSubjectPublicKeyInfoPem();
+    }
+
+    private static void EnsureUtc(DateTimeOffset value, string parameterName)
+    {
+        if (value.Offset != TimeSpan.Zero)
+            throw new ArgumentException("Credential timestamps must use UTC.", parameterName);
     }
 }
