@@ -31,6 +31,8 @@ public sealed class BiddingDbContext(
     /// Gets the registered client applications.
     /// </summary>
     public DbSet<ClientApplication> ClientApplications => Set<ClientApplication>();
+    /// <summary>Gets the public credentials registered for client applications.</summary>
+    public DbSet<ClientCredential> ClientCredentials => Set<ClientCredential>();
     /// <summary>
     /// Gets or sets the accepted bid history for the auction.
     /// </summary>
@@ -165,6 +167,52 @@ public sealed class BiddingDbContext(
                 .HasDatabaseName("ux_client_applications_client_id");
             application.HasIndex(item => item.TenantId)
                 .HasDatabaseName("ix_client_applications_tenant_id");
+            application.HasMany(item => item.ClientCredentials)
+                .WithOne()
+                .HasForeignKey(credential => credential.ClientApplicationId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ClientCredential>(credential =>
+        {
+            credential.ToTable("client_credentials", table => table.HasCheckConstraint(
+                "CK_client_credentials_status",
+                "status IN ('Active', 'Revoked')"));
+            credential.HasKey(item => item.Id);
+            credential.Property(item => item.Id).HasColumnName("id");
+            credential.Property(item => item.ClientApplicationId)
+                .HasColumnName("client_application_id")
+                .IsRequired();
+            credential.Property(item => item.KeyId)
+                .HasColumnName("key_id")
+                .HasMaxLength(63)
+                .IsRequired();
+            credential.Property(item => item.PublicKeyPem)
+                .HasColumnName("public_key_pem")
+                .HasColumnType("text")
+                .IsRequired();
+            credential.Property(item => item.PublicKeyFingerprint)
+                .HasColumnName("public_key_fingerprint")
+                .HasMaxLength(64)
+                .IsRequired();
+            credential.Property(item => item.Status)
+                .HasColumnName("status")
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+            credential.Property(item => item.ValidFromUtc).HasColumnName("valid_from_utc").IsRequired();
+            credential.Property(item => item.ExpiresAtUtc).HasColumnName("expires_at_utc");
+            credential.Property(item => item.RevokedAtUtc).HasColumnName("revoked_at_utc");
+            credential.Property(item => item.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            credential.Property(item => item.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
+            credential.HasIndex(item => item.KeyId)
+                .IsUnique()
+                .HasDatabaseName("ux_client_credentials_key_id");
+            credential.HasIndex(item => item.ClientApplicationId)
+                .HasDatabaseName("ix_client_credentials_client_application_id");
+            credential.HasIndex(item => item.PublicKeyFingerprint)
+                .IsUnique()
+                .HasDatabaseName("ux_client_credentials_public_key_fingerprint");
         });
 
         modelBuilder.Entity<Bid>(bid =>

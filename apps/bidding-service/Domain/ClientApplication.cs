@@ -83,4 +83,7 @@ public sealed class ClientApplication
 
     /// <summary>Gets or sets the last update timestamp.</summary>
     public DateTimeOffset UpdatedAtUtc { get; set; }
+
+    /// <summary>Gets the credentials registered for this application.</summary>
+    public ICollection<ClientCredential> ClientCredentials { get; } = new List<ClientCredential>();
 }
