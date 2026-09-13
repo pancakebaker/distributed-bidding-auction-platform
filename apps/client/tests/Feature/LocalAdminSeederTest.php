@@ -96,6 +96,7 @@ class LocalAdminSeederTest extends TestCase
         $admin = User::query()->where('email', 'local-admin@example.com')->firstOrFail();
         $this->assertSame('Manual Admin', $admin->name);
         $this->assertTrue($admin->is_admin);
+        $this->assertSame(config('tenant.fallback_id'), $admin->tenant_id);
         $this->assertTrue(password_verify('local-password', $admin->password));
     }
 

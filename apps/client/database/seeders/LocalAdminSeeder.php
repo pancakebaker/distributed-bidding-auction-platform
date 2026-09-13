@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -31,6 +32,7 @@ class LocalAdminSeeder extends Seeder
             'name' => env('LOCAL_ADMIN_NAME', 'Local Admin'),
             'password' => Hash::make($password),
             'is_admin' => true,
+            'tenant_id' => app(TenantContext::class)->id(),
             'subject_id' => $user->subject_id ?: (string) Str::uuid(),
         ])->save();
     }

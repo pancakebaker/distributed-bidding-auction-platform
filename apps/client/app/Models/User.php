@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Support\TenantContext;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -24,6 +25,7 @@ class User extends Authenticatable
     {
         static::creating(function (User $user): void {
             $user->subject_id ??= (string) Str::uuid();
+            $user->tenant_id ??= app(TenantContext::class)->id();
         });
     }
 

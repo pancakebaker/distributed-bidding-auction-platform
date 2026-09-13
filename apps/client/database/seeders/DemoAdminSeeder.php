@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -35,6 +36,7 @@ class DemoAdminSeeder extends Seeder
 
         $user->forceFill([
             'is_admin' => true,
+            'tenant_id' => app(TenantContext::class)->id(),
             'subject_id' => $user->subject_id ?: (string) Str::uuid(),
         ])->save();
     }

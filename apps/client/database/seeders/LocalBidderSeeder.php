@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\User;
+use App\Support\TenantContext;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -33,6 +34,7 @@ class LocalBidderSeeder extends Seeder
                 'name' => $bidder['name'],
                 'password' => Hash::make($password),
                 'is_admin' => false,
+                'tenant_id' => app(TenantContext::class)->id(),
                 'subject_id' => $user->subject_id ?: (string) Str::uuid(),
             ])->save();
         }

@@ -152,7 +152,7 @@ The client is part of a larger distributed auction platform that includes:
 - **Auction Scheduler** — handles time-based auction lifecycle actions
 - **Outbox Publisher** — publishes persisted domain events to the messaging infrastructure
 
-Laravel owns bidder and tenant-admin identity. Authenticated bid, Buy Now, and tenant auction-management commands use same-origin Laravel routes, which mint short-lived RS256 Bidding Service tokens server-side and proxy the commands. The browser never chooses or stores authoritative identity or downstream tokens. Public auction reads and Socket.IO events remain anonymous. Platform monitoring is entered through the independent Operations Portal SystemAdministrator session. See the [repository README](../../README.md) for the final architecture, local infrastructure setup, and end-to-end demo instructions.
+Laravel owns bidder and tenant-admin identity for the tenant configured by the server-side `TENANT_ID` value. Authenticated bid, Buy Now, and tenant auction-management commands use same-origin Laravel routes, which mint short-lived RS256 Bidding Service tokens server-side and proxy the commands. Those tokens carry the authenticated user's trusted `tenant_id`; the browser never chooses or stores tenant authority or downstream tokens. Public auction reads and Socket.IO events remain anonymous. Platform monitoring is entered through the independent Operations Portal SystemAdministrator session. See the [repository README](../../README.md) for the final architecture, local infrastructure setup, and end-to-end demo instructions.
 
 ### Authenticated auction commands
 
@@ -173,6 +173,14 @@ use only. There is no public signup, and production deployments must not rely
 on demo credentials. Bidder login returns to a safe intended auction page when
 available, otherwise it falls back to `/auctions`; admin login falls back to
 `/admin`.
+
+`TENANT_ID` identifies the one tenant represented by this Laravel installation.
+It is a server-side UUID, not a user ID, password, client credential, or
+SystemAdministrator identity. Local/testing environments use the deterministic
+demo tenant when it is omitted; non-local environments must configure a valid
+UUID explicitly. MT2 carries this identity in Laravel-issued Bidding Service
+tokens, but Bidding Service resource authorization, tenant-scoped public reads,
+event tenant fields, and Live Feed tenant isolation remain deferred.
 
 ## License
 
