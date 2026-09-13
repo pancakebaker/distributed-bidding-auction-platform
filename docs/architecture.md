@@ -147,7 +147,8 @@ not match the installation context. The browser cannot override this value.
 
 The signed token claim is `tenant_id`, alongside the existing human `sub` and
 role/permission claims. `tenant_id` is not a client/application identity:
-future `client_id`/`azp` admission belongs to a later phase. Bidding Service
+`client_id` application admission is layered separately from the human token;
+`azp` is not added to human tokens. Bidding Service
 continues its MT1 server-controlled demo-tenant compatibility behavior for
 legacy internal flows. System admin tokens remain tenant-neutral.
 
@@ -160,8 +161,8 @@ payloads carry the authoritative auction `tenantId`. Live Feed validates that
 UUID, stores tenant-aware Redis projections/history, and publishes public
 updates to `tenant:{tenantId}:auction:{auctionId}` rooms. The Operations Portal
 persists `tenant_id` on activity records and backfills existing activity to the
-local demo tenant. Tenant status enforcement, client admission, and external
-OIDC remain future work.
+local demo tenant. Tenant status enforcement and external OIDC remain future
+work; client admission is covered by the temporary MT5.3d rollout gate below.
 
 ### MT5.1 ClientApplication registry foundation
 
@@ -242,8 +243,27 @@ enabled, missing or invalid configuration fails the outbound request closed;
 the client never silently sends a request without the assertion. Assertions
 are generated per request, and Laravel must be restarted/reloaded after key
 or KeyId rotation if the deployment changes its mounted configuration.
-MT5.3d will add Bidding Service request admission; this phase does not enforce
-the header there.
+### MT5.3d runtime client admission
+
+The Bidding Service now has a temporary `ClientAssertionAdmission:Enabled`
+rollout gate, defaulting to `false`. When enabled, the `/api/auctions`
+tenant-facing route group requires one `X-Client-Assertion` header. The
+existing `IClientAssertionAuthenticator` performs cryptographic validation and
+one-time JTI consumption exactly once per request; the resulting application
+identity is kept in a typed request context. The assertion tenant must agree
+with the already authenticated bearer/read-token `tenant_id` before the
+endpoint runs. Existing bearer authentication, permissions, and resource
+`TenantId` predicates remain required, so client proof grants no human or
+operation permissions.
+
+Missing, malformed, invalid, or replayed assertions return generic `401`;
+tenant identity disagreement returns `403`; replay-store unavailability
+returns `503`. `/health`, system-administration surfaces, workers, and Live
+Feed are outside this application-admission boundary. Disabled mode preserves
+legacy behavior and is a migration gate only: after deployment credentials are
+provisioned and Laravel issuance is enabled, the gate should be enabled,
+validated, and removed or made mandatory rather than retained as a permanent
+bypass.
 
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority

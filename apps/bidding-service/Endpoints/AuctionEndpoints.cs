@@ -4,6 +4,7 @@
 using bidding_service.Contracts;
 using bidding_service.Data;
 using bidding_service.Domain;
+using bidding_service.Security.ClientAssertions;
 using bidding_service.Services;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.EntityFrameworkCore;
@@ -23,7 +24,9 @@ public static class AuctionEndpoints
     /// </summary>
     public static RouteGroupBuilder MapAuctionEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/auctions").WithTags("Auctions");
+        var group = app.MapGroup("/api/auctions")
+            .WithTags("Auctions")
+            .AddEndpointFilter<ClientAssertionAdmissionFilter>();
 
         group.MapPost("/", CreateAuction)
             .WithName("CreateAuction")

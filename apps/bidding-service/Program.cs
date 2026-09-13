@@ -25,6 +25,8 @@ builder.Services.Configure<BidPlacementOptions>(
     builder.Configuration.GetSection(BidPlacementOptions.SectionName));
 builder.Services.Configure<BiddingAuthenticationOptions>(
     builder.Configuration.GetSection(BiddingAuthenticationOptions.SectionName));
+builder.Services.Configure<ClientAssertionAdmissionOptions>(
+    builder.Configuration.GetSection(ClientAssertionAdmissionOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IBuyerIdentityResolver, BuyerIdentityResolver>();
 builder.Services.AddSingleton<ITenantIdentityAccessor, TenantIdentityAccessor>();
@@ -50,7 +52,9 @@ builder.Services.AddSingleton<IClientAssertionReplayStore>(services =>
     new StackExchangeRedisClientAssertionReplayStore(
         services.GetRequiredService<IConnectionMultiplexer>().GetDatabase()));
 builder.Services.AddSingleton<IClientAssertionReplayProtector, RedisClientAssertionReplayProtector>();
-builder.Services.AddSingleton<IClientAssertionAuthenticator, ClientAssertionAuthenticator>();
+builder.Services.AddScoped<IClientAssertionAuthenticator, ClientAssertionAuthenticator>();
+builder.Services.AddScoped<IClientAssertionAdmissionService, ClientAssertionAdmissionService>();
+builder.Services.AddScoped<ClientAssertionAdmissionFilter>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var authenticationOptions = builder.Configuration

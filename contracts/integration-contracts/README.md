@@ -88,8 +88,9 @@ Application identity is a separate concern: `client_id` identifies a registered
 calling application and is distinct from both `tenantId` and the human `sub`.
 MT5.1 and MT5.2 add the registry and public-key credential foundation, but do
 not add client credentials to event payloads or enforce application admission.
-Future client-held assertions belong to MT5.3 and must not be confused with
-the tenant field carried by these events.
+Client-held assertions are an application-authentication boundary and must not
+be confused with the tenant field carried by these events. Their HTTP
+admission is controlled by the temporary MT5.3d rollout gate below.
 
 The MT5.3a validation foundation uses an RS256 JWT with `iss = client_id`, a
 credential-selecting `kid`, canonical `tenant_id`, a short bounded lifetime,
@@ -98,11 +99,18 @@ contracts or enabling HTTP admission. MT5.3b adds reusable, atomic Redis
 consumption of validated application-scoped JTIs with bounded expiry and
 fail-closed storage errors; replay protection is still not wired into HTTP
 admission. MT5.3c adds optional Laravel server-side issuance and the
-`X-Client-Assertion` outbound header; existing Bidding Service endpoints still
-do not enforce it, and Laravel fails closed when the opt-in signing
-configuration is invalid. The header carries a fresh RS256 assertion with
+`X-Client-Assertion` outbound header. The Bidding Service now recognizes the
+header on its tenant-facing auction route group only when the temporary
+`ClientAssertionAdmission:Enabled` rollout gate is enabled; it consumes the
+validated JTI once and requires agreement with the bearer/read-token tenant.
+Existing permissions and resource ownership checks remain required. Disabled
+mode preserves legacy behavior during migration, while Laravel fails closed
+when its opt-in signing configuration is invalid. The header carries a fresh RS256 assertion with
 `kid`, `iss = client_id`, `aud = dbap-bidding-service`, `tenant_id`, `jti`,
-`iat`, `nbf`, and `exp`. Human `Authorization` tokens remain separate.
+`iat`, `nbf`, and `exp`. Human `Authorization` tokens remain separate. Generic
+401/403/503 responses cover invalid proof, tenant disagreement, and replay-store
+outage respectively; `/health` and system-administration surfaces are not
+covered by this gate.
 
 ## What belongs here
 
