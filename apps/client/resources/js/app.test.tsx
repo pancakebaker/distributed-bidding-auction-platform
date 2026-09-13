@@ -835,6 +835,7 @@ describe('auction UI', () => {
 
         renderAt(`/auctions/${macBook.id}`);
         expect(await screen.findByText('No bids were placed.')).toBeInTheDocument();
+        await waitFor(() => expect(socketHandlers.has('connect_error')).toBe(true));
         socketHandlers.get('connect_error')?.();
         expect((await screen.findAllByText('Offline')).length).toBeGreaterThan(0);
         expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
