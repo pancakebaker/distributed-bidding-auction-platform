@@ -112,6 +112,22 @@ public sealed class BiddingAuthenticationTests : IClassFixture<AuctionApiFactory
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("not-a-uuid")]
+    public async Task BidEndpointRejectsMissingOrMalformedTenantClaim(string? tenantId)
+    {
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTestKeys.CreateToken(tenantId: tenantId));
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/auctions/{TestAuctionData.OpenAuctionId}/bids",
+            new { amount = 1250m });
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
     [Fact]
     public async Task BuyNowEndpointRequiresAuctionBuyPermission()
     {

@@ -19,6 +19,8 @@ namespace bidding_service.Tests;
 
 public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLifetime
 {
+    private static readonly Guid TenantA = Guid.Parse("aaaaaaaa-2222-4222-8222-222222222222");
+    private static readonly Guid TenantB = Guid.Parse("bbbbbbbb-3333-4333-8333-333333333333");
     private readonly AuctionApiFactory _factory;
     private readonly HttpClient _client;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -141,6 +143,146 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
             item => item.Title == "Tenant ownership test");
 
         Assert.Equal(TenantDefaults.DemoTenantId, auction.TenantId);
+    }
+
+    [Fact]
+    public async Task CreateAuctionUsesTheAuthenticatedTenantClaim()
+    {
+        await EnsureTenantAsync(TenantA);
+        UseToken("tenant-a-admin", TenantA, ["auction.manage"]);
+
+        var response = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Tenant A auction",
+            "Created from Tenant A context.",
+            "AuctionOnly",
+            100m,
+            10m,
+            null,
+            TestAuctionData.Now.AddHours(1),
+            TestAuctionData.Now.AddHours(2)));
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.NotNull(created);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var auction = await db.Auctions.SingleAsync(item => item.Id == created.Id);
+        Assert.Equal(TenantA, auction.TenantId);
+    }
+
+    [Fact]
+    public async Task CreateAuctionRejectsAnUnknownAuthenticatedTenant()
+    {
+        UseToken("unknown-tenant-admin", Guid.Parse("cccccccc-4444-4444-8444-444444444444"), ["auction.manage"]);
+
+        var response = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Unknown tenant auction",
+            "Must not be created.",
+            "AuctionOnly",
+            100m,
+            10m,
+            null,
+            TestAuctionData.Now.AddHours(1),
+            TestAuctionData.Now.AddHours(2)));
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateAuctionIgnoresABodyTenantId()
+    {
+        await EnsureTenantAsync(TenantA);
+        UseToken("tenant-a-admin", TenantA, ["auction.manage"]);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auctions")
+        {
+            Content = JsonContent.Create(new
+            {
+                title = "Body tenant ignored",
+                description = "Ownership must come from the token.",
+                saleMode = "AuctionOnly",
+                startingPrice = 100m,
+                minimumBidIncrement = 10m,
+                startTimeUtc = TestAuctionData.Now.AddHours(1),
+                endTimeUtc = TestAuctionData.Now.AddHours(2),
+                tenantId = TenantB
+            }, options: JsonOptions)
+        };
+
+        var response = await _client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var created = await response.Content.ReadFromJsonAsync<AuctionDetailResponse>(JsonOptions);
+        Assert.NotNull(created);
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        Assert.Equal(TenantA, (await db.Auctions.SingleAsync(item => item.Id == created.Id)).TenantId);
+    }
+
+    [Fact]
+    public async Task CrossTenantManagementCommandsReturnNotFoundWithoutMutation()
+    {
+        var auctionId = await AddTenantAuctionAsync(TenantB, SaleMode.AuctionOnly, scheduled: true);
+        UseToken("tenant-a-admin", TenantA, ["auction.manage"]);
+
+        var before = await ReadAuctionStateAsync(auctionId);
+        var update = await UpdateAuctionAsync(auctionId, new UpdateAuctionRequest(
+            "Attacker update",
+            "Must not apply.",
+            "AuctionOnly",
+            100m,
+            10m,
+            null,
+            TestAuctionData.Now.AddHours(1),
+            TestAuctionData.Now.AddHours(3),
+            before.Version));
+        var delete = await _client.DeleteAsync($"/api/auctions/{auctionId}");
+        var cancel = await CancelAuctionAsync(auctionId, before.Version);
+
+        Assert.Equal(HttpStatusCode.NotFound, update.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, delete.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, cancel.StatusCode);
+
+        var after = await ReadAuctionStateAsync(auctionId);
+        Assert.Equal(before.Version, after.Version);
+        Assert.Equal(before.Status, after.Status);
+        Assert.Equal("Tenant B auction", after.Title);
+    }
+
+    [Fact]
+    public async Task CrossTenantBidReturnsNotFoundWithoutBidOrOutboxSideEffects()
+    {
+        var auctionId = await AddTenantAuctionAsync(TenantB, SaleMode.AuctionOnly);
+        UseToken("tenant-a-bidder", TenantA, ["auction.bid"]);
+        var before = await ReadAuctionStateAsync(auctionId);
+        var beforeCounts = await ReadSideEffectCountsAsync(auctionId);
+
+        var response = await PlaceBidAsync(auctionId, "tenant-a-bidder", 1250m);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var after = await ReadAuctionStateAsync(auctionId);
+        var afterCounts = await ReadSideEffectCountsAsync(auctionId);
+        Assert.Equal(before.Version, after.Version);
+        Assert.Equal(before.CurrentBidAmount, after.CurrentBidAmount);
+        Assert.Equal(beforeCounts, afterCounts);
+    }
+
+    [Fact]
+    public async Task CrossTenantBuyNowReturnsNotFoundWithoutPurchaseSideEffects()
+    {
+        var auctionId = await AddTenantAuctionAsync(TenantB, SaleMode.BuyNowOnly);
+        UseToken("tenant-a-bidder", TenantA, ["auction.buy"]);
+        var before = await ReadAuctionStateAsync(auctionId);
+        var beforeCounts = await ReadSideEffectCountsAsync(auctionId);
+
+        var response = await BuyNowAsync(auctionId, "tenant-a-bidder");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        var after = await ReadAuctionStateAsync(auctionId);
+        var afterCounts = await ReadSideEffectCountsAsync(auctionId);
+        Assert.Equal(before.Version, after.Version);
+        Assert.Null(after.FinalWinnerId);
+        Assert.Equal(beforeCounts, afterCounts);
     }
 
     [Fact]
@@ -1280,6 +1422,75 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         Assert.Equal(expectedStatus, response.StatusCode);
         var error = await response.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
         Assert.Equal(expectedCode, error?.Code);
+    }
+
+    private void UseToken(string subject, Guid tenantId, string[] permissions)
+    {
+        _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTestKeys.CreateToken(subject, permissions: permissions, tenantId: tenantId.ToString()));
+    }
+
+    private async Task<Guid> AddTenantAuctionAsync(Guid tenantId, SaleMode saleMode, bool scheduled = false)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await EnsureTenantAsync(db, tenantId);
+
+        var auctionId = Guid.NewGuid();
+        db.Auctions.Add(new Auction
+        {
+            Id = auctionId,
+            TenantId = tenantId,
+            Title = "Tenant B auction",
+            Description = "Cross-tenant authorization fixture.",
+            StartingPrice = 1000m,
+            SaleMode = saleMode,
+            BuyNowPrice = saleMode == SaleMode.BuyNowOnly ? 1500m : null,
+            MinimumBidIncrement = 50m,
+            StartTimeUtc = scheduled ? TestAuctionData.Now.AddHours(1) : TestAuctionData.Now.AddHours(-1),
+            EndTimeUtc = TestAuctionData.Now.AddHours(2),
+            Status = scheduled ? AuctionStatus.Scheduled : AuctionStatus.Open,
+            Version = 1,
+            CreatedAtUtc = TestAuctionData.Now,
+            UpdatedAtUtc = TestAuctionData.Now
+        });
+        await db.SaveChangesAsync();
+        return auctionId;
+    }
+
+    private async Task EnsureTenantAsync(Guid tenantId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await EnsureTenantAsync(db, tenantId);
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task EnsureTenantAsync(BiddingDbContext db, Guid tenantId)
+    {
+        if (!await db.Tenants.AnyAsync(tenant => tenant.Id == tenantId))
+        {
+            db.Tenants.Add(Tenant.Create(tenantId, $"Tenant {tenantId}", TenantStatus.Active, TestAuctionData.Now));
+        }
+    }
+
+    private async Task<(long Version, AuctionStatus Status, string Title, decimal? CurrentBidAmount, string? FinalWinnerId)>
+        ReadAuctionStateAsync(Guid auctionId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var auction = await db.Auctions.AsNoTracking().SingleAsync(item => item.Id == auctionId);
+        return (auction.Version, auction.Status, auction.Title, auction.CurrentBidAmount, auction.FinalWinnerId);
+    }
+
+    private async Task<(int Bids, int Outbox)> ReadSideEffectCountsAsync(Guid auctionId)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        return (
+            await db.Bids.CountAsync(bid => bid.AuctionId == auctionId),
+            await db.OutboxMessages.CountAsync(message => message.AggregateId == auctionId));
     }
 }
 

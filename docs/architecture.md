@@ -124,6 +124,20 @@ The Bidding Service now owns a `tenants` registry with an opaque UUID, display n
 
 MT1 did not provide tenant isolation. MT2 now binds Laravel users to the server-configured installation tenant and adds `tenant_id` to Laravel-issued Bidding Service tokens. MT2 still does not enforce token tenant ownership against `Auction.TenantId`: public reads remain global, events do not contain `tenantId`, Live Feed keys and rooms are not tenant-namespaced, and tenant status is stored but not enforced. ClientApplication, admission control, provisioning, and WordPress integration remain future work.
 
+### MT3 authenticated tenant resource enforcement
+
+Authenticated Bidding Service mutations now require the canonical signed
+`tenant_id` claim. Auction creation verifies that the claimed tenant exists and
+assigns ownership from that claim; update, delete, cancel, bid, and Buy Now use
+tenant-scoped lookups and return 404 when the resource belongs to another
+tenant. Existing permission policies remain separate and are still required.
+
+Anonymous auction reads remain global and are intentionally not tenant-scoped
+yet. Integration events, RabbitMQ routing, Live Feed keys/rooms, Operations
+Portal projections, and tenant status enforcement remain future work. The
+system is therefore not yet safe for fully shared multi-tenant public
+exposure.
+
 ### MT2 trusted Laravel tenant context
 
 Each Laravel installation represents exactly one tenant selected by the

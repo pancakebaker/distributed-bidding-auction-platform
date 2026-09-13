@@ -91,8 +91,20 @@ public static class AuctionEndpoints
         CreateAuctionRequest request,
         BiddingDbContext db,
         TimeProvider timeProvider,
+        ITenantIdentityAccessor tenantIdentityAccessor,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.Forbid();
+        }
+
+        if (!await db.Tenants.AnyAsync(tenant => tenant.Id == tenantId, cancellationToken))
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("tenant_not_found", "Tenant not found."));
+        }
+
         var now = timeProvider.GetUtcNow();
         var basicError = ValidateBasicFields(request.Title, request.Description);
         if (basicError is not null)
@@ -120,7 +132,7 @@ public static class AuctionEndpoints
         var auction = new Auction
         {
             Id = Guid.NewGuid(),
-            TenantId = TenantDefaults.DemoTenantId,
+            TenantId = tenantId,
             Title = request.Title.Trim(),
             Description = request.Description.Trim(),
             StartingPrice = configuration.StartingPrice,
@@ -145,9 +157,18 @@ public static class AuctionEndpoints
         UpdateAuctionRequest request,
         BiddingDbContext db,
         TimeProvider timeProvider,
+        ITenantIdentityAccessor tenantIdentityAccessor,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.Forbid();
+        }
+
+        var auction = await db.Auctions.FirstOrDefaultAsync(
+            a => a.Id == id && a.TenantId == tenantId,
+            cancellationToken);
         if (auction is null)
         {
             return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
@@ -235,9 +256,18 @@ public static class AuctionEndpoints
         Guid id,
         BiddingDbContext db,
         TimeProvider timeProvider,
+        ITenantIdentityAccessor tenantIdentityAccessor,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.Forbid();
+        }
+
+        var auction = await db.Auctions.FirstOrDefaultAsync(
+            a => a.Id == id && a.TenantId == tenantId,
+            cancellationToken);
         if (auction is null)
         {
             return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
@@ -284,14 +314,22 @@ public static class AuctionEndpoints
         BiddingDbContext db,
         TimeProvider timeProvider,
         ILoggerFactory loggerFactory,
+        ITenantIdentityAccessor tenantIdentityAccessor,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.Forbid();
+        }
+
         var logger = loggerFactory.CreateLogger("AuctionCancellation");
         var correlationId = ResolveCorrelationId(httpContext);
         httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
 
-        var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+        var auction = await db.Auctions.FirstOrDefaultAsync(
+            a => a.Id == id && a.TenantId == tenantId,
+            cancellationToken);
         if (auction is null)
         {
             return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
@@ -466,12 +504,7 @@ public static class AuctionEndpoints
         return TypedResults.Ok(bids);
     }
 
-    private static async Task<
-        Results<
-            Created<PlaceBidResponse>,
-            BadRequest<ApiErrorResponse>,
-            NotFound<ApiErrorResponse>,
-            Conflict<ApiErrorResponse>>>
+    private static async Task<IResult>
         PlaceBid(
         Guid id,
         PlaceBidRequest request,
@@ -480,9 +513,15 @@ public static class AuctionEndpoints
         IOptions<BidPlacementOptions> options,
         ILoggerFactory loggerFactory,
         IBuyerIdentityResolver identityResolver,
+        ITenantIdentityAccessor tenantIdentityAccessor,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.Forbid();
+        }
+
         var logger = loggerFactory.CreateLogger("BidPlacement");
         var correlationId = ResolveCorrelationId(httpContext);
         httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
@@ -507,7 +546,9 @@ public static class AuctionEndpoints
         {
             await using var transaction = await db.Database
                 .BeginTransactionAsync(cancellationToken);
-            var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+            var auction = await db.Auctions.FirstOrDefaultAsync(
+                a => a.Id == id && a.TenantId == tenantId,
+                cancellationToken);
             if (auction is null)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -599,7 +640,9 @@ public static class AuctionEndpoints
                 {
                     var currentAuction = await db.Auctions
                         .AsNoTracking()
-                        .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+                        .FirstOrDefaultAsync(
+                            a => a.Id == id && a.TenantId == tenantId,
+                            cancellationToken);
                     return TypedResults.Conflict(new ApiErrorResponse(
                         "auction_concurrency_conflict",
                         "Auction state changed while the bid was being placed. Retry with the latest auction state.",
@@ -701,12 +744,7 @@ public static class AuctionEndpoints
         return null;
     }
 
-    private static async Task<
-        Results<
-            Created<BuyNowResponse>,
-            BadRequest<ApiErrorResponse>,
-            NotFound<ApiErrorResponse>,
-            Conflict<ApiErrorResponse>>>
+    private static async Task<IResult>
         BuyNow(
         Guid id,
         BuyNowRequest request,
@@ -715,9 +753,15 @@ public static class AuctionEndpoints
         IOptions<BidPlacementOptions> options,
         ILoggerFactory loggerFactory,
         IBuyerIdentityResolver identityResolver,
+        ITenantIdentityAccessor tenantIdentityAccessor,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.Forbid();
+        }
+
         var logger = loggerFactory.CreateLogger("BuyNow");
         var correlationId = ResolveCorrelationId(httpContext);
         httpContext.Response.Headers[CorrelationIdHeader] = correlationId;
@@ -739,7 +783,9 @@ public static class AuctionEndpoints
         {
             await using var transaction = await db.Database
                 .BeginTransactionAsync(cancellationToken);
-            var auction = await db.Auctions.FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+            var auction = await db.Auctions.FirstOrDefaultAsync(
+                a => a.Id == id && a.TenantId == tenantId,
+                cancellationToken);
             if (auction is null)
             {
                 await transaction.RollbackAsync(cancellationToken);
@@ -827,7 +873,9 @@ public static class AuctionEndpoints
                 {
                     var currentAuction = await db.Auctions
                         .AsNoTracking()
-                        .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+                        .FirstOrDefaultAsync(
+                            a => a.Id == id && a.TenantId == tenantId,
+                            cancellationToken);
                     if (currentAuction is null)
                     {
                         return TypedResults.NotFound(
