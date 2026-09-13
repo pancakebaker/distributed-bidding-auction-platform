@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using bidding_service.Contracts;
 using bidding_service.Data;
@@ -409,6 +410,263 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         Assert.Throws<ArgumentException>(() => ClientApplication.NormalizeClientId("-starts-with-hyphen"));
         Assert.Throws<ArgumentException>(() => ClientApplication.NormalizeClientId(new string('a', 64)));
         Assert.Throws<ArgumentException>(() => ClientApplication.NormalizeClientId(string.Empty));
+    }
+
+    [Fact]
+    public void ClientCredential_ValidatesKeyIdDatesAndRsaPublicKey()
+    {
+        var validFrom = TestAuctionData.Now;
+        using var rsa = RSA.Create(2048);
+        var credential = ClientCredential.Create(
+            Guid.Parse("cccccccc-3333-4333-8333-333333333333"),
+            TenantDefaults.DemoClientApplicationId,
+            " Client-A-Key-01 ",
+            rsa.ExportSubjectPublicKeyInfoPem(),
+            validFrom,
+            validFrom.AddDays(30),
+            validFrom);
+
+        Assert.Equal("client-a-key-01", credential.KeyId);
+        Assert.StartsWith("-----BEGIN PUBLIC KEY-----", credential.PublicKeyPem);
+        Assert.Equal(64, credential.PublicKeyFingerprint.Length);
+        Assert.True(credential.IsUsableAt(validFrom));
+        Assert.False(credential.IsUsableAt(validFrom.AddDays(30)));
+        Assert.Throws<ArgumentException>(() => ClientCredential.NormalizeKeyId("-bad"));
+        Assert.Throws<ArgumentException>(() => ClientCredential.NormalizeKeyId("bad-"));
+        Assert.Throws<ArgumentException>(() => ClientCredential.NormalizeKeyId(new string('a', 64)));
+        Assert.Throws<ArgumentException>(() => ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "valid-key",
+            rsa.ExportSubjectPublicKeyInfoPem(),
+            validFrom,
+            validFrom,
+            validFrom));
+    }
+
+    [Fact]
+    public void ClientCredential_RejectsPrivateAndWeakKeys()
+    {
+        using var privateKey = RSA.Create(2048);
+        Assert.Throws<ArgumentException>(() => ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "private-key",
+            privateKey.ExportPkcs8PrivateKeyPem(),
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+
+        using var weakKey = RSA.Create(1024);
+        Assert.Throws<ArgumentException>(() => ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "weak-key",
+            weakKey.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+        Assert.Throws<ArgumentException>(() => ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "malformed-key",
+            "not a PEM key",
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+    }
+
+    [Fact]
+    public async Task ClientCredential_PersistsRotationAndRevocationWithoutDeletingHistory()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await EnsureDemoClientApplicationAsync(db);
+        using var oldKey = RSA.Create(2048);
+        using var newKey = RSA.Create(2048);
+        db.ClientCredentials.AddRange(
+            ClientCredential.Create(
+                Guid.Parse("dddddddd-4444-4444-8444-444444444444"),
+                TenantDefaults.DemoClientApplicationId,
+                "local-laravel-2026-01",
+                oldKey.ExportSubjectPublicKeyInfoPem(),
+                TestAuctionData.Now,
+                null,
+                TestAuctionData.Now),
+            ClientCredential.Create(
+                Guid.Parse("eeeeeeee-5555-4555-8555-555555555555"),
+                TenantDefaults.DemoClientApplicationId,
+                "local-laravel-2026-02",
+                newKey.ExportSubjectPublicKeyInfoPem(),
+                TestAuctionData.Now,
+                null,
+                TestAuctionData.Now));
+        await db.SaveChangesAsync();
+
+        var oldCredential = await db.ClientCredentials.SingleAsync(item => item.KeyId == "local-laravel-2026-01");
+        oldCredential.Revoke(TestAuctionData.Now.AddHours(1));
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var credentials = await db.ClientCredentials.OrderBy(item => item.KeyId).ToListAsync();
+        Assert.Equal(2, credentials.Count);
+        Assert.Equal(ClientCredentialStatus.Revoked, credentials[0].Status);
+        Assert.NotNull(credentials[0].RevokedAtUtc);
+        Assert.False(credentials[0].IsUsableAt(TestAuctionData.Now.AddHours(2)));
+        Assert.True(credentials[1].IsUsableAt(TestAuctionData.Now.AddHours(2)));
+        Assert.DoesNotContain("PRIVATE KEY", credentials[0].PublicKeyPem, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ClientCredential_ProvisioningResolvesClientIdAndRevokesIdempotently()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await EnsureDemoClientApplicationAsync(db);
+        var provisioning = scope.ServiceProvider.GetRequiredService<IClientCredentialProvisioningService>();
+        using var rsa = RSA.Create(2048);
+
+        var credential = await provisioning.ProvisionAsync(
+            TenantDefaults.DemoClientId,
+            "provisioned-key",
+            rsa.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null);
+
+        Assert.Equal(TenantDefaults.DemoClientApplicationId, credential.ClientApplicationId);
+        Assert.True(await provisioning.RevokeAsync("PROVISIONED-KEY"));
+        Assert.True(await provisioning.RevokeAsync("provisioned-key"));
+        db.ChangeTracker.Clear();
+        var stored = await db.ClientCredentials.SingleAsync(item => item.KeyId == "provisioned-key");
+        Assert.Equal(ClientCredentialStatus.Revoked, stored.Status);
+        Assert.NotNull(stored.RevokedAtUtc);
+    }
+
+    [Fact]
+    public async Task ClientCredential_ProvisioningAllowsDisabledPreparationButRejectsRevokedApplication()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await EnsureDemoClientApplicationAsync(db);
+        var disabled = ClientApplication.Create(
+            Guid.Parse("11111111-7777-4777-8777-777777777777"),
+            "disabled-client",
+            TenantDefaults.DemoTenantId,
+            "Disabled Client",
+            ClientApplicationStatus.Disabled,
+            TestAuctionData.Now);
+        var revoked = ClientApplication.Create(
+            Guid.Parse("22222222-8888-4888-8888-888888888888"),
+            "revoked-client",
+            TenantDefaults.DemoTenantId,
+            "Revoked Client",
+            ClientApplicationStatus.Revoked,
+            TestAuctionData.Now);
+        db.ClientApplications.AddRange(disabled, revoked);
+        await db.SaveChangesAsync();
+        var provisioning = scope.ServiceProvider.GetRequiredService<IClientCredentialProvisioningService>();
+
+        using var disabledKey = RSA.Create(2048);
+        var prepared = await provisioning.ProvisionAsync(
+            "disabled-client",
+            "disabled-preparation-key",
+            disabledKey.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null);
+        Assert.Equal(disabled.Id, prepared.ClientApplicationId);
+
+        using var revokedKey = RSA.Create(2048);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => provisioning.ProvisionAsync(
+            "revoked-client",
+            "revoked-new-key",
+            revokedKey.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null));
+    }
+
+    [Fact]
+    public async Task ClientCredential_DatabaseRejectsDuplicateKeyIdAndFingerprint()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await EnsureDemoClientApplicationAsync(db);
+        var secondTenant = Guid.Parse("bbbbbbbb-3333-4333-8333-333333333333");
+        await EnsureTenantAsync(db, secondTenant);
+        var secondApplication = ClientApplication.Create(
+            Guid.Parse("ffffffff-6666-4666-8666-666666666666"),
+            "second-client",
+            secondTenant,
+            "Second Client",
+            ClientApplicationStatus.Active,
+            TestAuctionData.Now);
+        db.ClientApplications.Add(secondApplication);
+        await db.SaveChangesAsync();
+
+        using var rsa = RSA.Create(2048);
+        var publicKey = rsa.ExportSubjectPublicKeyInfoPem();
+        db.ClientCredentials.Add(ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "duplicate-key",
+            publicKey,
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+        await db.SaveChangesAsync();
+        db.ClientCredentials.Add(ClientCredential.Create(
+            Guid.NewGuid(),
+            secondApplication.Id,
+            "duplicate-key",
+            publicKey,
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+        db.ClientCredentials.Add(ClientCredential.Create(
+            Guid.NewGuid(),
+            secondApplication.Id,
+            "different-key",
+            publicKey,
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task ClientCredential_ForeignKeyAndDeleteAreRestrictive()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        await EnsureDemoClientApplicationAsync(db);
+        using var rsa = RSA.Create(2048);
+        db.ClientCredentials.Add(ClientCredential.Create(
+            Guid.NewGuid(),
+            TenantDefaults.DemoClientApplicationId,
+            "restrictive-delete-key",
+            rsa.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+        await db.SaveChangesAsync();
+
+        db.ChangeTracker.Clear();
+        db.ClientApplications.Remove(await db.ClientApplications.SingleAsync(
+            item => item.Id == TenantDefaults.DemoClientApplicationId));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        db.ChangeTracker.Clear();
+
+        using var invalidKey = RSA.Create(2048);
+        db.ClientCredentials.Add(ClientCredential.Create(
+            Guid.NewGuid(),
+            Guid.Parse("cccccccc-3333-4333-8333-333333333333"),
+            "invalid-application-key",
+            invalidKey.ExportSubjectPublicKeyInfoPem(),
+            TestAuctionData.Now,
+            null,
+            TestAuctionData.Now));
+        await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
     }
 
     [Fact]
@@ -1600,6 +1858,22 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         }
     }
 
+    private static async Task EnsureDemoClientApplicationAsync(BiddingDbContext db)
+    {
+        await EnsureTenantAsync(db, TenantDefaults.DemoTenantId);
+        if (!await db.ClientApplications.AnyAsync(item => item.Id == TenantDefaults.DemoClientApplicationId))
+        {
+            db.ClientApplications.Add(ClientApplication.Create(
+                TenantDefaults.DemoClientApplicationId,
+                TenantDefaults.DemoClientId,
+                TenantDefaults.DemoTenantId,
+                TenantDefaults.DemoClientApplicationName,
+                ClientApplicationStatus.Active,
+                TestAuctionData.Now));
+            await db.SaveChangesAsync();
+        }
+    }
+
     private async Task<(long Version, AuctionStatus Status, string Title, decimal? CurrentBidAmount, string? FinalWinnerId)>
         ReadAuctionStateAsync(Guid auctionId)
     {
@@ -1774,8 +2048,4 @@ public static class TestAuctionData
         await db.SaveChangesAsync();
     }
 }
-
-
-
-
 

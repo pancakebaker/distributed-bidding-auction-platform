@@ -34,6 +34,7 @@ builder.Services.AddDbContext<BiddingDbContext>(options =>
     options.UseNpgsql(connectionString);
 });
 builder.Services.AddScoped<DatabaseInitializer>();
+builder.Services.AddScoped<IClientCredentialProvisioningService, ClientCredentialProvisioningService>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var authenticationOptions = builder.Configuration

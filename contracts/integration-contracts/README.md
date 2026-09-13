@@ -84,10 +84,12 @@ resource ownership metadata, not a human `sub`, client/application identity,
 or authorization substitute. RabbitMQ routing keys remain event-type based;
 tenant isolation is applied by consumers and projections.
 
-Application identity is a separate future concern: `client_id` identifies a
-registered calling application and is distinct from both `tenantId` and the
-human `sub`. The MT5.1 registry foundation does not add client credentials or
-change these event contracts.
+Application identity is a separate concern: `client_id` identifies a registered
+calling application and is distinct from both `tenantId` and the human `sub`.
+MT5.1 and MT5.2 add the registry and public-key credential foundation, but do
+not add client credentials to event payloads or enforce application admission.
+Future client-held assertions belong to MT5.3 and must not be confused with
+the tenant field carried by these events.
 
 ## What belongs here
 
