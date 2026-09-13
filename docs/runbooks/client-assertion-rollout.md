@@ -14,9 +14,8 @@ The default remains compatibility mode:
 | on | on | secured target mode |
 | off | on | tenant-facing requests fail with `401`; rollout is incomplete |
 
-The admission flag is a migration control, not a permanent security bypass.
-After rollout is validated, the deployment should keep both sides enabled and
-the flag should be removed or made mandatory in a later hardening phase.
+The admission flag remains configurable for Development and Testing. In
+Production, both protections are mandatory; a disabled gate fails startup.
 
 ## Production rollout policy
 
@@ -27,44 +26,17 @@ production rollout.
 
 Production must run with Laravel assertion issuance and Bidding Service
 admission enabled. Each application fails during startup/configuration
-validation if its protection is disabled, unless an operator explicitly sets
-the temporary migration override for that application:
-
-```text
-BIDDING_SERVICE_CLIENT_ASSERTION_PRODUCTION_BYPASS=true
-ClientAssertionAdmission__AllowInsecureProductionDisable=true
-```
-
-These overrides default to `false`, are server-side deployment configuration
-only, and are deprecated emergency migration controls. When used, each
-application also requires a single-line, non-secret reason of 1 to 256
-characters and emits a high-severity startup warning containing that reason.
-They are not a runtime toggle or a permanent production mode; each use must
-have an owner, incident/change reference, and removal date.
-
-The Laravel reason is configured with
-`BIDDING_SERVICE_CLIENT_ASSERTION_PRODUCTION_BYPASS_REASON`. The Bidding
-Service reason is configured with
-`ClientAssertionAdmission__InsecureProductionDisableReason`. Empty,
-overlong, or multi-line reasons fail production startup. Do not put JWTs,
-keys, passwords, or other secrets in a reason.
+validation if its protection is disabled. There is no insecure production
+fallback.
 
 The secured target is `Laravel ON / Server ON`. A `Server ON / Laravel OFF`
 deployment returns `401` to tenant-facing requests. During a rolling upgrade,
 deploy assertion-capable Laravel instances first, enable issuance, verify fresh
-assertions, then enable server admission and remove the temporary override.
-If rollback is required, set the explicit production override, disable server
-admission, redeploy, investigate, and retain credentials until a replacement is
-provisioned. Do not revoke the only active credential as the first rollback
-step.
-
-The bypasses may be removed after all supported installations are migrated,
-credentials are provisioned, legacy callers are gone, production has run in
-`ON / ON` mode for at least the agreed observation period (recommended: 30
-days), and the rotation, rollback, and staging smoke tests are proven. Future
-WordPress or other clients must use their own registered application and this
-same assertion contract; they are not a reason to retain a hidden exemption.
-Complete bypass removal is deferred to a later hardening phase.
+assertions, then enable server admission. If rollback is required, keep both
+protections enabled: roll back only to assertion-capable versions, restore
+Redis/database dependencies, or provision replacement credentials. Do not
+revert to legacy no-assertion production mode or revoke the only active
+credential as the first rollback step.
 
 ## Caller and deployment policy
 
@@ -81,23 +53,25 @@ Staging should run with both gates on. In production, the target is:
 ```text
 Laravel issuance: true
 Bidding admission: true
-Laravel bypass: false
-Bidding bypass: false
 ```
 
 For multi-instance or blue/green rollout, deploy assertion-capable Laravel
 instances everywhere, enable issuance, verify them, then enable Bidding
-admission. Older callers that send no assertion receive `401` once admission
-is enabled. If an emergency mixed-fleet rollback is required, provide an
-explicit reason, disable admission, redeploy, investigate, and remove the
-override after restoring `ON / ON`.
+admission. Older callers that send no assertion are unsupported and receive
+`401` once admission is enabled. Blue/green slots must both support assertions
+before traffic is switched; do not retain a legacy slot that may receive
+production traffic.
 
-Retirement criteria are: all supported production installations issue
-assertions; all credentials are provisioned and rotation-tested; no legacy
-no-assertion callers remain; no bypass has been used during the observation
-period; staging and rollback have been validated; and the future WordPress
-client plan is covered by the same contract. A later MT5.7 removal phase can
-then delete both bypasses.
+If a credential incident occurs, provision a replacement credential, update
+the Laravel private key and KeyId, and reload Laravel while keeping admission
+enabled. If Redis is unavailable, restore Redis; requests fail closed with
+`503`. If the Laravel private key is lost or corrupt, provision a new keypair
+and credential rather than disabling application authentication.
+
+Retirement is complete: all supported production installations issue
+assertions, all credentials are provisioned and rotation-tested, and no legacy
+no-assertion production caller is supported. Future WordPress or other clients
+must use their own registered application and this same assertion contract.
 
 ## Bootstrap a registered application
 

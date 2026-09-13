@@ -142,27 +142,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-var admissionOptions = app.Services.GetRequiredService<IOptions<ClientAssertionAdmissionOptions>>().Value;
-if (app.Environment.IsProduction()
-    && !admissionOptions.Enabled
-    && admissionOptions.AllowInsecureProductionDisable)
-{
-    const string warningTemplate = "Client assertion admission is disabled in Production by the temporary "
-        + "ClientAssertionAdmission:AllowInsecureProductionDisable override. "
-        + "Tenant-facing requests are not protected; remove the override after migration. "
-        + "Reason: {BypassReason}";
-    var bypassReason = admissionOptions.InsecureProductionDisableReason?.Trim() ?? string.Empty;
-    var warning = warningTemplate.Replace("{BypassReason}", bypassReason, StringComparison.Ordinal);
-    try
-    {
-        app.Logger.LogCritical(warningTemplate, bypassReason);
-    }
-    catch (Exception)
-    {
-        Console.Error.WriteLine($"CRITICAL: {warning}");
-    }
-}
-
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();

@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -17,31 +16,11 @@ final class ClientAssertionProductionPolicy
         }
 
         $enabled = (bool) config('bidding_service.client_assertion_enabled', false);
-        $bypass = (bool) config('bidding_service.client_assertion_production_bypass', false);
-        $bypassReason = trim((string) config('bidding_service.client_assertion_production_bypass_reason'));
-
-        if (! $enabled && ! $bypass) {
+        if (! $enabled) {
             throw new RuntimeException(
                 'Client assertion issuance must be enabled in production. '
-                .'Set BIDDING_SERVICE_CLIENT_ASSERTION_PRODUCTION_BYPASS=true only for a temporary migration override.',
+                .'Configure BIDDING_SERVICE_CLIENT_ASSERTION_ENABLED=true before serving production traffic.',
             );
-        }
-
-        if (! $enabled) {
-            if ($bypassReason === '' || strlen($bypassReason) > 256 || preg_match('/[\r\n]/', $bypassReason)) {
-                throw new RuntimeException(
-                    'A single-line production bypass reason of 1 to 256 characters is required.',
-                );
-            }
-
-            Log::critical(
-                'Client assertion issuance is disabled in production by the temporary '
-                .'BIDDING_SERVICE_CLIENT_ASSERTION_PRODUCTION_BYPASS override. '
-                .'Tenant-facing requests are not protected; remove the override after migration. '
-                .'Reason: '.$bypassReason,
-            );
-
-            return;
         }
 
         app(ClientAssertionIssuer::class)->validateConfiguration();

@@ -7,7 +7,6 @@ use App\Support\ClientAssertionIssuer;
 use App\Support\ClientAssertionProductionPolicy;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 use Tests\TestCase;
@@ -25,8 +24,6 @@ class ClientAssertionIssuerTest extends TestCase
         $this->generateKey($this->privateKeyPath, 2048);
         config()->set('app.env', 'testing');
         config()->set('bidding_service.client_assertion_enabled', false);
-        config()->set('bidding_service.client_assertion_production_bypass', false);
-        config()->set('bidding_service.client_assertion_production_bypass_reason', null);
         config()->set('bidding_service.token_private_key_path', $this->privateKeyPath);
         config()->set('bidding_service.token_issuer', 'dbap-laravel');
         config()->set('bidding_service.token_audience', 'dbap-bidding-service');
@@ -173,36 +170,10 @@ class ClientAssertionIssuerTest extends TestCase
         $this->assertNotSame('', $seen->header('X-Client-Assertion')[0] ?? '');
     }
 
-    public function test_production_rejects_disabled_issuance_without_explicit_bypass(): void
+    public function test_production_rejects_disabled_issuance(): void
     {
         config()->set('app.env', 'production');
         config()->set('bidding_service.client_assertion_enabled', false);
-        config()->set('bidding_service.client_assertion_production_bypass', false);
-
-        $this->expectException(RuntimeException::class);
-        app(ClientAssertionProductionPolicy::class)->enforce();
-    }
-
-    public function test_production_bypass_is_explicit_and_emits_critical_log(): void
-    {
-        config()->set('app.env', 'production');
-        config()->set('bidding_service.client_assertion_enabled', false);
-        config()->set('bidding_service.client_assertion_production_bypass', true);
-        config()->set('bidding_service.client_assertion_production_bypass_reason', 'controlled migration');
-        Log::spy();
-
-        app(ClientAssertionProductionPolicy::class)->enforce();
-
-        Log::shouldHaveReceived('critical')->once();
-    }
-
-    public function test_production_bypass_requires_a_single_line_reason(): void
-    {
-        config()->set('app.env', 'production');
-        config()->set('bidding_service.client_assertion_enabled', false);
-        config()->set('bidding_service.client_assertion_production_bypass', true);
-        config()->set('bidding_service.client_assertion_production_bypass_reason', "incident\nfollow-up");
-
         $this->expectException(RuntimeException::class);
         app(ClientAssertionProductionPolicy::class)->enforce();
     }
@@ -211,8 +182,6 @@ class ClientAssertionIssuerTest extends TestCase
     {
         config()->set('app.env', 'testing');
         config()->set('bidding_service.client_assertion_enabled', false);
-        config()->set('bidding_service.client_assertion_production_bypass', false);
-
         app(ClientAssertionProductionPolicy::class)->enforce();
 
         $this->assertTrue(true);
@@ -222,7 +191,6 @@ class ClientAssertionIssuerTest extends TestCase
     {
         config()->set('app.env', 'production');
         config()->set('bidding_service.client_assertion_enabled', true);
-        config()->set('bidding_service.client_assertion_production_bypass', false);
         config()->set('tenant.id', config('tenant.fallback_id'));
 
         app(ClientAssertionProductionPolicy::class)->enforce();
