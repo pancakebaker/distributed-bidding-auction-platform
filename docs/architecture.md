@@ -116,13 +116,30 @@ Browser countdowns are visual only. Server-side UTC validation in the Bidding Se
 
 Human command identity is established by the Laravel session and conveyed to the Bidding Service only through a short-lived, server-issued RS256 bearer token. Laravel keeps the private signing key; the Bidding Service validates the signature, configured `kid`, issuer, audience, lifetime, and permission claims using public verification material. `sub` is the actor identity, while permissions are derived from trusted Laravel user state. Browsers do not receive or store these downstream tokens, and CSRF protects browser-to-Laravel state changes.
 
-Public auction reads and public Socket.IO auction events remain anonymous. All human state-changing commands use the Laravel BFF; the Bidding Service remains the final policy boundary (`AuctionBid`, `AuctionBuy`, and `AuctionManage`). Current tenant authorization and tenant claims are not implemented; future multi-tenancy must add tenant context without overloading `sub`. System-administration and live-feed-admin authentication remain separate SYS0+ work.
+Public auction reads and public Socket.IO auction events remain anonymous. All human state-changing commands use the Laravel BFF; the Bidding Service remains the final policy boundary (`AuctionBid`, `AuctionBuy`, and `AuctionManage`). MT2 carries trusted Laravel installation tenant context in `tenant_id`, but Bidding Service tenant authorization remains deferred; future multi-tenancy must add tenant context without overloading `sub`. System-administration and live-feed-admin authentication remain separate SYS0+ work.
 
 ### MT1 tenant persistence foundation
 
 The Bidding Service now owns a `tenants` registry with an opaque UUID, display name, explicit `Active`/`Suspended`/`Disabled` status, and UTC timestamps. `Auction.TenantId` is persisted as the authoritative ownership field. Existing demo auctions are backfilled to the deterministic `Local Demo Tenant` (`aaaaaaaa-1111-4111-8111-111111111111`), and new single-tenant compatibility API creations use that server-controlled default.
 
-MT1 does not yet provide tenant isolation. JWTs still do not contain `tenant_id`, public reads remain global, events do not contain `tenantId`, Live Feed keys and rooms are not tenant-namespaced, Laravel users are not tenant-bound, and tenant status is stored but not enforced. ClientApplication, admission control, provisioning, and WordPress integration remain future work.
+MT1 did not provide tenant isolation. MT2 now binds Laravel users to the server-configured installation tenant and adds `tenant_id` to Laravel-issued Bidding Service tokens. MT2 still does not enforce token tenant ownership against `Auction.TenantId`: public reads remain global, events do not contain `tenantId`, Live Feed keys and rooms are not tenant-namespaced, and tenant status is stored but not enforced. ClientApplication, admission control, provisioning, and WordPress integration remain future work.
+
+### MT2 trusted Laravel tenant context
+
+Each Laravel installation represents exactly one tenant selected by the
+server-side `TENANT_ID` configuration. Local/testing may use the deterministic
+demo tenant `aaaaaaaa-1111-4111-8111-111111111111`; non-local deployments must
+provide a valid UUID explicitly. Laravel users persist that tenant ID, and the
+token issuer refuses to mint a Bidding Service token when a user's tenant does
+not match the installation context. The browser cannot override this value.
+
+The signed token claim is `tenant_id`, alongside the existing human `sub` and
+role/permission claims. `tenant_id` is not a client/application identity:
+future `client_id`/`azp` admission belongs to a later phase. Bidding Service
+continues its MT1 server-controlled demo-tenant compatibility behavior until
+MT3 connects trusted tenant context to resource authorization. System admin
+tokens, integration events, public reads, and Live Feed tenant boundaries are
+unchanged.
 
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority

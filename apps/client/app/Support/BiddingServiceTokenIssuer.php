@@ -15,6 +15,12 @@ class BiddingServiceTokenIssuer
     /** @return array{token: string, expiresAt: string} */
     public function issue(User $user): array
     {
+        $installationTenantId = app(TenantContext::class)->id();
+        $userTenantId = strtolower(trim((string) $user->tenant_id));
+        if ($userTenantId === '' || ! Str::isUuid($userTenantId) || $userTenantId !== $installationTenantId) {
+            throw new RuntimeException('User tenant does not match the configured Laravel installation tenant.');
+        }
+
         $issuer = trim((string) config('bidding_service.token_issuer'));
         $audience = trim((string) config('bidding_service.token_audience'));
         $keyId = trim((string) config('bidding_service.token_key_id'));
@@ -44,6 +50,7 @@ class BiddingServiceTokenIssuer
             'iss' => $issuer,
             'aud' => $audience,
             'sub' => $user->getSubjectId(),
+            'tenant_id' => $userTenantId,
             'name' => (string) $user->name,
             'iat' => $issuedAt,
             'exp' => $expiresAt,

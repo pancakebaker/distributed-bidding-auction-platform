@@ -270,6 +270,11 @@ dotnet ef database update --project apps/auction-operations-portal --startup-pro
 
 The copied `apps/client/.env` provides local-only demo values for
 `LOCAL_ADMIN_EMAIL`, `LOCAL_ADMIN_PASSWORD`, and `DEMO_BIDDER_PASSWORD`.
+It also sets `TENANT_ID`, the server-side UUID for the one tenant represented
+by this Laravel installation. It is not a user ID, password, client
+credential, or SystemAdministrator identity; do not expose or override it
+from browser input. Local/testing may use the deterministic demo tenant, while
+non-local deployments must configure a valid UUID explicitly.
 Change them before using any non-local environment. `db:seed` is the canonical
 local bootstrap: it creates the CMS demo content, the configured tenant admin,
 and the three demo bidders. It is safe to run again; the configured local

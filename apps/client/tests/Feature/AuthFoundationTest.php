@@ -61,6 +61,9 @@ class AuthFoundationTest extends TestCase
         $this->assertCount(3, $bidders);
         $this->assertSame(3, $bidders->pluck('subject_id')->filter()->unique()->count());
         $this->assertTrue($bidders->every(fn (User $user): bool => ! $user->is_admin));
+        $this->assertTrue($bidders->every(
+            fn (User $user): bool => $user->tenant_id === config('tenant.fallback_id'),
+        ));
         $this->assertTrue(Hash::check(
             (string) env('DEMO_BIDDER_PASSWORD', LocalBidderSeeder::DEFAULT_PASSWORD),
             (string) $bidders->first()->password,
@@ -90,6 +93,8 @@ class AuthFoundationTest extends TestCase
         $adminPayload = $this->payload($issuer->issue($admin)['token']);
 
         $this->assertSame($bidder->getSubjectId(), $bidderPayload['sub']);
+        $this->assertSame($bidder->tenant_id, $bidderPayload['tenant_id']);
+        $this->assertSame($admin->tenant_id, $adminPayload['tenant_id']);
         $this->assertSame('dbap-laravel', $bidderPayload['iss']);
         $this->assertSame('dbap-bidding-service', $bidderPayload['aud']);
         $this->assertSame('bidding-service-test-v1', $this->header($issuer->issue($bidder)['token'])['kid']);
@@ -98,6 +103,18 @@ class AuthFoundationTest extends TestCase
         $this->assertContains('auction.manage', $adminPayload['permissions']);
         $this->assertLessThanOrEqual(300, $bidderPayload['exp'] - $bidderPayload['iat']);
         $this->assertNotSame($bidderPayload['jti'], $adminPayload['jti']);
+    }
+
+    public function test_token_issuance_rejects_a_user_from_another_tenant(): void
+    {
+        $user = User::factory()->create([
+            'tenant_id' => 'bbbbbbbb-2222-4222-8222-222222222222',
+        ]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('User tenant does not match');
+
+        app(BiddingServiceTokenIssuer::class)->issue($user);
     }
 
     /** @return array<string, mixed> */
