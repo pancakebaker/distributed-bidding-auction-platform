@@ -13,6 +13,10 @@ public sealed class Auction
     /// </summary>
     public Guid Id { get; set; }
     /// <summary>
+    /// Gets or sets the tenant that owns this auction.
+    /// </summary>
+    public Guid? TenantId { get; set; }
+    /// <summary>
     /// Gets or sets the auction title shown to clients.
     /// </summary>
     public required string Title { get; set; }

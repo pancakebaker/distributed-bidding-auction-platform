@@ -24,6 +24,10 @@ public sealed class BiddingDbContext(
     /// </summary>
     public DbSet<Auction> Auctions => Set<Auction>();
     /// <summary>
+    /// Gets the authoritative tenants.
+    /// </summary>
+    public DbSet<Tenant> Tenants => Set<Tenant>();
+    /// <summary>
     /// Gets or sets the accepted bid history for the auction.
     /// </summary>
     public DbSet<Bid> Bids => Set<Bid>();
@@ -42,6 +46,7 @@ public sealed class BiddingDbContext(
             auction.ToTable("auctions", table => table.HasCheckConstraint(SaleModeConstraintName, SaleModeConstraintSql));
             auction.HasKey(a => a.Id);
             auction.Property(a => a.Id).HasColumnName("id");
+            auction.Property(a => a.TenantId).HasColumnName("tenant_id");
             auction.Property(a => a.Title)
                 .HasColumnName("title")
                 .HasMaxLength(200)
@@ -96,8 +101,32 @@ public sealed class BiddingDbContext(
                 .WithOne(b => b.Auction)
                 .HasForeignKey(b => b.AuctionId)
                 .OnDelete(DeleteBehavior.Cascade);
+            auction.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(a => a.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
             auction.HasIndex(a => new { a.Status, a.EndTimeUtc })
                 .HasDatabaseName("ix_auctions_status_end_time_utc");
+        });
+
+        modelBuilder.Entity<Tenant>(tenant =>
+        {
+            tenant.ToTable("tenants", table => table.HasCheckConstraint(
+                "CK_tenants_status",
+                "status IN ('Active', 'Suspended', 'Disabled')"));
+            tenant.HasKey(t => t.Id);
+            tenant.Property(t => t.Id).HasColumnName("id");
+            tenant.Property(t => t.Name)
+                .HasColumnName("name")
+                .HasMaxLength(200)
+                .IsRequired();
+            tenant.Property(t => t.Status)
+                .HasColumnName("status")
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+            tenant.Property(t => t.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
+            tenant.Property(t => t.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
         });
 
         modelBuilder.Entity<Bid>(bid =>

@@ -11,6 +11,12 @@ namespace bidding_service.Data;
 /// </summary>
 public static class DatabaseSeeder
 {
+    /// <summary>Stable owner for all current local/demo auction data.</summary>
+    public static readonly Guid DemoTenantId =
+        Guid.Parse("aaaaaaaa-1111-4111-8111-111111111111");
+
+    /// <summary>Stable display name for the current local/demo tenant.</summary>
+    public const string DemoTenantName = "Local Demo Tenant";
     /// <summary>
     /// Stable identifier for the open MacBook Pro demo auction.
     /// </summary>
@@ -49,18 +55,32 @@ public static class DatabaseSeeder
         TimeProvider timeProvider,
         CancellationToken cancellationToken = default)
     {
+        var now = timeProvider.GetUtcNow();
+        var tenant = await db.Tenants.SingleOrDefaultAsync(
+            item => item.Id == DemoTenantId,
+            cancellationToken);
+        if (tenant is null)
+        {
+            db.Tenants.Add(Tenant.Create(
+                DemoTenantId,
+                DemoTenantName,
+                TenantStatus.Active,
+                now));
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
         if (await db.Auctions.AnyAsync(cancellationToken))
         {
             return;
         }
 
-        var now = timeProvider.GetUtcNow();
         var createdAt = now.AddDays(-2);
 
         db.Auctions.AddRange(
             new Auction
             {
                 Id = OpenAuctionId,
+                TenantId = DemoTenantId,
                 Title = "MacBook Pro",
                 Description = "Demo open auction for a laptop.",
                 StartingPrice = 1000m,
@@ -78,6 +98,7 @@ public static class DatabaseSeeder
             new Auction
             {
                 Id = ScheduledAuctionId,
+                TenantId = DemoTenantId,
                 Title = "Camera",
                 Description = "Demo scheduled auction for a camera kit.",
                 StartingPrice = 500m,
@@ -95,6 +116,7 @@ public static class DatabaseSeeder
             new Auction
             {
                 Id = ClosedAuctionId,
+                TenantId = DemoTenantId,
                 Title = "Gaming Console",
                 Description = "Demo closed auction for a gaming console.",
                 StartingPrice = 300m,
@@ -112,6 +134,7 @@ public static class DatabaseSeeder
             new Auction
             {
                 Id = OpenBuyNowOnlyAuctionId,
+                TenantId = DemoTenantId,
                 Title = "Noise-Cancelling Headphones",
                 Description = "Demo Buy Now-only auction.",
                 StartingPrice = 500m,
@@ -128,6 +151,7 @@ public static class DatabaseSeeder
             new Auction
             {
                 Id = OpenAuctionAndBuyNowAuctionId,
+                TenantId = DemoTenantId,
                 Title = "Mirrorless Camera Body",
                 Description = "Demo auction with ordinary bidding and Buy Now.",
                 StartingPrice = 100m,
@@ -144,6 +168,7 @@ public static class DatabaseSeeder
             new Auction
             {
                 Id = ScheduledAuctionAndBuyNowAuctionId,
+                TenantId = DemoTenantId,
                 Title = "Studio Microphone",
                 Description = "Demo scheduled auction with Buy Now.",
                 StartingPrice = 100m,
