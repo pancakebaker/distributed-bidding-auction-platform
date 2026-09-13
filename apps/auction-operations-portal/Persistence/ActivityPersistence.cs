@@ -77,6 +77,7 @@ public sealed class IntegrationEventMapper
         DateTimeOffset processedAtUtc)
     {
         if (envelope.EventId == Guid.Empty
+            || envelope.TenantId == Guid.Empty
             || string.IsNullOrWhiteSpace(envelope.EventType)
             || string.IsNullOrWhiteSpace(envelope.AggregateType)
             || envelope.AggregateId == Guid.Empty
@@ -86,6 +87,7 @@ public sealed class IntegrationEventMapper
         var activity = new AuctionActivity
         {
             EventId = envelope.EventId,
+            TenantId = envelope.TenantId,
             EventType = envelope.EventType,
             AggregateType = envelope.AggregateType,
             AggregateId = envelope.AggregateId,
@@ -125,6 +127,10 @@ public sealed class IntegrationEventMapper
                 activity.WinnerId = purchase.BidderId;
                 activity.Amount = purchase.FinalPrice;
                 break;
+            case IntegrationEventTypes.AuctionCancelled:
+                var cancelled = Deserialize<AuctionCancelledPayload>(envelope.Payload);
+                ValidateAuction(cancelled.AuctionId, envelope);
+                break;
             default:
                 throw new FormatException($"Unsupported event type '{envelope.EventType}'.");
         }
@@ -144,6 +150,12 @@ public sealed class IntegrationEventMapper
         if (auctionId == Guid.Empty
             || auctionId != envelope.AggregateId
             || auctionVersion != envelope.AggregateVersion)
+            throw new FormatException("Event payload does not match its envelope.");
+    }
+
+    private static void ValidateAuction(Guid auctionId, IntegrationEventEnvelope envelope)
+    {
+        if (auctionId == Guid.Empty || auctionId != envelope.AggregateId)
             throw new FormatException("Event payload does not match its envelope.");
     }
 }

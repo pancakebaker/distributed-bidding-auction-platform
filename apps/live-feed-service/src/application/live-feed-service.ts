@@ -222,16 +222,27 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
 
     socket.on(
       auctionSocketEvents.subscribe,
-      (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
-        const auctionId = parseAuctionSubscription(value);
+      async (
+        value,
+        acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void,
+      ) => {
+        const subscription = parseAuctionSubscription(value);
 
-        if (!auctionId) {
+        if (!subscription) {
           acknowledge?.({ ok: false, error: 'invalid_auction_id' });
           socket.emit(adminSocketEvents.subscriptionError, { code: 'invalid_auction_id' });
           return;
         }
 
-        const room = auctionRoom(auctionId);
+        const room = await resolveSubscriptionRoom(
+          stateStore,
+          subscription.auctionId,
+          subscription.tenantId,
+        );
+        if (!room) {
+          acknowledge?.({ ok: false, error: 'auction_not_found' });
+          return;
+        }
         void socket.join(room);
         acknowledge?.({ ok: true, room });
       },
@@ -239,15 +250,26 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
 
     socket.on(
       auctionSocketEvents.unsubscribe,
-      (value, acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void) => {
-        const auctionId = parseAuctionSubscription(value);
+      async (
+        value,
+        acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void,
+      ) => {
+        const subscription = parseAuctionSubscription(value);
 
-        if (!auctionId) {
+        if (!subscription) {
           acknowledge?.({ ok: false, error: 'invalid_auction_id' });
           return;
         }
 
-        const room = auctionRoom(auctionId);
+        const room = await resolveSubscriptionRoom(
+          stateStore,
+          subscription.auctionId,
+          subscription.tenantId,
+        );
+        if (!room) {
+          acknowledge?.({ ok: false, error: 'auction_not_found' });
+          return;
+        }
         void socket.leave(room);
         acknowledge?.({ ok: true, room });
       },
@@ -302,6 +324,20 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
     redis,
     consumer,
   };
+}
+
+async function resolveSubscriptionRoom(
+  stateStore: LiveFeedStateStore,
+  auctionId: string,
+  requestedTenantId?: string,
+): Promise<string | null> {
+  const projection = await stateStore.getProjection(auctionId);
+  if (projection) {
+    return !requestedTenantId || requestedTenantId === projection.tenantId
+      ? auctionRoom(projection.tenantId, auctionId)
+      : null;
+  }
+  return requestedTenantId ? auctionRoom(requestedTenantId, auctionId) : null;
 }
 
 async function closeSocketServer(io: Server): Promise<void> {

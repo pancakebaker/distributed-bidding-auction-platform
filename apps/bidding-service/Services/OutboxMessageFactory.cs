@@ -24,6 +24,7 @@ public static class OutboxMessageFactory
         DateTimeOffset occurredAtUtc)
     {
         var payload = new BidAcceptedPayload(
+            auction.TenantId,
             bid.Id,
             auction.Id,
             bid.BidderId,
@@ -58,6 +59,7 @@ public static class OutboxMessageFactory
         DateTimeOffset occurredAtUtc)
     {
         var payload = new AuctionPurchasedPayload(
+            auction.TenantId,
             auction.Id,
             bidderId,
             auction.FinalPrice!.Value,
@@ -81,6 +83,7 @@ public static class OutboxMessageFactory
         DateTimeOffset occurredAtUtc)
     {
         var payload = new AuctionClosedPayload(
+            auction.TenantId,
             auction.Id,
             occurredAtUtc,
             auction.FinalPrice,
@@ -103,7 +106,7 @@ public static class OutboxMessageFactory
         string correlationId,
         DateTimeOffset occurredAtUtc)
     {
-        var payload = new AuctionCancelledPayload(auction.Id);
+        var payload = new AuctionCancelledPayload(auction.TenantId, auction.Id);
 
         return CreateLifecycleMessage(
             IntegrationEventTypes.AuctionCancelled,
@@ -142,6 +145,7 @@ public static class OutboxMessageFactory
 /// Represents the BidAccepted event payload persisted to the outbox.
 /// </summary>
 public sealed record BidAcceptedPayload(
+    Guid TenantId,
     Guid BidId,
     Guid AuctionId,
     string BidderId,
@@ -153,6 +157,7 @@ public sealed record BidAcceptedPayload(
 /// Represents the explicit Buy Now purchase event payload persisted to the outbox.
 /// </summary>
 public sealed record AuctionPurchasedPayload(
+    Guid TenantId,
     Guid AuctionId,
     string BidderId,
     decimal FinalPrice,
@@ -163,6 +168,7 @@ public sealed record AuctionPurchasedPayload(
 /// Represents an auction close event emitted by the bidding service for Buy Now.
 /// </summary>
 public sealed record AuctionClosedPayload(
+    Guid TenantId,
     Guid AuctionId,
     DateTimeOffset ClosedAtUtc,
     decimal? FinalBidAmount,
@@ -170,4 +176,4 @@ public sealed record AuctionClosedPayload(
     long AuctionVersion);
 
 /// <summary>Represents an explicit auction cancellation event payload.</summary>
-public sealed record AuctionCancelledPayload(Guid AuctionId);
+public sealed record AuctionCancelledPayload(Guid TenantId, Guid AuctionId);

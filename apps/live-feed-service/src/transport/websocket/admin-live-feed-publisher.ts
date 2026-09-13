@@ -45,6 +45,7 @@ export class LiveFeedActivityObserver implements ActivityRecorder {
       this.store.record(activity);
       this.publisher.publish(activity);
       const historyRecord: LiveFeedHistoryRecord = {
+        tenantId: activity.tenantId,
         eventId: activity.eventId,
         auctionId: activity.auctionId,
         eventType: activity.eventType,

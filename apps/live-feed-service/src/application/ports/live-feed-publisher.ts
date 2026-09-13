@@ -34,6 +34,7 @@ export type LiveFeedSocketPayload =
  * Update passed from application processing to a transport publisher.
  */
 export type LiveFeedUpdate = {
+  tenantId: string;
   auctionId: string;
   eventName: LiveFeedSocketEvent;
   payload: LiveFeedSocketPayload;

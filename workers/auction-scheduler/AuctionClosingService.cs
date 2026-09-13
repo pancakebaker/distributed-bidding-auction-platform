@@ -114,6 +114,7 @@ public sealed class AuctionClosingService(
                     connection,
                     transaction,
                     winner,
+                    auction.TenantId,
                     auction.Id,
                     newVersion.Value,
                     now,
@@ -148,7 +149,7 @@ public sealed class AuctionClosingService(
     {
         await using var command = new NpgsqlCommand(
             """
-            SELECT id, current_bid_amount, current_bidder_id, version, end_time_utc
+            SELECT id, tenant_id, current_bid_amount, current_bidder_id, version, end_time_utc
             FROM auctions
             WHERE status = @openStatus
               AND end_time_utc <= @now
@@ -170,10 +171,11 @@ public sealed class AuctionClosingService(
 
         return new ClaimedAuction(
             reader.GetGuid(0),
-            reader.IsDBNull(1) ? null : reader.GetDecimal(1),
-            reader.IsDBNull(2) ? null : reader.GetString(2),
-            reader.GetInt64(3),
-            reader.GetFieldValue<DateTimeOffset>(4));
+            reader.GetGuid(1),
+            reader.IsDBNull(2) ? null : reader.GetDecimal(2),
+            reader.IsDBNull(3) ? null : reader.GetString(3),
+            reader.GetInt64(4),
+            reader.GetFieldValue<DateTimeOffset>(5));
     }
 
     private static async Task<WinningBid?> FindWinningBidAsync(
@@ -261,6 +263,7 @@ public sealed class AuctionClosingService(
         CancellationToken cancellationToken)
     {
         var payload = new AuctionClosedPayload(
+            auction.TenantId,
             auction.Id,
             occurredAtUtc,
             auction.CurrentBidAmount,
@@ -283,6 +286,7 @@ public sealed class AuctionClosingService(
         NpgsqlConnection connection,
         NpgsqlTransaction transaction,
         WinningBid winner,
+        Guid tenantId,
         Guid auctionId,
         long auctionVersion,
         DateTimeOffset occurredAtUtc,
@@ -290,6 +294,7 @@ public sealed class AuctionClosingService(
         CancellationToken cancellationToken)
     {
         var payload = new WinnerSelectedPayload(
+            tenantId,
             auctionId,
             winner.Id,
             winner.BidderId,
@@ -350,6 +355,7 @@ public sealed class AuctionClosingService(
 
     private sealed record ClaimedAuction(
         Guid Id,
+        Guid TenantId,
         decimal? CurrentBidAmount,
         string? CurrentBidderId,
         long Version,

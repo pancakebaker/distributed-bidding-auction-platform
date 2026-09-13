@@ -12,6 +12,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Cms\PublicFaqController;
 use App\Http\Controllers\Cms\PublicPageController;
 use App\Http\Controllers\NotificationPreferenceController;
+use App\Http\Controllers\PublicAuctionController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome');
@@ -20,6 +21,9 @@ Route::view('/auctions/{auction}', 'welcome');
 
 Route::get('/faq', [PublicFaqController::class, 'index'])->name('cms.faq.index');
 Route::get('/pages/{page:slug}', [PublicPageController::class, 'show'])->name('cms.pages.show');
+Route::get('/api/auctions', [PublicAuctionController::class, 'index'])->name('api.auctions.index');
+Route::get('/api/auctions/{auction}', [PublicAuctionController::class, 'show'])->name('api.auctions.show');
+Route::get('/api/auctions/{auction}/bids', [PublicAuctionController::class, 'bids'])->name('api.auctions.bids.index');
 
 Route::get('/login', [AuthenticatedSessionController::class, 'create'])->name('login');
 Route::post('/login', [AuthenticatedSessionController::class, 'store'])->name('login.store');

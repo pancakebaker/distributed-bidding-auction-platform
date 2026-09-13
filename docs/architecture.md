@@ -104,7 +104,7 @@ The portal’s history query is UTC-based, bounded to a 31-day range, filtered b
 
 ## Client Application
 
-The Laravel client is the browser-facing web shell. React renders the demo auction list and auction detail routes, calls the Bidding Service REST API directly for public auction reads, sends ordinary bids and explicit Buy Now commands through Laravel's authenticated BFF, and subscribes to the Live Feed Service for `bid:accepted`, `auction:purchased`, `auction:closed`, and `winner:selected` projections. SaleMode controls rendered actions; the client preserves ordinary CurrentBid* separately from terminal Final* state.
+The Laravel client is the browser-facing web shell. React renders the demo auction list and auction detail routes, calls same-origin Laravel BFF read routes for tenant-scoped public auction reads, sends ordinary bids and explicit Buy Now commands through Laravel's authenticated BFF, and subscribes to the Live Feed Service for `bid:accepted`, `auction:purchased`, `auction:closed`, and `winner:selected` projections. SaleMode controls rendered actions; the client preserves ordinary CurrentBid* separately from terminal Final* state.
 
 The client never decides whether a bid is valid. It submits commands to the Bidding Service, handles structured REST responses, and updates local UI state from accepted command responses. Socket.IO events are used for multi-browser convergence and live awareness.
 
@@ -116,13 +116,13 @@ Browser countdowns are visual only. Server-side UTC validation in the Bidding Se
 
 Human command identity is established by the Laravel session and conveyed to the Bidding Service only through a short-lived, server-issued RS256 bearer token. Laravel keeps the private signing key; the Bidding Service validates the signature, configured `kid`, issuer, audience, lifetime, and permission claims using public verification material. `sub` is the actor identity, while permissions are derived from trusted Laravel user state. Browsers do not receive or store these downstream tokens, and CSRF protects browser-to-Laravel state changes.
 
-Public auction reads and public Socket.IO auction events remain anonymous. All human state-changing commands use the Laravel BFF; the Bidding Service remains the final policy boundary (`AuctionBid`, `AuctionBuy`, and `AuctionManage`). MT2 carries trusted Laravel installation tenant context in `tenant_id`, but Bidding Service tenant authorization remains deferred; future multi-tenancy must add tenant context without overloading `sub`. System-administration and live-feed-admin authentication remain separate SYS0+ work.
+Public auction reads use a server-side tenant-bound read token, while public Socket.IO auction events remain anonymous. All human state-changing commands use the Laravel BFF; the Bidding Service remains the final policy boundary (`AuctionBid`, `AuctionBuy`, and `AuctionManage`). Tenant context is carried without overloading `sub`. System-administration and live-feed-admin authentication remain separate SYS0+ work.
 
 ### MT1 tenant persistence foundation
 
 The Bidding Service now owns a `tenants` registry with an opaque UUID, display name, explicit `Active`/`Suspended`/`Disabled` status, and UTC timestamps. `Auction.TenantId` is persisted as the authoritative ownership field. Existing demo auctions are backfilled to the deterministic `Local Demo Tenant` (`aaaaaaaa-1111-4111-8111-111111111111`), and new single-tenant compatibility API creations use that server-controlled default.
 
-MT1 did not provide tenant isolation. MT2 now binds Laravel users to the server-configured installation tenant and adds `tenant_id` to Laravel-issued Bidding Service tokens. MT2 still does not enforce token tenant ownership against `Auction.TenantId`: public reads remain global, events do not contain `tenantId`, Live Feed keys and rooms are not tenant-namespaced, and tenant status is stored but not enforced. ClientApplication, admission control, provisioning, and WordPress integration remain future work.
+MT1 did not provide tenant isolation. MT2 bound Laravel users to the server-configured installation tenant and added `tenant_id` to Laravel-issued Bidding Service tokens. MT3 added tenant isolation for authenticated mutations; MT4 adds tenant-scoped public reads, tenant-bearing events, and tenant-aware Live Feed/portal projections. Tenant status is stored but not enforced, and ClientApplication, admission control, provisioning, and WordPress integration remain future work.
 
 ### MT3 authenticated tenant resource enforcement
 
@@ -132,11 +132,9 @@ assigns ownership from that claim; update, delete, cancel, bid, and Buy Now use
 tenant-scoped lookups and return 404 when the resource belongs to another
 tenant. Existing permission policies remain separate and are still required.
 
-Anonymous auction reads remain global and are intentionally not tenant-scoped
-yet. Integration events, RabbitMQ routing, Live Feed keys/rooms, Operations
-Portal projections, and tenant status enforcement remain future work. The
-system is therefore not yet safe for fully shared multi-tenant public
-exposure.
+MT3 did not scope public reads. MT4 now scopes them through Laravel's trusted
+read token and filters Bidding Service queries by `Auction.TenantId`; public
+Socket.IO remains anonymous but is routed through tenant-aware rooms.
 
 ### MT2 trusted Laravel tenant context
 
@@ -150,10 +148,20 @@ not match the installation context. The browser cannot override this value.
 The signed token claim is `tenant_id`, alongside the existing human `sub` and
 role/permission claims. `tenant_id` is not a client/application identity:
 future `client_id`/`azp` admission belongs to a later phase. Bidding Service
-continues its MT1 server-controlled demo-tenant compatibility behavior until
-MT3 connects trusted tenant context to resource authorization. System admin
-tokens, integration events, public reads, and Live Feed tenant boundaries are
-unchanged.
+continues its MT1 server-controlled demo-tenant compatibility behavior for
+legacy internal flows. System admin tokens remain tenant-neutral.
+
+### MT4 tenant-scoped reads and event projections
+
+Public reads now use a short-lived server-issued `auction.read` token. The
+Bidding Service filters list, detail, and bid-history reads by the trusted
+`tenant_id`; the browser never supplies tenant authority. Integration event
+payloads carry the authoritative auction `tenantId`. Live Feed validates that
+UUID, stores tenant-aware Redis projections/history, and publishes public
+updates to `tenant:{tenantId}:auction:{auctionId}` rooms. The Operations Portal
+persists `tenant_id` on activity records and backfills existing activity to the
+local demo tenant. Tenant status enforcement, client admission, and external
+OIDC remain future work.
 
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority

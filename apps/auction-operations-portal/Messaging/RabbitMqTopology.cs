@@ -16,7 +16,8 @@ public sealed class RabbitMqTopology(IOptions<RabbitMqOptions> options)
         IntegrationEventRoutingKeys.BidAccepted,
         IntegrationEventRoutingKeys.AuctionClosed,
         IntegrationEventRoutingKeys.WinnerSelected,
-        IntegrationEventRoutingKeys.AuctionPurchased
+        IntegrationEventRoutingKeys.AuctionPurchased,
+        IntegrationEventRoutingKeys.AuctionCancelled
     ];
 
     /// <summary>Declares exchanges, queues, and event bindings.</summary>

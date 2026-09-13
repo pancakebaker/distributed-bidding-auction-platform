@@ -79,11 +79,17 @@ export class LiveFeedEventProcessor {
 
     const socketEvent = socketEventName(envelope.eventType);
     const payload = toSocketPayload(envelope);
-    this.publisher.publish({ auctionId: payload.auctionId, eventName: socketEvent, payload });
+    this.publisher.publish({
+      tenantId: payload.tenantId,
+      auctionId: payload.auctionId,
+      eventName: socketEvent,
+      payload,
+    });
 
     console.info('Broadcast live-feed event.', {
       eventId: envelope.eventId,
-      eventType: envelope.eventType,
+        tenantId: envelope.payload.tenantId,
+        eventType: envelope.eventType,
       aggregateId: envelope.aggregateId,
       aggregateVersion: envelope.aggregateVersion,
       correlationId: envelope.correlationId,
@@ -109,6 +115,7 @@ export class LiveFeedEventProcessor {
   ): void {
     try {
       this.activityRecorder?.record({
+        tenantId: envelope.payload.tenantId,
         eventId: envelope.eventId,
         eventType: envelope.eventType,
         auctionId: envelope.payload.auctionId,

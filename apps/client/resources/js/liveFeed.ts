@@ -28,7 +28,11 @@ export type LiveFeedHandlers = {
 /**
  * Connects to the live-feed service and subscribes the socket to one auction room.
  */
-export function connectAuctionFeed(auctionId: string, handlers: LiveFeedHandlers): Socket {
+export function connectAuctionFeed(
+    auctionId: string,
+    tenantId: string,
+    handlers: LiveFeedHandlers,
+): Socket {
     const socket = io(liveFeedUrl, {
         transports: ['websocket'],
         reconnectionAttempts: Infinity,
@@ -36,7 +40,7 @@ export function connectAuctionFeed(auctionId: string, handlers: LiveFeedHandlers
 
     socket.on('connect', () => {
         handlers.onStatus('connected');
-        socket.emit(liveFeedSocketEvents.subscribe, auctionId);
+        socket.emit(liveFeedSocketEvents.subscribe, { auctionId, tenantId });
     });
 
     socket.io.on('reconnect_attempt', () => handlers.onStatus('reconnecting'));

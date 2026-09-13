@@ -28,6 +28,12 @@ It consumes through the dedicated durable `auction-operations.activity` queue, b
 
 `event_id` is the database-enforced idempotency key. Aggregate versions are observational metadata only: `AuctionClosed` and `WinnerSelected` may both persist at version 16 when their event IDs differ.
 
+Each accepted auction event carries the authoritative `tenantId`, and the
+portal persists it on `auction_activity` alongside the existing operational
+projection fields. Existing activity rows are backfilled to the local demo
+tenant by the migration. This records ownership for operations reporting; it
+does not yet add tenant admission or SystemAdministrator tenant restrictions.
+
 On a fresh PostgreSQL volume, the repository initialization creates `auction_operations`. If using an existing volume created before the portal was added, confirm it does not already exist and create it once with an idempotent administrative setup; do not destroy the volume just to rerun initialization:
 
 ```sql

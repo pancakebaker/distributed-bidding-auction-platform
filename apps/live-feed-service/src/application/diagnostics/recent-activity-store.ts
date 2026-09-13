@@ -6,6 +6,7 @@
  * Safe metadata captured after an observed live-feed processing outcome.
  */
 export type OperationalActivity = {
+  tenantId: string;
   eventId: string;
   eventType: string;
   auctionId?: string;

@@ -75,6 +75,15 @@ sale. Its payload contains the auction ID; envelope fields carry the resulting
 aggregate version, occurrence time, correlation ID, and unique event ID. It
 uses `auction.cancelled` and must not be interpreted as `AuctionClosed`.
 
+## Tenant field
+
+Every auction integration-event payload carries a required `tenantId` UUID.
+The Bidding Service or scheduler derives it from the authoritative Auction
+ownership field; consumers must validate it before projection. This field is
+resource ownership metadata, not a human `sub`, client/application identity,
+or authorization substitute. RabbitMQ routing keys remain event-type based;
+tenant isolation is applied by consumers and projections.
+
 ## What belongs here
 
 Add a value only when multiple independently deployed components must agree on

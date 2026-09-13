@@ -1,7 +1,7 @@
 /**
  * Applies the idempotent live-feed history SQL migration using the configured PostgreSQL URL.
  */
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { PostgresPool } from '../src/infrastructure/database/postgres-pool.js';
 import { loadConfig } from '../src/config/config.js';
@@ -13,10 +13,10 @@ if (!config.liveFeedDatabaseUrl) {
   throw new Error('LIVE_FEED_DATABASE_URL must be configured to apply the history migration.');
 }
 
-const sql = await readFile(
-  resolve(process.cwd(), 'migrations/001_create_live_feed_history.sql'),
-  'utf8',
-);
+const migrationDirectory = resolve(process.cwd(), 'migrations');
+const migrationFiles = (await readdir(migrationDirectory))
+  .filter((file) => /^\d+_.*\.sql$/.test(file))
+  .sort();
 const pool = new PostgresPool({
   connectionString: config.liveFeedDatabaseUrl,
   max: 1,
@@ -26,8 +26,10 @@ const pool = new PostgresPool({
 });
 
 try {
-  await pool.query(sql);
-  console.info('Live-feed history migration applied.');
+  for (const migrationFile of migrationFiles) {
+    await pool.query(await readFile(resolve(migrationDirectory, migrationFile), 'utf8'));
+    console.info(`Applied live-feed history migration ${migrationFile}.`);
+  }
 } finally {
   await pool.close();
 }

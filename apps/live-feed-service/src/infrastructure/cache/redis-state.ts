@@ -15,6 +15,7 @@ const acceptEventScript = `
 local processedKey = KEYS[1]
 local versionKey = KEYS[2]
 local projectionKey = KEYS[3]
+local tenantMappingKey = KEYS[4]
 
 local incomingVersion = tonumber(ARGV[1])
 local ttlSeconds = tonumber(ARGV[2])
@@ -24,6 +25,7 @@ local currentBidAmount = ARGV[5]
 local finalWinnerId = ARGV[6]
 local finalPrice = ARGV[7]
 local occurredAtUtc = ARGV[8]
+local tenantId = ARGV[9]
 
 local currentVersion = redis.call('GET', versionKey)
 local numericCurrentVersion =
@@ -34,6 +36,7 @@ if redis.call('EXISTS', processedKey) == 1 then
 end
 
 redis.call('SET', processedKey, '1', 'EX', ttlSeconds)
+redis.call('SET', tenantMappingKey, tenantId)
 
 if numericCurrentVersion then
   if incomingVersion < numericCurrentVersion then
@@ -42,6 +45,7 @@ if numericCurrentVersion then
 
   if incomingVersion == numericCurrentVersion then
     redis.call('HSET', projectionKey, 'aggregateVersion', tostring(incomingVersion))
+    redis.call('HSET', projectionKey, 'tenantId', tenantId)
     if eventType == 'BidAccepted' then
       redis.call('HSET', projectionKey, 'currentBidderId', currentBidderId, 'currentBidAmount', currentBidAmount)
     elseif eventType == 'AuctionClosed' then
@@ -72,6 +76,7 @@ end
 redis.call('SET', versionKey, tostring(incomingVersion))
 
 redis.call('HSET', projectionKey, 'aggregateVersion', tostring(incomingVersion))
+redis.call('HSET', projectionKey, 'tenantId', tenantId)
 if eventType == 'BidAccepted' then
   redis.call('HSET', projectionKey, 'currentBidderId', currentBidderId, 'currentBidAmount', currentBidAmount)
 elseif eventType == 'AuctionClosed' then
@@ -108,8 +113,9 @@ export class LiveFeedStateStore implements LiveStateStore {
     const result = await this.redis.eval(acceptEventScript, {
       keys: [
         this.processedEventKey(envelope.eventId),
-        this.auctionVersionKey(envelope.aggregateId),
-        this.projectionKey(envelope.aggregateId),
+        this.auctionVersionKey(envelope.payload.tenantId, envelope.aggregateId),
+        this.projectionKey(envelope.payload.tenantId, envelope.aggregateId),
+        this.auctionTenantKey(envelope.aggregateId),
       ],
       arguments: [
         String(envelope.aggregateVersion),
@@ -126,29 +132,39 @@ export class LiveFeedStateStore implements LiveStateStore {
    * Returns the Redis key used to deduplicate one integration event ID.
    */
   public processedEventKey(eventId: string): string {
-    return `live-feed:processed-event:${eventId}`;
+    return `live-feed:v2:processed-event:${eventId}`;
   }
 
   /**
    * Returns the Redis key that stores the highest accepted aggregate version for an auction.
    */
-  public auctionVersionKey(auctionId: string): string {
-    return `live-feed:auction-version:${auctionId}`;
+  public auctionVersionKey(tenantId: string, auctionId: string): string {
+    return `live-feed:v2:tenant:${tenantId}:auction-version:${auctionId}`;
   }
 
   /** Returns the Redis hash key used for the non-authoritative auction projection. */
-  public projectionKey(auctionId: string): string {
-    return `live-feed:auction:${auctionId}`;
+  public projectionKey(tenantId: string, auctionId: string): string {
+    return `live-feed:v2:tenant:${tenantId}:auction:${auctionId}`;
+  }
+
+  /** Returns the Redis mapping key for an auction's authoritative tenant. */
+  public auctionTenantKey(auctionId: string): string {
+    return `live-feed:v2:auction-tenant:${auctionId}`;
   }
 
   /** Reads the latest projected auction state, if one has been accepted. */
   public async getProjection(auctionId: string): Promise<LiveAuctionProjection | null> {
-    const values = await this.redis.hGetAll(this.projectionKey(auctionId));
+    const tenantId = await this.redis.get(this.auctionTenantKey(auctionId));
+    if (!tenantId) {
+      return null;
+    }
+    const values = await this.redis.hGetAll(this.projectionKey(tenantId, auctionId));
     if (Object.keys(values).length === 0) {
       return null;
     }
 
     return {
+      tenantId,
       auctionId,
       aggregateVersion: Number(values.aggregateVersion),
       status:
@@ -186,7 +202,14 @@ export class LiveFeedStateStore implements LiveStateStore {
 
   private projectionArguments(envelope: LiveFeedEnvelope): string[] {
     if (envelope.eventType === integrationEventTypes.bidAccepted) {
-      return [envelope.payload.bidderId, String(envelope.payload.amount), '', '', ''];
+      return [
+        envelope.payload.bidderId,
+        String(envelope.payload.amount),
+        '',
+        '',
+        '',
+        envelope.payload.tenantId,
+      ];
     }
 
     if (envelope.eventType === integrationEventTypes.auctionClosed) {
@@ -196,15 +219,23 @@ export class LiveFeedStateStore implements LiveStateStore {
         envelope.payload.finalBidderId ?? '',
         envelope.payload.finalBidAmount === null ? '' : String(envelope.payload.finalBidAmount),
         '',
+        envelope.payload.tenantId,
       ];
     }
 
     if (envelope.eventType === integrationEventTypes.winnerSelected) {
-      return ['', '', envelope.payload.winnerId, String(envelope.payload.amount), ''];
+      return [
+        '',
+        '',
+        envelope.payload.winnerId,
+        String(envelope.payload.amount),
+        '',
+        envelope.payload.tenantId,
+      ];
     }
 
     if (envelope.eventType === integrationEventTypes.auctionCancelled) {
-      return ['', '', '', '', ''];
+      return ['', '', '', '', '', envelope.payload.tenantId];
     }
 
     return [
@@ -213,6 +244,7 @@ export class LiveFeedStateStore implements LiveStateStore {
       envelope.payload.bidderId,
       String(envelope.payload.finalPrice),
       envelope.payload.purchasedAtUtc,
+      envelope.payload.tenantId,
     ];
   }
 

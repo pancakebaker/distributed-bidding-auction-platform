@@ -56,15 +56,18 @@ public static class AuctionEndpoints
 
         group.MapGet("/", GetAuctions)
             .WithName("GetAuctions")
+            .RequireAuthorization("AuctionRead")
             .Produces<IReadOnlyList<AuctionSummaryResponse>>();
 
         group.MapGet("/{id:guid}", GetAuction)
             .WithName("GetAuction")
+            .RequireAuthorization("AuctionRead")
             .Produces<AuctionDetailResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound);
 
         group.MapGet("/{id:guid}/bids", GetBids)
             .WithName("GetAuctionBids")
+            .RequireAuthorization("AuctionRead")
             .Produces<IReadOnlyList<BidResponse>>()
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound);
 
@@ -435,12 +438,19 @@ public static class AuctionEndpoints
         return null;
     }
 
-    private static async Task<Ok<List<AuctionSummaryResponse>>> GetAuctions(
+    private static async Task<IResult> GetAuctions(
         BiddingDbContext db,
+        ITenantIdentityAccessor tenantIdentityAccessor,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.Forbid();
+        }
         var auctions = await db.Auctions
             .AsNoTracking()
+            .Where(a => a.TenantId == tenantId)
             .OrderBy(a => a.StartTimeUtc)
             .Select(a => new AuctionSummaryResponse(
                 a.Id,
@@ -457,7 +467,8 @@ public static class AuctionEndpoints
                 a.Status.ToString(),
                 a.StartTimeUtc,
                 a.EndTimeUtc,
-                a.Version))
+                a.Version,
+                a.TenantId))
             .ToListAsync(cancellationToken);
 
         return TypedResults.Ok(auctions);
@@ -468,11 +479,17 @@ public static class AuctionEndpoints
         GetAuction(
         Guid id,
         BiddingDbContext db,
+        ITenantIdentityAccessor tenantIdentityAccessor,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
         var auction = await db.Auctions
             .AsNoTracking()
-            .FirstOrDefaultAsync(a => a.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(a => a.Id == id && a.TenantId == tenantId, cancellationToken);
         if (auction is null)
         {
             return TypedResults.NotFound(
@@ -485,9 +502,15 @@ public static class AuctionEndpoints
     private static async Task<Results<Ok<List<BidResponse>>, NotFound<ApiErrorResponse>>> GetBids(
         Guid id,
         BiddingDbContext db,
+        ITenantIdentityAccessor tenantIdentityAccessor,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        var auctionExists = await db.Auctions.AnyAsync(a => a.Id == id, cancellationToken);
+        if (!tenantIdentityAccessor.TryGetTenantId(httpContext.User, out var tenantId))
+        {
+            return TypedResults.NotFound(new ApiErrorResponse("auction_not_found", "Auction not found."));
+        }
+        var auctionExists = await db.Auctions.AnyAsync(a => a.Id == id && a.TenantId == tenantId, cancellationToken);
         if (!auctionExists)
         {
             return TypedResults.NotFound(
@@ -985,7 +1008,8 @@ public static class AuctionEndpoints
             auction.EndTimeUtc,
             auction.CreatedAtUtc,
             auction.UpdatedAtUtc,
-            auction.Version);
+            auction.Version,
+            auction.TenantId);
     }
 
     private static BidRuleErrorDetails ToBidRuleDetails(Auction auction)

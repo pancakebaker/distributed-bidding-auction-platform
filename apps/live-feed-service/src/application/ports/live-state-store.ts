@@ -18,6 +18,7 @@ export type EventAcceptanceResult = {
 
 /** Minimal non-authoritative Redis projection of the latest auction outcome. */
 export type LiveAuctionProjection = {
+  tenantId: string;
   auctionId: string;
   aggregateVersion: number;
   status?: 'Closed' | 'Cancelled';

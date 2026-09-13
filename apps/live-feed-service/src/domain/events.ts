@@ -35,6 +35,7 @@ export type BidAcceptedEnvelope = {
   aggregateVersion: number;
   correlationId: string | null;
   payload: {
+    tenantId: string;
     bidId: string;
     auctionId: string;
     bidderId: string;
@@ -55,6 +56,7 @@ export type AuctionClosedEnvelope = {
   aggregateVersion: number;
   correlationId: string | null;
   payload: {
+    tenantId: string;
     auctionId: string;
     closedAtUtc: string;
     finalBidAmount: number | null;
@@ -75,6 +77,7 @@ export type WinnerSelectedEnvelope = {
   aggregateVersion: number;
   correlationId: string | null;
   payload: {
+    tenantId: string;
     auctionId: string;
     winningBidId: string;
     winnerId: string;
@@ -94,6 +97,7 @@ export type AuctionPurchasedEnvelope = {
   aggregateVersion: number;
   correlationId: string | null;
   payload: {
+    tenantId: string;
     auctionId: string;
     bidderId: string;
     finalPrice: number;
@@ -111,7 +115,7 @@ export type AuctionCancelledEnvelope = {
   aggregateId: string;
   aggregateVersion: number;
   correlationId: string | null;
-  payload: { auctionId: string };
+  payload: { tenantId: string; auctionId: string };
 };
 
 /**
@@ -128,6 +132,7 @@ export type LiveFeedEnvelope =
  * Frontend-facing payload emitted when a bid is accepted for an auction room.
  */
 export type BidAcceptedSocketPayload = {
+  tenantId: string;
   auctionId: string;
   bidId: string;
   bidderId: string;
@@ -141,6 +146,7 @@ export type BidAcceptedSocketPayload = {
  * Frontend-facing payload emitted when an auction transitions to closed.
  */
 export type AuctionClosedSocketPayload = {
+  tenantId: string;
   auctionId: string;
   closedAtUtc: string;
   finalBidAmount: number | null;
@@ -153,6 +159,7 @@ export type AuctionClosedSocketPayload = {
  * Frontend-facing payload emitted when a winner is selected for a closed auction.
  */
 export type WinnerSelectedSocketPayload = {
+  tenantId: string;
   auctionId: string;
   winningBidId: string;
   winnerId: string;
@@ -164,6 +171,7 @@ export type WinnerSelectedSocketPayload = {
 
 /** Frontend-facing payload emitted when an auction is purchased through Buy Now. */
 export type AuctionPurchasedSocketPayload = {
+  tenantId: string;
   auctionId: string;
   bidderId: string;
   finalPrice: number;
@@ -175,6 +183,7 @@ export type AuctionPurchasedSocketPayload = {
 
 /** Frontend-facing payload emitted when an auction is explicitly cancelled. */
 export type AuctionCancelledSocketPayload = {
+  tenantId: string;
   auctionId: string;
   status: 'Cancelled';
   auctionVersion: number;
@@ -342,6 +351,10 @@ function validateBidAcceptedEnvelopeFromBase(
     throw new Error('BidAccepted payload has an invalid bidId.');
   }
 
+  if (!isUuid(payload.tenantId)) {
+    throw new Error('BidAccepted payload has an invalid tenantId.');
+  }
+
   if (!isUuid(payload.auctionId)) {
     throw new Error('BidAccepted payload has an invalid auctionId.');
   }
@@ -373,6 +386,7 @@ function validateBidAcceptedEnvelopeFromBase(
     payload: {
       bidId: payload.bidId,
       auctionId: payload.auctionId,
+      tenantId: payload.tenantId,
       bidderId: payload.bidderId,
       amount: payload.amount,
       auctionVersion: payload.auctionVersion,
@@ -387,6 +401,10 @@ function validateAuctionClosedEnvelopeFromBase(
 
   if (!isUuid(payload.auctionId)) {
     throw new Error('AuctionClosed payload has an invalid auctionId.');
+  }
+
+  if (!isUuid(payload.tenantId)) {
+    throw new Error('AuctionClosed payload has an invalid tenantId.');
   }
 
   if (payload.auctionId !== value.aggregateId) {
@@ -422,6 +440,7 @@ function validateAuctionClosedEnvelopeFromBase(
     correlationId: value.correlationId,
     payload: {
       auctionId: payload.auctionId,
+      tenantId: payload.tenantId,
       closedAtUtc: payload.closedAtUtc,
       finalBidAmount: payload.finalBidAmount,
       finalBidderId: payload.finalBidderId,
@@ -437,6 +456,10 @@ function validateWinnerSelectedEnvelopeFromBase(
 
   if (!isUuid(payload.auctionId)) {
     throw new Error('WinnerSelected payload has an invalid auctionId.');
+  }
+
+  if (!isUuid(payload.tenantId)) {
+    throw new Error('WinnerSelected payload has an invalid tenantId.');
   }
 
   if (payload.auctionId !== value.aggregateId) {
@@ -473,6 +496,7 @@ function validateWinnerSelectedEnvelopeFromBase(
     correlationId: value.correlationId,
     payload: {
       auctionId: payload.auctionId,
+      tenantId: payload.tenantId,
       winningBidId: payload.winningBidId,
       winnerId: payload.winnerId,
       amount: payload.amount,
@@ -489,6 +513,10 @@ function validateAuctionPurchasedEnvelopeFromBase(
 
   if (!isUuid(payload.auctionId)) {
     throw new Error('AuctionPurchased payload has an invalid auctionId.');
+  }
+
+  if (!isUuid(payload.tenantId)) {
+    throw new Error('AuctionPurchased payload has an invalid tenantId.');
   }
 
   if (payload.auctionId !== value.aggregateId) {
@@ -521,6 +549,7 @@ function validateAuctionPurchasedEnvelopeFromBase(
     correlationId: value.correlationId,
     payload: {
       auctionId: payload.auctionId,
+      tenantId: payload.tenantId,
       bidderId: payload.bidderId,
       finalPrice: payload.finalPrice,
       purchasedAtUtc: payload.purchasedAtUtc,
@@ -538,6 +567,10 @@ function validateAuctionCancelledEnvelopeFromBase(
     throw new Error('AuctionCancelled payload has an invalid auctionId.');
   }
 
+  if (!isUuid(payload.tenantId)) {
+    throw new Error('AuctionCancelled payload has an invalid tenantId.');
+  }
+
   if (payload.auctionId !== value.aggregateId) {
     throw new Error('AuctionCancelled payload auctionId must match aggregateId.');
   }
@@ -550,7 +583,7 @@ function validateAuctionCancelledEnvelopeFromBase(
     aggregateId: value.aggregateId,
     aggregateVersion: value.aggregateVersion,
     correlationId: value.correlationId,
-    payload: { auctionId: payload.auctionId },
+    payload: { tenantId: payload.tenantId, auctionId: payload.auctionId },
   };
 }
 
@@ -568,6 +601,7 @@ export function toSocketPayload(
   if (envelope.eventType === integrationEventTypes.bidAccepted) {
     return {
       auctionId: envelope.payload.auctionId,
+      tenantId: envelope.payload.tenantId,
       bidId: envelope.payload.bidId,
       bidderId: envelope.payload.bidderId,
       amount: envelope.payload.amount,
@@ -580,6 +614,7 @@ export function toSocketPayload(
   if (envelope.eventType === integrationEventTypes.auctionClosed) {
     return {
       auctionId: envelope.payload.auctionId,
+      tenantId: envelope.payload.tenantId,
       closedAtUtc: envelope.payload.closedAtUtc,
       finalBidAmount: envelope.payload.finalBidAmount,
       finalBidderId: envelope.payload.finalBidderId,
@@ -591,6 +626,7 @@ export function toSocketPayload(
   if (envelope.eventType === integrationEventTypes.winnerSelected) {
     return {
       auctionId: envelope.payload.auctionId,
+      tenantId: envelope.payload.tenantId,
       winningBidId: envelope.payload.winningBidId,
       winnerId: envelope.payload.winnerId,
       amount: envelope.payload.amount,
@@ -604,6 +640,7 @@ export function toSocketPayload(
   if (envelope.eventType === integrationEventTypes.auctionCancelled) {
     return {
       auctionId: envelope.payload.auctionId,
+      tenantId: envelope.payload.tenantId,
       status: 'Cancelled',
       auctionVersion: envelope.aggregateVersion,
       occurredAtUtc: envelope.occurredAtUtc,
@@ -613,6 +650,7 @@ export function toSocketPayload(
 
   return {
     auctionId: envelope.payload.auctionId,
+    tenantId: envelope.payload.tenantId,
     bidderId: envelope.payload.bidderId,
     finalPrice: envelope.payload.finalPrice,
     auctionVersion: envelope.payload.auctionVersion,

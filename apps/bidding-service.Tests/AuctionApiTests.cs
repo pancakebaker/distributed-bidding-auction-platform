@@ -34,7 +34,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
                 "Bearer",
                 JwtTestKeys.CreateToken(
                     "test-manager",
-                    permissions: ["auction.bid", "auction.buy", "auction.manage"]));
+                    permissions: ["auction.read", "auction.bid", "auction.buy", "auction.manage"]));
     }
 
     public async Task InitializeAsync() => await _factory.ResetDatabaseAsync();

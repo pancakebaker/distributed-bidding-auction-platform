@@ -10,6 +10,8 @@ public sealed class AuctionActivity
     public long Id { get; set; }
     /// <summary>Gets or sets the source event identifier.</summary>
     public Guid EventId { get; set; }
+    /// <summary>Gets or sets the owning tenant identifier.</summary>
+    public Guid TenantId { get; set; }
     /// <summary>Gets or sets the source event type.</summary>
     public required string EventType { get; set; }
     /// <summary>Gets or sets the source aggregate type.</summary>

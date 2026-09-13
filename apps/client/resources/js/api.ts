@@ -93,7 +93,7 @@ function isApiErrorResponse(value: unknown): value is ApiErrorResponse {
  * Loads auction summaries for the discovery screen from the authoritative Bidding API.
  */
 export function getAuctions(): Promise<AuctionSummary[]> {
-    return request<AuctionSummary[]>('/api/auctions');
+    return bffRequest<AuctionSummary[]>('/api/auctions');
 }
 
 /** Creates an auction through the authenticated Laravel BFF. */
@@ -134,14 +134,14 @@ export function cancelAuction(auctionId: string, version: number): Promise<Aucti
  * Loads one auction detail record for REST reconciliation and initial page state.
  */
 export function getAuction(id: string): Promise<AuctionDetail> {
-    return request<AuctionDetail>(`/api/auctions/${id}`);
+    return bffRequest<AuctionDetail>(`/api/auctions/${id}`);
 }
 
 /**
  * Loads accepted bid history for an auction in the order returned by the Bidding API.
  */
 export function getAuctionBids(id: string): Promise<Bid[]> {
-    return request<Bid[]>(`/api/auctions/${id}/bids`);
+    return bffRequest<Bid[]>(`/api/auctions/${id}/bids`);
 }
 
 /**

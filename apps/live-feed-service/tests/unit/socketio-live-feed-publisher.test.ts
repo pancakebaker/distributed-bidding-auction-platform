@@ -16,10 +16,17 @@ void test('publisher preserves the existing room, event name, and payload', () =
   const payload = { auctionId: 'auction-id', amount: 100 };
 
   publisher.publish({
+    tenantId: 'aaaaaaaa-1111-4111-8111-111111111111',
     auctionId: 'auction-id',
     eventName: 'bid:accepted',
     payload: payload as never,
   });
 
-  assert.deepEqual(calls, [{ room: 'auction:auction-id', eventName: 'bid:accepted', payload }]);
+  assert.deepEqual(calls, [
+    {
+      room: 'tenant:aaaaaaaa-1111-4111-8111-111111111111:auction:auction-id',
+      eventName: 'bid:accepted',
+      payload,
+    },
+  ]);
 });

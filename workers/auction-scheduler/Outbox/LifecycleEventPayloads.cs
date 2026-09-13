@@ -7,6 +7,7 @@ namespace auction_scheduler.Outbox;
 /// Represents the AuctionClosed lifecycle event payload.
 /// </summary>
 public sealed record AuctionClosedPayload(
+    Guid TenantId,
     Guid AuctionId,
     DateTimeOffset ClosedAtUtc,
     decimal? FinalBidAmount,
@@ -17,6 +18,7 @@ public sealed record AuctionClosedPayload(
 /// Represents the WinnerSelected lifecycle event payload.
 /// </summary>
 public sealed record WinnerSelectedPayload(
+    Guid TenantId,
     Guid AuctionId,
     Guid WinningBidId,
     string WinnerId,

@@ -21,7 +21,8 @@ public sealed record AuctionSummaryResponse(
     string Status,
     DateTimeOffset StartTimeUtc,
     DateTimeOffset EndTimeUtc,
-    long Version);
+    long Version,
+    Guid TenantId);
 
 /// <summary>
 /// Returns detailed auction state for the auction detail view.
@@ -44,7 +45,8 @@ public sealed record AuctionDetailResponse(
     DateTimeOffset EndTimeUtc,
     DateTimeOffset CreatedAtUtc,
     DateTimeOffset UpdatedAtUtc,
-    long Version);
+    long Version,
+    Guid TenantId);
 
 /// <summary>
 /// Describes an accepted bid returned by the bidding API.

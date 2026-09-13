@@ -16,6 +16,7 @@ import type { PostgresPool } from './postgres-pool.js';
 
 type HistoryRow = {
   id: number;
+  tenant_id: string;
   event_id: string;
   auction_id: string | null;
   event_type: string;
@@ -39,10 +40,11 @@ export class PostgresLiveFeedHistoryStore implements LiveFeedHistoryStore {
     try {
       await this.pool.query(
         `INSERT INTO live_feed_history (
-          event_id, auction_id, event_type, aggregate_version, correlation_id, occurred_at, processed_at, outcome
-        ) VALUES ($1, $2, $3, $4, $5, $6::timestamptz, $7::timestamptz, $8)
+          tenant_id, event_id, auction_id, event_type, aggregate_version, correlation_id, occurred_at, processed_at, outcome
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7::timestamptz, $8::timestamptz, $9)
         ON CONFLICT (event_id) DO NOTHING`,
         [
+          record.tenantId,
           record.eventId,
           record.auctionId ?? null,
           record.eventType,
@@ -77,6 +79,11 @@ export class PostgresLiveFeedHistoryStore implements LiveFeedHistoryStore {
       conditions.push(`auction_id = $${values.length}`);
     }
 
+    if (filters.tenantId) {
+      values.push(filters.tenantId);
+      conditions.push(`tenant_id = $${values.length}`);
+    }
+
     if (filters.eventType) {
       values.push(filters.eventType);
       conditions.push(`event_type = $${values.length}`);
@@ -91,7 +98,7 @@ export class PostgresLiveFeedHistoryStore implements LiveFeedHistoryStore {
     let result;
     try {
       result = await this.pool.query<HistoryRow>(
-        `SELECT id, event_id, auction_id, event_type, aggregate_version, correlation_id,
+        `SELECT id, tenant_id, event_id, auction_id, event_type, aggregate_version, correlation_id,
                 occurred_at, processed_at, outcome
          FROM live_feed_history
          WHERE ${conditions.join(' AND ')}
@@ -163,6 +170,7 @@ export class UnavailableLiveFeedHistoryStore implements LiveFeedHistoryStore {
 function toHistoryRow(row: HistoryRow): LiveFeedHistoryRow {
   return {
     id: row.id,
+    tenantId: row.tenant_id,
     eventId: row.event_id,
     auctionId: row.auction_id ?? undefined,
     eventType: row.event_type,

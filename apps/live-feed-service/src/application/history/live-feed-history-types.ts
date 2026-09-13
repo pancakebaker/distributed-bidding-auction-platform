@@ -11,6 +11,7 @@ export type LiveFeedHistoryOutcome = 'applied' | 'stale' | 'ignored' | 'error';
  * Safe metadata persisted for one downstream live-feed processing observation.
  */
 export type LiveFeedHistoryRecord = {
+  tenantId: string;
   eventId: string;
   auctionId?: string;
   eventType: string;
@@ -28,6 +29,7 @@ export type LiveFeedHistoryFilters = {
   from: string;
   to: string;
   auctionId?: string;
+  tenantId?: string;
   eventType?: string;
   outcome?: LiveFeedHistoryOutcome;
   limit: number;

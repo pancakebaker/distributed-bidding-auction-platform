@@ -27,6 +27,7 @@ function messageFor(correlationId: string | null, auctionId: string): ConsumeMes
       aggregateVersion: 1,
       correlationId,
       payload: {
+        tenantId: 'aaaaaaaa-1111-4111-8111-111111111111',
         bidId: randomUUID(),
         auctionId,
         bidderId: 'alice',

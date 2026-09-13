@@ -27,6 +27,7 @@ const rabbitMqUrl =
   process.env.RABBITMQ_URL ?? 'amqp://auction:change_me_in_local_env@localhost:5672';
 const redisUrl = process.env.LIVE_FEED_TEST_REDIS_URL ?? 'redis://localhost:6379/1';
 const exchange = process.env.RABBITMQ_EXCHANGE ?? 'auction.events';
+const tenantId = 'aaaaaaaa-1111-4111-8111-111111111111';
 
 const routingKeys = {
   BidAccepted: integrationEventRoutingKeys.bidAccepted,
@@ -60,6 +61,7 @@ function bidAccepted(overrides: Partial<BidAcceptedEnvelope> = {}): BidAcceptedE
     aggregateVersion,
     correlationId: randomUUID(),
     payload: {
+      tenantId,
       bidId: randomUUID(),
       auctionId,
       bidderId: 'alice',
@@ -68,6 +70,7 @@ function bidAccepted(overrides: Partial<BidAcceptedEnvelope> = {}): BidAcceptedE
     },
     ...overrides,
     payload: {
+      tenantId,
       bidId: randomUUID(),
       auctionId,
       bidderId: 'alice',
@@ -91,6 +94,7 @@ function auctionClosed(overrides: Partial<AuctionClosedEnvelope> = {}): AuctionC
     aggregateVersion,
     correlationId: randomUUID(),
     payload: {
+      tenantId,
       auctionId,
       closedAtUtc: new Date().toISOString(),
       finalBidAmount: 13000,
@@ -99,6 +103,7 @@ function auctionClosed(overrides: Partial<AuctionClosedEnvelope> = {}): AuctionC
     },
     ...overrides,
     payload: {
+      tenantId,
       auctionId,
       closedAtUtc: new Date().toISOString(),
       finalBidAmount: 13000,
@@ -122,6 +127,7 @@ function winnerSelected(overrides: Partial<WinnerSelectedEnvelope> = {}): Winner
     aggregateVersion,
     correlationId: randomUUID(),
     payload: {
+      tenantId,
       auctionId,
       winningBidId: randomUUID(),
       winnerId: 'bob',
@@ -131,6 +137,7 @@ function winnerSelected(overrides: Partial<WinnerSelectedEnvelope> = {}): Winner
     },
     ...overrides,
     payload: {
+      tenantId,
       auctionId,
       winningBidId: randomUUID(),
       winnerId: 'bob',
@@ -157,6 +164,7 @@ function auctionPurchased(
     aggregateVersion,
     correlationId: randomUUID(),
     payload: {
+      tenantId,
       auctionId,
       bidderId: 'buyer-123',
       finalPrice: 1000,
@@ -165,6 +173,7 @@ function auctionPurchased(
     },
     ...overrides,
     payload: {
+      tenantId,
       auctionId,
       bidderId: 'buyer-123',
       finalPrice: 1000,
@@ -187,9 +196,9 @@ function auctionCancelled(
     aggregateId: auctionId,
     aggregateVersion: overrides.aggregateVersion ?? 3,
     correlationId: randomUUID(),
-    payload: { auctionId },
+    payload: { tenantId, auctionId },
     ...overrides,
-    payload: { auctionId, ...overrides.payload },
+    payload: { tenantId, auctionId, ...overrides.payload },
   };
 }
 
@@ -267,13 +276,17 @@ async function connectClient(context: TestContext, auctionId: string): Promise<S
 
   await once<void>(socket, 'connect', 1500);
   await new Promise<void>((resolve, reject) => {
-    socket.emit('auction:subscribe', auctionId, (response: { ok: boolean; error?: string }) => {
-      if (response.ok) {
-        resolve();
-      } else {
-        reject(new Error(response.error ?? 'Subscription failed.'));
-      }
-    });
+    socket.emit(
+      'auction:subscribe',
+      { auctionId, tenantId },
+      (response: { ok: boolean; error?: string }) => {
+        if (response.ok) {
+          resolve();
+        } else {
+          reject(new Error(response.error ?? 'Subscription failed.'));
+        }
+      },
+    );
   });
 
   return socket;
@@ -350,9 +363,11 @@ void test('valid BidAccepted event is consumed, ACKed, broadcast, and recorded i
       assert.equal(queueState.messageCount, 0);
     });
 
-    assert.equal(await context.redis.exists(`live-feed:processed-event:${accepted.eventId}`), 1);
+    assert.equal(await context.redis.exists(`live-feed:v2:processed-event:${accepted.eventId}`), 1);
     assert.equal(
-      await context.redis.get(`live-feed:auction-version:${accepted.aggregateId}`),
+      await context.redis.get(
+        `live-feed:v2:tenant:${tenantId}:auction-version:${accepted.aggregateId}`,
+      ),
       String(accepted.aggregateVersion),
     );
   } finally {
@@ -430,12 +445,15 @@ void test('AuctionCancelled is consumed, projected, and delivered without termin
     const payload = await received;
     assert.deepEqual(payload, {
       auctionId,
+      tenantId,
       status: 'Cancelled',
       auctionVersion: 3,
       occurredAtUtc: payload.occurredAtUtc,
       correlationId: payload.correlationId,
     });
-    const projection = await context.redis.hGetAll(`live-feed:auction:${auctionId}`);
+    const projection = await context.redis.hGetAll(
+      `live-feed:v2:tenant:${tenantId}:auction:${auctionId}`,
+    );
     assert.equal(projection.status, 'Cancelled');
     assert.equal(projection.aggregateVersion, '3');
     assert.equal('finalPrice' in projection, false);
@@ -465,13 +483,20 @@ void test('AuctionPurchased is consumed, projected, and delivered to the auction
     await delay(400);
     assert.equal(seen.length, 1);
     assert.equal(
-      await context.redis.get(`live-feed:auction-version:${purchased.aggregateId}`),
+      await context.redis.get(
+        `live-feed:v2:tenant:${tenantId}:auction-version:${purchased.aggregateId}`,
+      ),
       '12',
     );
     assert.deepEqual(
-      { ...(await context.redis.hGetAll(`live-feed:auction:${purchased.aggregateId}`)) },
+      {
+        ...(await context.redis.hGetAll(
+          `live-feed:v2:tenant:${tenantId}:auction:${purchased.aggregateId}`,
+        )),
+      },
       {
         aggregateVersion: '12',
+        tenantId,
         finalPrice: '1000',
         finalWinnerId: 'buyer-123',
         purchasedAtUtc: purchased.payload.purchasedAtUtc,
@@ -513,9 +538,12 @@ void test('same-version purchase and close siblings both emit in either order an
 
       assert.deepEqual(seen.sort(), ['closed', 'purchase']);
       assert.deepEqual(
-        { ...(await context.redis.hGetAll(`live-feed:auction:${auctionId}`)) },
+        {
+          ...(await context.redis.hGetAll(`live-feed:v2:tenant:${tenantId}:auction:${auctionId}`)),
+        },
         {
           aggregateVersion: '12',
+          tenantId,
           finalPrice: '1000',
           finalWinnerId: 'buyer-123',
           purchasedAtUtc: purchase.payload.purchasedAtUtc,
@@ -545,9 +573,14 @@ void test('stale bid after purchase is ignored without regressing ordinary or te
 
     assert.deepEqual(seen, ['purchase']);
     assert.deepEqual(
-      { ...(await context.redis.hGetAll(`live-feed:auction:${purchase.aggregateId}`)) },
+      {
+        ...(await context.redis.hGetAll(
+          `live-feed:v2:tenant:${tenantId}:auction:${purchase.aggregateId}`,
+        )),
+      },
       {
         aggregateVersion: '12',
+        tenantId,
         finalPrice: '1000',
         finalWinnerId: 'buyer-123',
         purchasedAtUtc: purchase.payload.purchasedAtUtc,
@@ -601,7 +634,10 @@ void test('same-version sibling lifecycle events are both accepted in either ord
     await waitFor(() => assert.deepEqual(seen, ['closed']));
     publish(context, winnerSelected({ aggregateId: auctionId, aggregateVersion: 16 }));
     await waitFor(() => assert.deepEqual(seen, ['closed', 'winner']));
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
+    assert.equal(
+      await context.redis.get(`live-feed:v2:tenant:${tenantId}:auction-version:${auctionId}`),
+      '16',
+    );
   } finally {
     client.disconnect();
     await cleanup(context);
@@ -619,7 +655,12 @@ void test('same-version sibling lifecycle events are both accepted in either ord
     await waitFor(() => assert.deepEqual(reverseSeen, ['winner']));
     publish(reverse, auctionClosed({ aggregateId: reverseAuctionId, aggregateVersion: 16 }));
     await waitFor(() => assert.deepEqual(reverseSeen, ['winner', 'closed']));
-    assert.equal(await reverse.redis.get(`live-feed:auction-version:${reverseAuctionId}`), '16');
+    assert.equal(
+      await reverse.redis.get(
+        `live-feed:v2:tenant:${tenantId}:auction-version:${reverseAuctionId}`,
+      ),
+      '16',
+    );
   } finally {
     reverseClient.disconnect();
     await cleanup(reverse);
@@ -645,17 +686,26 @@ void test('aggregateVersion lower events are stale, same-version new events are 
     publish(context, winnerSelected({ aggregateId: auctionId, aggregateVersion: 15 }));
     await delay(400);
     assert.equal(seen.length, 1);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
+    assert.equal(
+      await context.redis.get(`live-feed:v2:tenant:${tenantId}:auction-version:${auctionId}`),
+      '16',
+    );
 
     publish(context, winnerSelected({ aggregateId: auctionId, aggregateVersion: 16 }));
     await waitFor(() => assert.equal(seen.length, 2));
     assert.equal(seen[1].version, 16);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
+    assert.equal(
+      await context.redis.get(`live-feed:v2:tenant:${tenantId}:auction-version:${auctionId}`),
+      '16',
+    );
 
     publish(context, auctionClosed({ aggregateId: auctionId, aggregateVersion: 17 }));
     await waitFor(() => assert.equal(seen.length, 3));
     assert.equal(seen[2].version, 17);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '17');
+    assert.equal(
+      await context.redis.get(`live-feed:v2:tenant:${tenantId}:auction-version:${auctionId}`),
+      '17',
+    );
   } finally {
     client.disconnect();
     await cleanup(context);
@@ -685,7 +735,10 @@ void test('duplicate eventId is ignored regardless of version', async () => {
     await delay(400);
 
     assert.equal(seen.length, 1);
-    assert.equal(await context.redis.get(`live-feed:auction-version:${auctionId}`), '16');
+    assert.equal(
+      await context.redis.get(`live-feed:v2:tenant:${tenantId}:auction-version:${auctionId}`),
+      '16',
+    );
   } finally {
     client.disconnect();
     await cleanup(context);

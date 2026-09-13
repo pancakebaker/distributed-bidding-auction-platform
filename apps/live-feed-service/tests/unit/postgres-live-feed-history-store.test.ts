@@ -8,6 +8,7 @@ import { PostgresLiveFeedHistoryStore } from '../../src/infrastructure/database/
 import type { LiveFeedHistoryRecord } from '../../src/application/history/live-feed-history-types.js';
 
 const record: LiveFeedHistoryRecord = {
+  tenantId: 'aaaaaaaa-1111-4111-8111-111111111111',
   eventId: 'event-1',
   auctionId: 'auction-1',
   eventType: 'BidAccepted',
@@ -37,6 +38,7 @@ void test('history adapter inserts with ON CONFLICT DO NOTHING and parameter val
   assert.match(queryText, /ON CONFLICT \(event_id\) DO NOTHING/);
   assert.doesNotMatch(queryText, /event-1/);
   assert.deepEqual(queryValues, [
+    'aaaaaaaa-1111-4111-8111-111111111111',
     'event-1',
     'auction-1',
     'BidAccepted',
@@ -59,6 +61,7 @@ void test('history adapter parameterizes filters and maps deterministic rows', a
         rows: [
           {
             id: 9,
+            tenant_id: 'aaaaaaaa-1111-4111-8111-111111111111',
             event_id: 'event-1',
             auction_id: 'auction-1',
             event_type: 'BidAccepted',

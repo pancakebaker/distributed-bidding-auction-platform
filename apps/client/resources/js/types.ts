@@ -20,6 +20,7 @@ export type AuctionSummary = {
     startTimeUtc: string;
     endTimeUtc: string;
     version: number;
+    tenantId: string;
 };
 
 /** Enumerates the server-authoritative sale modes. */

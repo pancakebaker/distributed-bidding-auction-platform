@@ -40,9 +40,9 @@ public class EventProcessingBenchmarks
         var auctionId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
         var payload = eventType switch
         {
-            "BidAccepted" => JsonSerializer.SerializeToElement(new BidAcceptedPayload(Guid.NewGuid(), auctionId, "bidder-001", 1250m, DateTimeOffset.UtcNow, 18), JsonOptions),
-            "AuctionClosed" => JsonSerializer.SerializeToElement(new AuctionClosedPayload(auctionId, DateTimeOffset.UtcNow, 1250m, "bidder-001", 19), JsonOptions),
-            _ => JsonSerializer.SerializeToElement(new WinnerSelectedPayload(auctionId, Guid.NewGuid(), "bidder-001", 1250m, DateTimeOffset.UtcNow, 19), JsonOptions)
+            "BidAccepted" => JsonSerializer.SerializeToElement(new BidAcceptedPayload(Guid.Parse("aaaaaaaa-1111-4111-8111-111111111111"), Guid.NewGuid(), auctionId, "bidder-001", 1250m, DateTimeOffset.UtcNow, 18), JsonOptions),
+            "AuctionClosed" => JsonSerializer.SerializeToElement(new AuctionClosedPayload(Guid.Parse("aaaaaaaa-1111-4111-8111-111111111111"), auctionId, DateTimeOffset.UtcNow, 1250m, "bidder-001", 19), JsonOptions),
+            _ => JsonSerializer.SerializeToElement(new WinnerSelectedPayload(Guid.Parse("aaaaaaaa-1111-4111-8111-111111111111"), auctionId, Guid.NewGuid(), "bidder-001", 1250m, DateTimeOffset.UtcNow, 19), JsonOptions)
         };
         return new IntegrationEventEnvelope(Guid.NewGuid(), eventType, DateTimeOffset.UtcNow, "Auction", auctionId, eventType == "BidAccepted" ? 18 : 19, "benchmark-correlation", payload);
     }

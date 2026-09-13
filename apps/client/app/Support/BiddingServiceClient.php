@@ -39,6 +39,29 @@ class BiddingServiceClient
         return $this->requestCommand($user, 'DELETE', $path, [], $correlationId);
     }
 
+    public function getPublicRead(string $path, ?string $correlationId = null): Response
+    {
+        try {
+            $token = $this->tokenIssuer->issuePublicRead()['token'];
+            $request = Http::acceptJson()
+                ->timeout((int) config('bidding_service.timeout_seconds', 10))
+                ->withToken($token);
+            if ($correlationId !== null && trim($correlationId) !== '') {
+                $request = $request->withHeaders(['X-Correlation-ID' => $correlationId]);
+            }
+            $upstream = $request->get(rtrim((string) config('bidding_service.url'), '/').'/api/auctions/'.$path);
+
+            return response($upstream->body(), $upstream->status())
+                ->header('Content-Type', $upstream->header('Content-Type', 'application/json'))
+                ->header('X-Correlation-ID', $upstream->header('X-Correlation-ID', $correlationId ?? ''));
+        } catch (Throwable) {
+            return response()->json([
+                'code' => 'bidding_service_unavailable',
+                'message' => 'The bidding service is temporarily unavailable.',
+            ], 503);
+        }
+    }
+
     /** @param array<string, mixed> $payload */
     private function requestCommand(
         User $user,

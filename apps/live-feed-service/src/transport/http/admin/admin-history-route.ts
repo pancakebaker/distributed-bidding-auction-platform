@@ -117,14 +117,14 @@ export function writeHistoryPdf(
   document.fontSize(9).text(`Generated: ${new Date().toISOString()} UTC`);
   document.text(`Range: ${filters.from} to ${filters.to} UTC`);
   document.text(
-    `Filters: auction=${filters.auctionId ?? 'all'}, event=${filters.eventType ?? 'all'}, outcome=${filters.outcome ?? 'all'}`,
+    `Filters: tenant=${filters.tenantId ?? 'all'}, auction=${filters.auctionId ?? 'all'}, event=${filters.eventType ?? 'all'}, outcome=${filters.outcome ?? 'all'}`,
   );
   document.text(`Returned: ${rows.length}`);
   document.moveDown(1);
 
   document
     .fontSize(9)
-    .text('Processed Time | Event Type | Auction ID | Version | Outcome', { underline: true });
+    .text('Processed Time | Tenant ID | Event Type | Auction ID | Version | Outcome', { underline: true });
   document.moveDown(0.25);
 
   for (const row of rows) {
@@ -137,6 +137,7 @@ export function writeHistoryPdf(
       .text(
         [
           row.processedAt,
+          row.tenantId,
           row.eventType,
           row.auctionId ?? '-',
           row.aggregateVersion?.toString() ?? '-',

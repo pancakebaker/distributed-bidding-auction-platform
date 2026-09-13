@@ -62,6 +62,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         subjectId: null,
         isAdmin: false,
     };
+    const auctionTenantId = auction?.tenantId;
 
     const refresh = () => {
         setLoading(true);
@@ -92,7 +93,11 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
     useEffect(refresh, [auctionId]);
 
     useEffect(() => {
-        const socket = connectAuctionFeed(auctionId, {
+        if (!auctionTenantId) {
+            return undefined;
+        }
+
+        const socket = connectAuctionFeed(auctionId, auctionTenantId, {
             onStatus: setLiveStatus,
             onBidAccepted: (event) => {
                 if (event.auctionId !== auctionId) {
@@ -235,7 +240,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         return () => {
             socket.disconnect();
         };
-    }, [auctionId, auth.subjectId]);
+    }, [auctionId, auctionTenantId, auth.subjectId]);
 
     const minimumBid = auction?.minimumValidBid ?? 0;
     const countdown = auction ? getCountdown(auction, now) : '';

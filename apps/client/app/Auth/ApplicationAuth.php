@@ -18,4 +18,6 @@ final class ApplicationAuth
     public const PERMISSION_AUCTION_BUY = 'auction.buy';
 
     public const PERMISSION_AUCTION_MANAGE = 'auction.manage';
+
+    public const PERMISSION_AUCTION_READ = 'auction.read';
 }

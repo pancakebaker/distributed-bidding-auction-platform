@@ -36,6 +36,7 @@ vi.mock('socket.io-client', () => ({
 }));
 
 const macBook: AuctionDetail = {
+    tenantId: 'aaaaaaaa-1111-4111-8111-111111111111',
     id: '11111111-1111-1111-1111-111111111111',
     title: 'MacBook Pro',
     description: 'Developer laptop demo auction.',
@@ -59,6 +60,7 @@ const macBook: AuctionDetail = {
 const auctions: AuctionSummary[] = [
     macBook,
     {
+        tenantId: 'aaaaaaaa-1111-4111-8111-111111111111',
         id: '22222222-2222-2222-2222-222222222222',
         title: 'Camera',
         startingPrice: 500,
@@ -76,6 +78,7 @@ const auctions: AuctionSummary[] = [
         version: 1,
     },
     {
+        tenantId: 'aaaaaaaa-1111-4111-8111-111111111111',
         id: '33333333-3333-3333-3333-333333333333',
         title: 'Gaming Console',
         startingPrice: 300,
@@ -435,7 +438,10 @@ describe('auction UI', () => {
 
         socketHandlers.get('connect')?.();
 
-        expect(emitMock).toHaveBeenCalledWith(liveFeedSocketEvents.subscribe, macBook.id);
+        expect(emitMock).toHaveBeenCalledWith(liveFeedSocketEvents.subscribe, {
+            auctionId: macBook.id,
+            tenantId: macBook.tenantId,
+        });
     });
 
     it('disconnects the live feed subscription when the auction detail unmounts', async () => {
@@ -518,6 +524,9 @@ describe('auction UI', () => {
     it('winner:selected displays winner state for the acting bidder', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
+        await waitFor(() =>
+            expect(socketHandlers.has(liveFeedSocketEvents.winnerSelected)).toBe(true),
+        );
 
         liveWinner({
             auctionId: macBook.id,
@@ -825,10 +834,9 @@ describe('auction UI', () => {
         });
 
         renderAt(`/auctions/${macBook.id}`);
+        expect(await screen.findByText('No bids were placed.')).toBeInTheDocument();
         socketHandlers.get('connect_error')?.();
-
         expect((await screen.findAllByText('Offline')).length).toBeGreaterThan(0);
-        expect(screen.getByText('No bids were placed.')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Auction closed' })).toBeDisabled();
     });
     it('API unavailable state renders cleanly', async () => {

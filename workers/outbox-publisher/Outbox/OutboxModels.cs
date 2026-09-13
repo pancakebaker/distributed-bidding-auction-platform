@@ -32,6 +32,7 @@ public sealed record IntegrationEventEnvelope(
     Guid AggregateId,
     long AggregateVersion,
     string? CorrelationId,
+    Guid TenantId,
     JsonNode? Payload)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -41,6 +42,11 @@ public sealed record IntegrationEventEnvelope(
     /// </summary>
     public static IntegrationEventEnvelope FromOutboxMessage(OutboxMessage message)
     {
+        var payload = JsonNode.Parse(message.Payload)
+            ?? throw new InvalidOperationException("Outbox payload cannot be empty.");
+        var tenantId = payload["tenantId"]?.GetValue<Guid>()
+            ?? throw new InvalidOperationException("Outbox payload is missing tenantId.");
+
         return new IntegrationEventEnvelope(
             message.Id,
             message.EventType,
@@ -49,7 +55,8 @@ public sealed record IntegrationEventEnvelope(
             message.AggregateId,
             message.AggregateVersion,
             message.CorrelationId,
-            JsonNode.Parse(message.Payload));
+            tenantId,
+            payload);
     }
 
     /// <summary>

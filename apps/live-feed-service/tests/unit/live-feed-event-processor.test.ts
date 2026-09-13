@@ -20,6 +20,8 @@ import type {
   BidAcceptedEnvelope,
 } from '../../src/domain/events.js';
 
+const tenantId = 'aaaaaaaa-1111-4111-8111-111111111111';
+
 function event(): BidAcceptedEnvelope {
   const auctionId = randomUUID();
   return {
@@ -31,6 +33,7 @@ function event(): BidAcceptedEnvelope {
     aggregateVersion: 7,
     correlationId: 'correlation-test',
     payload: {
+      tenantId,
       bidId: randomUUID(),
       auctionId,
       bidderId: 'alice',
@@ -54,6 +57,7 @@ function purchaseEvent(auctionId = randomUUID()): AuctionPurchasedEnvelope {
     aggregateVersion: 12,
     correlationId: 'purchase-correlation',
     payload: {
+      tenantId,
       auctionId,
       bidderId: 'buyer-123',
       finalPrice: 1000,
@@ -73,6 +77,7 @@ function closedEvent(auctionId: string): AuctionClosedEnvelope {
     aggregateVersion: 12,
     correlationId: 'purchase-correlation',
     payload: {
+      tenantId,
       auctionId,
       closedAtUtc: new Date().toISOString(),
       finalBidAmount: 1000,
@@ -91,7 +96,7 @@ function cancelledEvent(auctionId = randomUUID()): AuctionCancelledEnvelope {
     aggregateId: auctionId,
     aggregateVersion: 13,
     correlationId: 'cancel-correlation',
-    payload: { auctionId },
+    payload: { tenantId, auctionId },
   };
 }
 
@@ -112,6 +117,7 @@ void test('accepted events publish the existing event name and payload through t
   assert.equal(updates[0].eventName, 'bid:accepted');
   assert.deepEqual(updates[0].payload, {
     auctionId: envelope.aggregateId,
+    tenantId,
     bidId: envelope.payload.bidId,
     bidderId: envelope.payload.bidderId,
     amount: envelope.payload.amount,
@@ -154,6 +160,7 @@ void test('AuctionPurchased publishes the explicit purchase event and final pric
   assert.equal(updates[0]?.eventName, 'auction:purchased');
   assert.deepEqual(updates[0]?.payload, {
     auctionId: envelope.aggregateId,
+    tenantId,
     bidderId: 'buyer-123',
     finalPrice: 1000,
     auctionVersion: 12,
@@ -209,6 +216,7 @@ void test('AuctionCancelled publishes the cancellation event without terminal ou
   assert.equal(updates[0]?.eventName, 'auction:cancelled');
   assert.deepEqual(updates[0]?.payload, {
     auctionId: envelope.aggregateId,
+    tenantId,
     status: 'Cancelled',
     auctionVersion: 13,
     occurredAtUtc: envelope.occurredAtUtc,

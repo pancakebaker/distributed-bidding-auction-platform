@@ -86,7 +86,10 @@ builder.Services.AddAuthorizationBuilder()
         .RequireClaim("permissions", "auction.buy"))
     .AddPolicy("AuctionManage", policy => policy
         .RequireAuthenticatedUser()
-        .RequireClaim("permissions", "auction.manage"));
+        .RequireClaim("permissions", "auction.manage"))
+    .AddPolicy("AuctionRead", policy => policy
+        .RequireAuthenticatedUser()
+        .RequireClaim("permissions", "auction.read"));
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("LocalClient", policy =>

@@ -179,8 +179,10 @@ It is a server-side UUID, not a user ID, password, client credential, or
 SystemAdministrator identity. Local/testing environments use the deterministic
 demo tenant when it is omitted; non-local environments must configure a valid
 UUID explicitly. MT2 carries this identity in Laravel-issued Bidding Service
-tokens, but Bidding Service resource authorization, tenant-scoped public reads,
-event tenant fields, and Live Feed tenant isolation remain deferred.
+tokens. Public reads now use a server-side tenant-bound read token, and event
+payloads/Live Feed projections carry tenant identity. Bidding Service command
+authorization and tenant status enforcement remain explicit policy boundaries;
+ClientApplication admission and external OIDC remain deferred.
 
 ## License
 

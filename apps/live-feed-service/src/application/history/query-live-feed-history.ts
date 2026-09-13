@@ -4,6 +4,7 @@
 import { ApplicationError } from '../errors/application-error.js';
 import type { LiveFeedHistoryFilters } from './live-feed-history-types.js';
 import type { LiveFeedHistoryStore } from '../ports/live-feed-history-store.js';
+import { isUuid } from '../../domain/events.js';
 
 /** Maximum time range accepted by admin history queries. */
 export const maxHistoryRangeMs = 31 * 24 * 60 * 60 * 1000;
@@ -61,6 +62,7 @@ export function parseHistoryFilters(
 
   const limit = parseLimit(input.limit, exportRequest ? maxHistoryExportLimit : maxHistoryLimit);
   const auctionId = parseOptionalText(input.auctionId, 'auctionId', 120);
+  const tenantId = parseOptionalTenantId(input.tenantId);
   const eventType = parseOptionalText(input.eventType, 'eventType', 80);
   const outcome = parseOutcome(input.outcome);
 
@@ -71,7 +73,18 @@ export function parseHistoryFilters(
     eventType,
     outcome,
     limit,
+    ...(tenantId ? { tenantId } : {}),
   };
+}
+
+function parseOptionalTenantId(value: unknown): string | undefined {
+  if (value === undefined || value === '') {
+    return undefined;
+  }
+  if (!isUuid(value)) {
+    throw new ApplicationError('The tenantId filter is invalid.', 400, 'invalid_history_filter');
+  }
+  return value.toLowerCase();
 }
 
 /**

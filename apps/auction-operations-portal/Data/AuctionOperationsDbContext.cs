@@ -23,6 +23,9 @@ public sealed class AuctionOperationsDbContext(
         entity.HasKey(activity => activity.Id);
         entity.Property(activity => activity.Id).UseIdentityAlwaysColumn();
         entity.Property(activity => activity.EventId).HasColumnName("event_id");
+        entity.Property(activity => activity.TenantId).HasColumnName("tenant_id").IsRequired();
+        entity.HasIndex(activity => activity.TenantId)
+            .HasDatabaseName("ix_auction_activity_tenant_id");
         entity.HasIndex(activity => activity.EventId)
             .IsUnique()
             .HasDatabaseName("ux_auction_activity_event_id");

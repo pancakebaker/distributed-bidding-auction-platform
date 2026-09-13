@@ -333,10 +333,12 @@ public sealed class OutboxPublisherIntegrationTests : IAsyncLifetime
     {
         var id = Guid.NewGuid();
         var auctionId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var tenantId = Guid.Parse("aaaaaaaa-1111-4111-8111-111111111111");
         var bidId = Guid.NewGuid();
         var occurredAt = DateTimeOffset.UtcNow.AddSeconds(createdOffsetSeconds);
         var payload = JsonSerializer.Serialize(new
         {
+            tenantId,
             bidId,
             auctionId,
             bidderId = "phase4-bidder",

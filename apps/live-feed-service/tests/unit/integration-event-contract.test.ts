@@ -12,6 +12,8 @@ import {
   integrationEventRoutingKeys,
 } from '../../src/domain/transport.js';
 
+const tenantId = 'aaaaaaaa-1111-4111-8111-111111111111';
+
 void test('integration event wire values remain stable', () => {
   assert.deepEqual(integrationEventTypes, {
     bidAccepted: 'BidAccepted',
@@ -59,6 +61,7 @@ function purchaseEnvelope(overrides: Record<string, unknown> = {}) {
     aggregateVersion: 12,
     correlationId: 'correlation-12',
     payload: {
+      tenantId,
       auctionId,
       bidderId: 'buyer-123',
       finalPrice: 1000,
@@ -117,13 +120,13 @@ void test('valid and malformed AuctionCancelled envelopes follow the contract', 
     aggregateId: auctionId,
     aggregateVersion: 13,
     correlationId: 'cancel-correlation',
-    payload: { auctionId },
+    payload: { tenantId, auctionId },
   });
 
   assert.equal(envelope.eventType, 'AuctionCancelled');
   assert.equal(envelope.payload.auctionId, auctionId);
   assert.throws(
-    () => validateLiveFeedEnvelope({ ...envelope, payload: { auctionId: 'invalid' } }),
+    () => validateLiveFeedEnvelope({ ...envelope, payload: { tenantId, auctionId: 'invalid' } }),
     /AuctionCancelled payload/,
   );
 });

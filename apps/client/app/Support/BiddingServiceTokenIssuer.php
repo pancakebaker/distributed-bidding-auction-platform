@@ -21,6 +21,44 @@ class BiddingServiceTokenIssuer
             throw new RuntimeException('User tenant does not match the configured Laravel installation tenant.');
         }
 
+        return $this->issueToken(
+            $installationTenantId,
+            $user->getSubjectId(),
+            (string) $user->name,
+            $user->is_admin ? ApplicationAuth::ROLE_ADMIN : 'bidder',
+            [
+                ApplicationAuth::PERMISSION_AUCTION_BID,
+                ApplicationAuth::PERMISSION_AUCTION_BUY,
+                ...($user->is_admin ? [ApplicationAuth::PERMISSION_AUCTION_MANAGE] : []),
+            ],
+        );
+    }
+
+    /** @return array{token: string, expiresAt: string} */
+    public function issuePublicRead(): array
+    {
+        return $this->issueToken(
+            app(TenantContext::class)->id(),
+            'laravel-public-read',
+            '',
+            'service',
+            [ApplicationAuth::PERMISSION_AUCTION_READ],
+        );
+    }
+
+    /** @param list<string> $permissions */
+    private function issueToken(
+        string $tenantId,
+        string $subject,
+        string $name,
+        string $role,
+        array $permissions,
+    ): array {
+        $tenantId = strtolower(trim($tenantId));
+        if ($tenantId === '' || ! Str::isUuid($tenantId)) {
+            throw new RuntimeException('Bidding Service token tenant configuration is invalid.');
+        }
+
         $issuer = trim((string) config('bidding_service.token_issuer'));
         $audience = trim((string) config('bidding_service.token_audience'));
         $keyId = trim((string) config('bidding_service.token_key_id'));
@@ -38,26 +76,20 @@ class BiddingServiceTokenIssuer
             60,
             min((int) config('bidding_service.token_ttl_seconds', 300), 600),
         );
-        $permissions = [
-            ApplicationAuth::PERMISSION_AUCTION_BID,
-            ApplicationAuth::PERMISSION_AUCTION_BUY,
-        ];
-        if ($user->is_admin) {
-            $permissions[] = ApplicationAuth::PERMISSION_AUCTION_MANAGE;
-        }
-
         $claims = [
             'iss' => $issuer,
             'aud' => $audience,
-            'sub' => $user->getSubjectId(),
-            'tenant_id' => $userTenantId,
-            'name' => (string) $user->name,
+            'sub' => $subject,
+            'tenant_id' => $tenantId,
             'iat' => $issuedAt,
             'exp' => $expiresAt,
             'jti' => (string) Str::uuid(),
-            ApplicationAuth::CLAIM_ROLE => $user->is_admin ? ApplicationAuth::ROLE_ADMIN : 'bidder',
+            ApplicationAuth::CLAIM_ROLE => $role,
             ApplicationAuth::CLAIM_PERMISSIONS => $permissions,
         ];
+        if ($name !== '') {
+            $claims['name'] = $name;
+        }
 
         $header = $this->encode(['alg' => 'RS256', 'typ' => 'JWT', 'kid' => $keyId]);
         $payload = $this->encode($claims);
