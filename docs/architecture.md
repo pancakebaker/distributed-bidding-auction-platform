@@ -215,9 +215,14 @@ bounded lifetime, and cross-checks signed `tenant_id` against the application's
 authoritative `TenantId`. It returns a typed application identity without raw
 key material.
 
-This is a validation boundary only. HTTP request admission is not enabled,
-Laravel does not issue client assertions, and JTI replay protection is not
-implemented yet; those are deferred to later MT5.3 phases.
+This is a validation boundary only. HTTP request admission is not enabled and
+Laravel does not issue client assertions. MT5.3b adds a reusable replay
+protector after cryptographic validation: it atomically records a hashed,
+application-scoped JTI with Redis `SET NX` and a TTL covering the assertion's
+remaining acceptance window. Redis failure fails closed, no process-local
+fallback is used, and the raw assertion is never stored. Replay protection is
+still not wired into HTTP admission; Laravel assertion issuance remains a later
+phase.
 
 Correlation IDs are tracing metadata only. The Bidding Service bounds incoming correlation values and replaces empty, oversized, or control-character values with a generated identifier; they never participate in authentication or authorization decisions.
 ## Bidding Service Authority

@@ -11,6 +11,7 @@ using bidding_service.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,19 @@ builder.Services.AddDbContext<BiddingDbContext>(options =>
 builder.Services.AddScoped<DatabaseInitializer>();
 builder.Services.AddScoped<IClientCredentialProvisioningService, ClientCredentialProvisioningService>();
 builder.Services.AddScoped<IClientAssertionValidator, ClientAssertionValidator>();
+builder.Services.AddSingleton<IConnectionMultiplexer>(services =>
+{
+    var connectionString = services.GetRequiredService<IConfiguration>()
+        .GetConnectionString("ClientAssertionRedis")
+        ?? throw new InvalidOperationException(
+            "Connection string 'ClientAssertionRedis' is required when client assertion admission is enabled.");
+    return ConnectionMultiplexer.Connect(connectionString);
+});
+builder.Services.AddSingleton<IClientAssertionReplayStore>(services =>
+    new StackExchangeRedisClientAssertionReplayStore(
+        services.GetRequiredService<IConnectionMultiplexer>().GetDatabase()));
+builder.Services.AddSingleton<IClientAssertionReplayProtector, RedisClientAssertionReplayProtector>();
+builder.Services.AddSingleton<IClientAssertionAuthenticator, ClientAssertionAuthenticator>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var authenticationOptions = builder.Configuration

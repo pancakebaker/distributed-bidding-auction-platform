@@ -94,8 +94,10 @@ the tenant field carried by these events.
 The MT5.3a validation foundation uses an RS256 JWT with `iss = client_id`, a
 credential-selecting `kid`, canonical `tenant_id`, a short bounded lifetime,
 and a required `jti`. It validates application proof without changing event
-contracts or enabling HTTP admission; replay protection and Laravel assertion
-issuance remain later phases.
+contracts or enabling HTTP admission. MT5.3b adds reusable, atomic Redis
+consumption of validated application-scoped JTIs with bounded expiry and
+fail-closed storage errors; replay protection is still not wired into HTTP
+admission, and Laravel assertion issuance remains a later phase.
 
 ## What belongs here
 
