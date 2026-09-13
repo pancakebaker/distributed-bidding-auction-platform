@@ -28,22 +28,28 @@ internal static class JwtTestKeys
         string audience = "dbap-bidding-service",
         DateTimeOffset? expiresAt = null,
         string[]? permissions = null,
+        string? tenantId = "aaaaaaaa-1111-4111-8111-111111111111",
         RSA? signingKey = null,
         string keyId = "bidding-service-v1")
     {
         var now = DateTimeOffset.UtcNow;
         var header = Encode(new { alg = "RS256", typ = "JWT", kid = keyId });
-        var payload = Encode(new
+        var payload = new Dictionary<string, object?>
         {
-            iss = issuer,
-            aud = audience,
-            sub = subject,
-            iat = now.ToUnixTimeSeconds(),
-            exp = (expiresAt ?? now.AddMinutes(5)).ToUnixTimeSeconds(),
-            jti = Guid.NewGuid().ToString(),
-            permissions = permissions ?? DefaultPermissions
-        });
-        var input = $"{header}.{payload}";
+            ["iss"] = issuer,
+            ["aud"] = audience,
+            ["sub"] = subject,
+            ["iat"] = now.ToUnixTimeSeconds(),
+            ["exp"] = (expiresAt ?? now.AddMinutes(5)).ToUnixTimeSeconds(),
+            ["jti"] = Guid.NewGuid().ToString(),
+            ["permissions"] = permissions ?? DefaultPermissions
+        };
+        if (tenantId is not null)
+        {
+            payload["tenant_id"] = tenantId;
+        }
+
+        var input = $"{header}.{Encode(payload)}";
         var key = signingKey ?? SigningKey;
         var signature = key.SignData(
             System.Text.Encoding.UTF8.GetBytes(input),

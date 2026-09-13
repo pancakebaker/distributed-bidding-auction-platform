@@ -25,6 +25,7 @@ builder.Services.Configure<BiddingAuthenticationOptions>(
     builder.Configuration.GetSection(BiddingAuthenticationOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<IBuyerIdentityResolver, BuyerIdentityResolver>();
+builder.Services.AddSingleton<ITenantIdentityAccessor, TenantIdentityAccessor>();
 builder.Services.AddDbContext<BiddingDbContext>(options =>
 {
     var connectionString = builder.Configuration.GetConnectionString("BiddingDb")
