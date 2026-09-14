@@ -18,6 +18,8 @@ export class SocketIoLiveFeedPublisher implements LiveFeedPublisher {
    * Emits an update to the existing auction-specific Socket.IO room.
    */
   public publish(update: LiveFeedUpdate): void {
-    this.io.to(auctionRoom(update.tenantId, update.auctionId)).emit(update.eventName, update.payload);
+    this.io
+      .to(auctionRoom(update.tenantId, update.auctionId))
+      .emit(update.eventName, update.payload);
   }
 }

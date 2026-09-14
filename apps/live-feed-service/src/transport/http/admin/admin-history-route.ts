@@ -124,7 +124,9 @@ export function writeHistoryPdf(
 
   document
     .fontSize(9)
-    .text('Processed Time | Tenant ID | Event Type | Auction ID | Version | Outcome', { underline: true });
+    .text('Processed Time | Tenant ID | Event Type | Auction ID | Version | Outcome', {
+      underline: true,
+    });
   document.moveDown(0.25);
 
   for (const row of rows) {

@@ -88,8 +88,8 @@ export class LiveFeedEventProcessor {
 
     console.info('Broadcast live-feed event.', {
       eventId: envelope.eventId,
-        tenantId: envelope.payload.tenantId,
-        eventType: envelope.eventType,
+      tenantId: envelope.payload.tenantId,
+      eventType: envelope.eventType,
       aggregateId: envelope.aggregateId,
       aggregateVersion: envelope.aggregateVersion,
       correlationId: envelope.correlationId,
