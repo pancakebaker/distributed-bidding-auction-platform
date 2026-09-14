@@ -302,6 +302,8 @@ function publish(context: TestContext, message: unknown): void {
 }
 
 async function connectClient(context: TestContext, auctionId: string): Promise<Socket> {
+  await ensureAuctionProjection(context, auctionId);
+
   const socket = createSocketClient(context.service.url(), {
     transports: ['websocket'],
     reconnection: false,
@@ -323,6 +325,18 @@ async function connectClient(context: TestContext, auctionId: string): Promise<S
   });
 
   return socket;
+}
+
+async function ensureAuctionProjection(context: TestContext, auctionId: string): Promise<void> {
+  publish(context, bidAccepted({ aggregateId: auctionId }));
+
+  await waitFor(async () => {
+    const projection = await context.redis.hGetAll(
+      `live-feed:v2:tenant:${tenantId}:auction:${auctionId}`,
+    );
+    assert.equal(projection.tenantId, tenantId);
+    assert.equal(projection.aggregateVersion, '1');
+  });
 }
 
 function once<T>(socket: Socket, eventName: string, timeoutMs = 1000): Promise<T> {
@@ -581,6 +595,8 @@ void test('AuctionPurchased is consumed, projected, and delivered to the auction
       },
       {
         aggregateVersion: '12',
+        currentBidAmount: '10500',
+        currentBidderId: 'alice',
         tenantId,
         finalPrice: '1000',
         finalWinnerId: 'buyer-123',
@@ -628,6 +644,8 @@ void test('same-version purchase and close siblings both emit in either order an
         },
         {
           aggregateVersion: '12',
+          currentBidAmount: '10500',
+          currentBidderId: 'alice',
           tenantId,
           finalPrice: '1000',
           finalWinnerId: 'buyer-123',
@@ -665,6 +683,8 @@ void test('stale bid after purchase is ignored without regressing ordinary or te
       },
       {
         aggregateVersion: '12',
+        currentBidAmount: '10500',
+        currentBidderId: 'alice',
         tenantId,
         finalPrice: '1000',
         finalWinnerId: 'buyer-123',
