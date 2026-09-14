@@ -30,6 +30,8 @@ public static class AuctionEndpoints
 
         group.MapPost("/", CreateAuction)
             .WithName("CreateAuction")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Mutate))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionManage")
             .Produces<AuctionDetailResponse>(StatusCodes.Status201Created)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
@@ -37,6 +39,8 @@ public static class AuctionEndpoints
 
         group.MapPut("/{id:guid}", UpdateAuction)
             .WithName("UpdateAuction")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Mutate))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionManage")
             .Produces<AuctionDetailResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
@@ -45,6 +49,8 @@ public static class AuctionEndpoints
 
         group.MapDelete("/{id:guid}", DeleteAuction)
             .WithName("DeleteAuction")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Mutate))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionManage")
             .Produces(StatusCodes.Status204NoContent)
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
@@ -52,6 +58,8 @@ public static class AuctionEndpoints
 
         group.MapPost("/{id:guid}/cancel", CancelAuction)
             .WithName("CancelAuction")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Mutate))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionManage")
             .Produces<AuctionDetailResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound)
@@ -59,23 +67,31 @@ public static class AuctionEndpoints
 
         group.MapGet("/", GetAuctions)
             .WithName("GetAuctions")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Read))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionRead")
             .Produces<IReadOnlyList<AuctionSummaryResponse>>();
 
         group.MapGet("/{id:guid}", GetAuction)
             .WithName("GetAuction")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Read))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionRead")
             .Produces<AuctionDetailResponse>()
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound);
 
         group.MapGet("/{id:guid}/bids", GetBids)
             .WithName("GetAuctionBids")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Read))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionRead")
             .Produces<IReadOnlyList<BidResponse>>()
             .Produces<ApiErrorResponse>(StatusCodes.Status404NotFound);
 
         group.MapPost("/{id:guid}/bids", PlaceBid)
             .WithName("PlaceBid")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Mutate))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionBid")
             .Produces<PlaceBidResponse>(StatusCodes.Status201Created)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)
@@ -84,6 +100,8 @@ public static class AuctionEndpoints
 
         group.MapPost("/{id:guid}/buy-now", BuyNow)
             .WithName("BuyNow")
+            .WithMetadata(new TenantRuntimeAccessMetadata(TenantRuntimeOperation.Mutate))
+            .AddEndpointFilter<TenantRuntimeStatusFilter>()
             .RequireAuthorization("AuctionBuy")
             .Produces<BuyNowResponse>(StatusCodes.Status201Created)
             .Produces<ApiErrorResponse>(StatusCodes.Status400BadRequest)

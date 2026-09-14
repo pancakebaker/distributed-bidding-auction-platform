@@ -3,16 +3,13 @@
 // </copyright>
 namespace bidding_service.Domain;
 
-/// <summary>
-/// Describes whether a tenant is currently available for future tenant-aware operations.
-/// MT1 persists these values; enforcement is deferred to later tenancy phases.
-/// </summary>
+/// <summary>Describes a tenant's authoritative runtime access state.</summary>
 public enum TenantStatus
 {
     /// <summary>The tenant is available for normal operations.</summary>
     Active,
-    /// <summary>The tenant is retained but future enforcement may restrict operations.</summary>
+    /// <summary>The tenant may read but cannot perform mutations.</summary>
     Suspended,
-    /// <summary>The tenant is retained but future enforcement may block access.</summary>
+    /// <summary>The tenant is retained but cannot use tenant-facing runtime APIs.</summary>
     Disabled
 }

@@ -122,7 +122,7 @@ Public auction reads use a server-side tenant-bound read token, while public Soc
 
 The Bidding Service now owns a `tenants` registry with an opaque UUID, display name, explicit `Active`/`Suspended`/`Disabled` status, and UTC timestamps. `Auction.TenantId` is persisted as the authoritative ownership field. Existing demo auctions are backfilled to the deterministic `Local Demo Tenant` (`aaaaaaaa-1111-4111-8111-111111111111`), and new single-tenant compatibility API creations use that server-controlled default.
 
-MT1 did not provide tenant isolation. MT2 bound Laravel users to the server-configured installation tenant and added `tenant_id` to Laravel-issued Bidding Service tokens. MT3 added tenant isolation for authenticated mutations; MT4 adds tenant-scoped public reads, tenant-bearing events, and tenant-aware Live Feed/portal projections. Tenant status is stored but not enforced. MT5.1 adds the ClientApplication registry foundation; MT5.2 adds public-key credential persistence and internal lifecycle tooling, while request admission, provisioning UI, and WordPress integration remain future work.
+MT2 bound Laravel users to the server-configured installation tenant and added `tenant_id` to Laravel-issued Bidding Service tokens. MT3 added tenant isolation for authenticated mutations; MT4 adds tenant-scoped public reads, tenant-bearing events, and tenant-aware Live Feed/portal projections. MT6.1 enforces the persisted tenant status at the Bidding Service tenant-facing boundary: `Active` permits normal reads and mutations, `Suspended` permits reads but denies mutations, and `Disabled` denies tenant-facing access while retaining data for global monitoring. MT5.1 adds the ClientApplication registry foundation; MT5.2 adds public-key credential persistence and internal lifecycle tooling, while request admission, provisioning UI, and WordPress integration remain separate concerns.
 
 ### MT3 authenticated tenant resource enforcement
 
@@ -161,8 +161,17 @@ payloads carry the authoritative auction `tenantId`. Live Feed validates that
 UUID, stores tenant-aware Redis projections/history, and publishes public
 updates to `tenant:{tenantId}:auction:{auctionId}` rooms. The Operations Portal
 persists `tenant_id` on activity records and backfills existing activity to the
-local demo tenant. Tenant status enforcement and external OIDC remain future
-work; client admission is covered by the temporary MT5.3d rollout gate below.
+local demo tenant. Tenant runtime status is enforced by the Bidding Service for
+tenant-facing HTTP routes. Live Feed's public auction Socket.IO subscription
+remains anonymous and is an explicit MT6.2 follow-up because the current Node
+service has no authoritative tenant-status source; system-admin Live Feed
+channels remain independently authenticated.
+
+Tenant status is read from the authoritative `tenants` row after bearer and
+client-application tenant binding. It is deliberately not copied into JWT or
+client-assertion claims, so status changes take effect without waiting for
+token expiry. `SystemAdministrator` and scheduler operations remain separate
+from tenant-user runtime status enforcement.
 
 ### MT5.1 ClientApplication registry foundation
 

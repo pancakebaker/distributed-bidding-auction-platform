@@ -188,7 +188,68 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
             TestAuctionData.Now.AddHours(1),
             TestAuctionData.Now.AddHours(2)));
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task SuspendedTenantCanReadButCannotCreateOrBid()
+    {
+        await EnsureTenantStatusAsync(TenantA, TenantStatus.Suspended);
+        var auctionId = await AddTenantAuctionAsync(TenantA, SaleMode.AuctionOnly);
+        UseToken("tenant-a-reader", TenantA, ["auction.read"]);
+
+        var list = await _client.GetAsync("/api/auctions");
+        var detail = await _client.GetAsync($"/api/auctions/{auctionId}");
+
+        Assert.Equal(HttpStatusCode.OK, list.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, detail.StatusCode);
+
+        var before = await ReadAuctionStateAsync(auctionId);
+        var beforeCounts = await ReadSideEffectCountsAsync(auctionId);
+        UseToken("tenant-a-bidder", TenantA, ["auction.bid", "auction.manage"]);
+
+        var create = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Suspended tenant auction",
+            "Must not be created.",
+            "AuctionOnly",
+            100m,
+            10m,
+            null,
+            TestAuctionData.Now.AddHours(1),
+            TestAuctionData.Now.AddHours(2)));
+        var bid = await PlaceBidForTenantAsync(auctionId, "tenant-a-bidder", 1250m, TenantA);
+
+        Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, bid.StatusCode);
+        Assert.Equal(before, await ReadAuctionStateAsync(auctionId));
+        Assert.Equal(beforeCounts, await ReadSideEffectCountsAsync(auctionId));
+    }
+
+    [Fact]
+    public async Task DisabledTenantCannotReadOrMutateButForeignResourcesRemainHidden()
+    {
+        await EnsureTenantStatusAsync(TenantA, TenantStatus.Disabled);
+        var ownAuctionId = await AddTenantAuctionAsync(TenantA, SaleMode.AuctionOnly);
+        var foreignAuctionId = await AddTenantAuctionAsync(TenantB, SaleMode.AuctionOnly);
+        UseToken("tenant-a-user", TenantA, ["auction.read", "auction.manage"]);
+
+        var list = await _client.GetAsync("/api/auctions");
+        var own = await _client.GetAsync($"/api/auctions/{ownAuctionId}");
+        var foreign = await _client.GetAsync($"/api/auctions/{foreignAuctionId}");
+        var create = await CreateAuctionAsync(new CreateAuctionRequest(
+            "Disabled tenant auction",
+            "Must not be created.",
+            "AuctionOnly",
+            100m,
+            10m,
+            null,
+            TestAuctionData.Now.AddHours(1),
+            TestAuctionData.Now.AddHours(2)));
+
+        Assert.Equal(HttpStatusCode.Forbidden, list.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, own.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, foreign.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, create.StatusCode);
     }
 
     [Fact]
@@ -224,6 +285,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task CrossTenantManagementCommandsReturnNotFoundWithoutMutation()
     {
+        await EnsureTenantAsync(TenantA);
         var auctionId = await AddTenantAuctionAsync(TenantB, SaleMode.AuctionOnly, scheduled: true);
         UseToken("tenant-a-admin", TenantA, ["auction.manage"]);
 
@@ -254,6 +316,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task CrossTenantBidReturnsNotFoundWithoutBidOrOutboxSideEffects()
     {
+        await EnsureTenantAsync(TenantA);
         var auctionId = await AddTenantAuctionAsync(TenantB, SaleMode.AuctionOnly);
         UseToken("tenant-a-bidder", TenantA, ["auction.bid"]);
         var before = await ReadAuctionStateAsync(auctionId);
@@ -272,6 +335,7 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     [Fact]
     public async Task CrossTenantBuyNowReturnsNotFoundWithoutPurchaseSideEffects()
     {
+        await EnsureTenantAsync(TenantA);
         var auctionId = await AddTenantAuctionAsync(TenantB, SaleMode.BuyNowOnly);
         UseToken("tenant-a-bidder", TenantA, ["auction.buy"]);
         var before = await ReadAuctionStateAsync(auctionId);
@@ -1734,6 +1798,22 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         return _client.SendAsync(request);
     }
 
+    private Task<HttpResponseMessage> PlaceBidForTenantAsync(
+        Guid auctionId,
+        string bidderId,
+        decimal amount,
+        Guid tenantId)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, $"/api/auctions/{auctionId}/bids")
+        {
+            Content = JsonContent.Create(new PlaceBidRequest(amount, bidderId), options: JsonOptions)
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "Bearer",
+            JwtTestKeys.CreateToken(bidderId, permissions: ["auction.bid"], tenantId: tenantId.ToString()));
+        return _client.SendAsync(request);
+    }
+
     private Task<HttpResponseMessage> CreateAuctionAsync(CreateAuctionRequest request)
     {
         return _client.PostAsJsonAsync("/api/auctions", request, JsonOptions);
@@ -1900,6 +1980,24 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         using var scope = _factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
         await EnsureTenantAsync(db, tenantId);
+        await db.SaveChangesAsync();
+    }
+
+    private async Task EnsureTenantStatusAsync(Guid tenantId, TenantStatus status)
+    {
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var tenant = await db.Tenants.SingleOrDefaultAsync(item => item.Id == tenantId);
+        if (tenant is null)
+        {
+            tenant = Tenant.Create(tenantId, $"Tenant {tenantId}", status, TestAuctionData.Now);
+            db.Tenants.Add(tenant);
+        }
+        else
+        {
+            tenant.Status = status;
+            tenant.UpdatedAtUtc = TestAuctionData.Now;
+        }
         await db.SaveChangesAsync();
     }
 

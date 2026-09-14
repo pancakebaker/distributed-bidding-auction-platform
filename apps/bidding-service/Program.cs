@@ -74,6 +74,8 @@ builder.Services.AddSingleton<IClientAssertionReplayProtector, RedisClientAssert
 builder.Services.AddScoped<IClientAssertionAuthenticator, ClientAssertionAuthenticator>();
 builder.Services.AddScoped<IClientAssertionAdmissionService, ClientAssertionAdmissionService>();
 builder.Services.AddScoped<ClientAssertionAdmissionFilter>();
+builder.Services.AddScoped<ITenantRuntimeAccessPolicy, TenantRuntimeAccessPolicy>();
+builder.Services.AddScoped<TenantRuntimeStatusFilter>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var authenticationOptions = builder.Configuration
