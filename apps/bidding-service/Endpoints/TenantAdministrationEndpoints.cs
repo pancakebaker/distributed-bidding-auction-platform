@@ -2,8 +2,10 @@
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
 using bidding_service.Contracts;
+using bidding_service.Data;
 using bidding_service.Domain;
 using bidding_service.Services;
+using Microsoft.EntityFrameworkCore;
 
 namespace bidding_service.Endpoints;
 
@@ -16,6 +18,27 @@ public static class TenantAdministrationEndpoints
     /// <summary>Registers the system-administrator tenant status endpoint.</summary>
     public static void MapTenantAdministrationEndpoints(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/system/tenants", async (
+                BiddingDbContext db,
+                CancellationToken cancellationToken) =>
+            {
+                var tenants = await db.Tenants
+                    .AsNoTracking()
+                    .OrderBy(tenant => tenant.Name)
+                    .Select(tenant => new TenantStatusResponse(
+                        tenant.Id,
+                        tenant.Name,
+                        tenant.Status,
+                        tenant.Version,
+                        tenant.UpdatedAtUtc))
+                    .ToListAsync(cancellationToken);
+
+                return Results.Ok(tenants);
+            })
+            .RequireAuthorization("SystemAdminTenantStatus")
+            .WithTags("System administration")
+            .ExcludeFromDescription();
+
         app.MapPatch("/api/system/tenants/{tenantId:guid}/status", async (
                 Guid tenantId,
                 ChangeTenantStatusRequest request,
@@ -61,6 +84,7 @@ public static class TenantAdministrationEndpoints
 
                 return Results.Ok(new TenantStatusResponse(
                     result.Tenant.Id,
+                    result.Tenant.Name,
                     result.Tenant.Status,
                     result.Tenant.Version,
                     result.Tenant.UpdatedAtUtc));
@@ -74,6 +98,7 @@ public static class TenantAdministrationEndpoints
 /// <summary>Current authoritative tenant lifecycle state.</summary>
 public sealed record TenantStatusResponse(
     Guid TenantId,
+    string Name,
     TenantStatus Status,
     long Version,
     DateTimeOffset UpdatedAtUtc);

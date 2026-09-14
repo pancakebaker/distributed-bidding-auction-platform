@@ -14,6 +14,7 @@ using AuctionOperationsPortal.Messaging;
 using AuctionOperationsPortal.Notifications;
 using AuctionOperationsPortal.Options;
 using AuctionOperationsPortal.Persistence;
+using AuctionOperationsPortal.Services;
 using AuctionOperationsPortal.Telemetry;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
@@ -67,6 +68,8 @@ builder.Services.Configure<SystemAdminSessionOptions>(options =>
     builder.Configuration.GetSection(SystemAdminSessionOptions.SectionName).Bind(options));
 builder.Services.Configure<LiveFeedAdminOptions>(options =>
     builder.Configuration.GetSection(LiveFeedAdminOptions.SectionName).Bind(options));
+builder.Services.Configure<BiddingServiceOptions>(options =>
+    builder.Configuration.GetSection(BiddingServiceOptions.SectionName).Bind(options));
 builder.Services.PostConfigure<SystemAdminDemoOptions>(options =>
 {
     var configuredPassword = builder.Configuration["SYSTEM_ADMIN_DEMO_PASSWORD"];
@@ -99,6 +102,9 @@ var liveFeedAdminOptions = builder.Configuration
     .Get<LiveFeedAdminOptions>() ?? new();
 liveFeedAdminOptions.Validate(
     builder.Environment.IsDevelopment() || builder.Environment.IsEnvironment("Testing"));
+var biddingServiceOptions = builder.Configuration
+    .GetSection(BiddingServiceOptions.SectionName)
+    .Get<BiddingServiceOptions>() ?? new();
 builder.Services.Configure<RabbitMqOptions>(
     builder.Configuration.GetSection(RabbitMqOptions.SectionName));
 builder.Services.PostConfigure<RabbitMqOptions>(options =>
@@ -155,6 +161,11 @@ builder.Services.AddSingleton<ISystemAdminTokenIssuer, SystemAdminTokenIssuer>()
 builder.Services.AddHttpClient<ILiveFeedAdminHandoffClient, LiveFeedAdminHandoffClient>(client =>
 {
     client.BaseAddress = new Uri(liveFeedAdminOptions.BaseUrl, UriKind.Absolute);
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddHttpClient<ITenantAdministrationClient, TenantAdministrationClient>(client =>
+{
+    client.BaseAddress = new Uri(biddingServiceOptions.BaseUrl, UriKind.Absolute);
     client.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)

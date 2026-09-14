@@ -46,6 +46,51 @@ nav a:focus-visible {
 .content {
   min-height: 20rem;
 }
+.tenant-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1rem;
+}
+.tenant-table td:last-child {
+  white-space: nowrap;
+}
+.tenant-table button {
+  font: inherit;
+  margin: 0.15rem;
+  padding: 0.4rem 0.65rem;
+}
+.status-badge {
+  border-radius: 999px;
+  display: inline-block;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+}
+.status-active { background: #dcfce7; color: #166534; }
+.status-suspended { background: #fef3c7; color: #92400e; }
+.status-disabled { background: #fee2e2; color: #991b1b; }
+.success-message {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  margin: 1rem 0;
+  padding: 0.6rem 1rem;
+}
+.modal-backdrop {
+  align-items: center;
+  background: rgb(15 23 42 / 55%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 10;
+}
+.confirmation-dialog {
+  background: white;
+  border-radius: 0.4rem;
+  max-width: 32rem;
+  padding: 1.5rem;
+  width: calc(100% - 2rem);
+}
 .muted {
   color: #6b7280;
 }

@@ -132,6 +132,16 @@ MT6.3a establishes the authoritative tenant lifecycle mutation boundary. A `Syst
 
 MT6.3 consumes `TenantStatusChanged` in Live Feed for admission revocation. The consumer validates the Bidding-owned event, atomically accepts only a higher per-tenant `tenantVersion` in Redis, and evicts public `tenant:{tenantId}:auction:{auctionId}` room memberships only for an accepted `Disabled` transition. Duplicate and stale events are ACKed without repeating eviction; Redis or Socket.IO failures are retried through the existing RabbitMQ NACK path. This is admission revocation only: already-connected sockets are removed from affected rooms, but the transport remains connected, no polling or per-event Bidding lookup is introduced, and future subscription admission remains governed by the MT6.2a decision boundary.
 
+MT6.4 adds the protected Operations Portal `/admin/tenants` page as a thin
+SystemAdministrator client of Bidding's existing tenant administration API.
+The page reads the authoritative tenant name, status, version, and UTC update
+time, confirms transitions, and sends `expectedVersion`; it never mutates the
+Bidding database directly. Bidding remains the only status-transition
+authority, including its optimistic-concurrency and transactional-outbox
+semantics. A stale version produces a visible conflict and authoritative
+refresh without automatic retry. The page performs no polling or optimistic
+status update, and does not change Live Feed revocation behavior.
+
 ### MT3 authenticated tenant resource enforcement
 
 Authenticated Bidding Service mutations now require the canonical signed

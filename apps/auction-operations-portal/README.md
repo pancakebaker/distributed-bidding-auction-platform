@@ -60,6 +60,24 @@ SYS2 adds `/login` to the Operations Portal. It verifies a local `SystemAdminUse
 
 Direct portal login does not call Laravel. The **Open Live Feed administration** action performs the SYS3 server-side handoff: the portal issues a short-lived `dbap-system-admin` RS256 token for audience `live-feed-admin`, exchanges it with Live Feed, and redirects the browser with only a short-lived opaque one-time code. The browser never receives the JWT. Live Feed public Socket.IO behavior and Bidding Service authentication are unchanged. There is no signup or password-reset flow.
 
+## Tenant lifecycle administration
+
+The protected `/admin/tenants` page is a thin SystemAdministrator client of
+Bidding's authoritative `GET /api/system/tenants` and
+`PATCH /api/system/tenants/{tenantId}/status` endpoints. The portal never
+opens the Bidding database and does not duplicate status-transition logic. It
+displays each tenant's name, `Active`/`Suspended`/`Disabled` status, monotonic
+version, and UTC update time, then sends the displayed version as
+`expectedVersion` for a confirmed transition.
+
+The Bidding Service remains the authorization and persistence boundary: status,
+version, and `TenantStatusChanged` outbox publication commit atomically. A
+stale version is shown as a conflict after an authoritative refresh; the
+portal does not retry automatically. There is no polling or optimistic UI
+update. Disabled tenants can still be reactivated by this global
+SystemAdministrator path, while Live Feed revocation remains asynchronous
+through the existing `TenantStatusChanged` event pipeline.
+
 ## Live activity
 
 The protected `/activity/live` page uses the authenticated `/hubs/activity` ASP.NET Core SignalR hub for best-effort server-to-browser notifications. The RabbitMQ consumer validates and persists an event before publishing a safe `ActivityNotification` projection; only then is the RabbitMQ message acknowledged. A transient SignalR failure is logged and does not undo the durable `auction_activity` row or requeue an already-persisted event. The browser client runtime is vendored at `wwwroot/lib/signalr.min.js` from `@microsoft/signalr` 10.0.0 so local development does not depend on a CDN.

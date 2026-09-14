@@ -28,6 +28,22 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
+    public async Task SystemAdministratorListsTenantLifecycleState()
+    {
+        UseSystemAdminToken();
+
+        var response = await client.GetAsync("/api/system/tenants");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<List<TenantStatusResponse>>();
+        var tenant = Assert.Single(body!);
+        Assert.Equal(TenantDefaults.DemoTenantId, tenant.TenantId);
+        Assert.Equal("Local Demo Tenant", tenant.Name);
+        Assert.Equal(TenantStatus.Active, tenant.Status);
+        Assert.Equal(1, tenant.Version);
+    }
+
+    [Fact]
     public async Task SystemAdministratorChangesStatusAndCreatesVersionedOutboxEvent()
     {
         UseSystemAdminToken();
@@ -294,6 +310,7 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
 
     private sealed record TenantStatusResponse(
         Guid TenantId,
+        string Name,
         TenantStatus Status,
         long Version,
         DateTimeOffset UpdatedAtUtc);

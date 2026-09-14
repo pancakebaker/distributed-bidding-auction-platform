@@ -1,0 +1,208 @@
+@page "/admin/tenants"
+@using System.Security.Claims
+@using AuctionOperationsPortal.Services
+@attribute [Authorize(Policy = "AuctionOperationsAdmin")]
+@inject ITenantAdministrationClient TenantClient
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@implements IAsyncDisposable
+
+<PageTitle>Tenants | Auction Operations Portal</PageTitle>
+
+<h2>Tenant lifecycle</h2>
+<p class="muted">
+    SystemAdministrator controls are authoritative in Bidding. Changes take effect immediately for
+    HTTP and new Live Feed admission; existing Live Feed rooms revoke as the status event is processed.
+</p>
+
+@if (loading)
+{
+    <p>Loading tenants…</p>
+}
+else if (loadError)
+{
+    <p class="error-message" role="alert">Unable to load tenants. Please try again.</p>
+    <button type="button" @onclick="RefreshAsync">Retry</button>
+}
+else if (tenants.Count == 0)
+{
+    <p>No tenants are registered.</p>
+}
+else
+{
+    <div class="tenant-toolbar">
+        <button type="button" @onclick="RefreshAsync" disabled="@loading">Refresh</button>
+    </div>
+    @if (!string.IsNullOrWhiteSpace(feedback))
+    {
+        <p class="success-message" role="status">@feedback</p>
+    }
+    @if (!string.IsNullOrWhiteSpace(error))
+    {
+        <p class="error-message" role="alert">@error</p>
+    }
+    <table class="activity-table tenant-table">
+        <thead>
+            <tr><th>Tenant</th><th>Status</th><th>Version</th><th>Last updated (UTC)</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var tenant in tenants)
+            {
+                <tr @key="tenant.TenantId">
+                    <td>@tenant.Name<br /><span class="muted">@tenant.TenantId</span></td>
+                    <td><span class="status-badge status-@tenant.Status.ToString().ToLowerInvariant()">@tenant.Status</span></td>
+                    <td>Version @tenant.Version</td>
+                    <td>@tenant.UpdatedAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</td>
+                    <td>
+                        @foreach (var target in AvailableTransitions(tenant.Status))
+                        {
+                            <button type="button" @onclick="() => BeginTransition(tenant, target)"
+                                disabled="@(pendingTenantId == tenant.TenantId)">
+                                @TransitionLabel(target)
+                            </button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (confirmation is not null)
+{
+    <div class="modal-backdrop" role="presentation">
+        <section class="confirmation-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <h3 id="confirm-title">Confirm @confirmationTarget status</h3>
+            <p>@ConfirmationText(confirmationTarget)</p>
+            <div class="history-actions">
+                <button type="button" @onclick="ConfirmTransitionAsync">Confirm</button>
+                <button type="button" @onclick="CancelTransition">Cancel</button>
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private readonly CancellationTokenSource lifetime = new();
+    private IReadOnlyList<TenantLifecycleState> tenants = [];
+    private TenantLifecycleState? confirmation;
+    private TenantLifecycleStatus confirmationTarget;
+    private Guid? pendingTenantId;
+    private bool loading = true;
+    private bool loadError;
+    private string? error;
+    private string? feedback;
+    private ClaimsPrincipal principal = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        principal = authState.User;
+        await RefreshAsync();
+    }
+
+    private async Task RefreshAsync()
+    {
+        loading = true;
+        loadError = false;
+        error = null;
+        try
+        {
+            tenants = await TenantClient.GetTenantsAsync(principal, lifetime.Token);
+        }
+        catch (TenantAdministrationClientException exception)
+        {
+            loadError = true;
+            error = exception.StatusCode == System.Net.HttpStatusCode.Forbidden
+                ? "You are not authorized to manage tenant lifecycle state."
+                : "Unable to load tenants. Please try again.";
+        }
+        finally
+        {
+            loading = false;
+        }
+    }
+
+    private void BeginTransition(TenantLifecycleState tenant, TenantLifecycleStatus target)
+    {
+        confirmation = tenant;
+        confirmationTarget = target;
+        feedback = null;
+        error = null;
+    }
+
+    private void CancelTransition() => confirmation = null;
+
+    private async Task ConfirmTransitionAsync()
+    {
+        if (confirmation is null || pendingTenantId is not null)
+            return;
+
+        var tenant = confirmation;
+        confirmation = null;
+        pendingTenantId = tenant.TenantId;
+        error = null;
+        feedback = null;
+        try
+        {
+            var updated = await TenantClient.ChangeStatusAsync(
+                principal,
+                tenant.TenantId,
+                confirmationTarget,
+                tenant.Version,
+                lifetime.Token);
+            tenants = tenants.Select(item => item.TenantId == updated.TenantId ? updated : item).ToList();
+            feedback = $"{updated.Name} is now {updated.Status} at Version {updated.Version}.";
+        }
+        catch (TenantAdministrationClientException exception)
+        {
+            if (exception.StatusCode == System.Net.HttpStatusCode.Conflict)
+            {
+                error = "This tenant changed since the page was loaded. The authoritative state has been refreshed; review and submit again.";
+                await RefreshAsync();
+            }
+            else if (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                error = "The tenant was not found. The tenant list has been refreshed.";
+                await RefreshAsync();
+            }
+            else if (exception.StatusCode == System.Net.HttpStatusCode.Unauthorized
+                || exception.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                error = "You are not authorized to change tenant lifecycle state.";
+            }
+            else
+            {
+                error = "Unable to update tenant status. Please try again.";
+            }
+        }
+        finally
+        {
+            pendingTenantId = null;
+        }
+    }
+
+    private static IEnumerable<TenantLifecycleStatus> AvailableTransitions(TenantLifecycleStatus status) =>
+        Enum.GetValues<TenantLifecycleStatus>().Where(target => target != status);
+
+    private static string TransitionLabel(TenantLifecycleStatus status) => status switch
+    {
+        TenantLifecycleStatus.Active => "Activate",
+        TenantLifecycleStatus.Suspended => "Suspend",
+        TenantLifecycleStatus.Disabled => "Disable",
+        _ => status.ToString()
+    };
+
+    private static string ConfirmationText(TenantLifecycleStatus status) => status switch
+    {
+        TenantLifecycleStatus.Suspended => "Tenant users may continue reading, but mutations will be blocked. Live Feed remains available.",
+        TenantLifecycleStatus.Disabled => "Tenant-facing access will be blocked and active public Live Feed subscriptions will be revoked as the status event is processed.",
+        _ => "The tenant will regain normal access. Previously revoked Live Feed subscriptions will not automatically rejoin."
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        lifetime.Cancel();
+        lifetime.Dispose();
+        return ValueTask.CompletedTask;
+    }
+}
