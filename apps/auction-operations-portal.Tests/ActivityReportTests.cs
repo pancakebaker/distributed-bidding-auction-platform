@@ -21,7 +21,7 @@ public sealed class ActivityReportValidationTests
 }
 
 [Collection("PortalDatabase")]
-public sealed class ActivityReportIntegrationTests : IAsyncLifetime
+public sealed class ActivityReportIntegrationTests : IAsyncLifetime, IAsyncDisposable
 {
     private const string ConnectionString = "Host=127.0.0.1;Port=55432;Database=auction_operations;Username=auction_app;Password=change_me_in_local_env";
     private AuctionOperationsDbContext db = null!;
@@ -38,6 +38,8 @@ public sealed class ActivityReportIntegrationTests : IAsyncLifetime
     }
 
     public async Task DisposeAsync() => await db.DisposeAsync();
+
+    ValueTask IAsyncDisposable.DisposeAsync() => new(db.DisposeAsync().AsTask());
 
     [Fact]
     public async Task Build_ComputesFilteredSummaryAndChronologicalRows()

@@ -26,7 +26,7 @@ public sealed partial record IntegrationEventEnvelope
     private static readonly Guid LegacyFixtureTenantId =
         Guid.Parse("aaaaaaaa-1111-4111-8111-111111111111");
 
-    /// <summary>Initializes a legacy in-process fixture envelope using the local demo tenant.</summary>
+    /// <summary>Initializes a new instance of the <see cref="IntegrationEventEnvelope"/> class using the local demo tenant.</summary>
     public IntegrationEventEnvelope(
         Guid eventId,
         string eventType,
