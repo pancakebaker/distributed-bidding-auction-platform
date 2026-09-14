@@ -164,11 +164,15 @@ Use a same-tenant read request and a safe same-tenant command:
    `403` without executing the action.
 5. Existing human permissions remain required.
 
-If the smoke test fails, first disable the Bidding Service admission override
-and keep Laravel issuance enabled only if it is useful for diagnostics. Do not
-revoke the active credential until a replacement credential is provisioned and
-the new private key/`KeyId` pair has been deployed. To revoke an old credential
-after overlap is confirmed:
+If the smoke test fails, keep both client assertion issuance and Bidding
+Service admission enabled. Investigate the credential or key pairing,
+ClientApplication/ClientCredential provisioning, Redis availability, tenant or
+client configuration, and whether every deployed version supports assertions.
+Restore the broken dependency or configuration. If rollback is required, roll
+back only to an assertion-capable application version; there is no legacy
+no-assertion production fallback. Do not revoke the active credential until a
+replacement credential is provisioned and the new private key/`KeyId` pair has
+been deployed. To revoke an old credential after overlap is confirmed:
 
 ```powershell
 .\scripts\revoke-client-assertion.ps1 -KeyId laravel-2025-12
