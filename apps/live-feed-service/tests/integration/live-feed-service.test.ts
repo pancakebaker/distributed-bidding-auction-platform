@@ -446,7 +446,9 @@ void test('stale tenant status versions do not revoke rooms before a newer Disab
     publish(context, tenantStatusChanged({ tenantVersion: 1, currentStatus: 'Disabled' }));
     await expectNoEvent(client, 'auction:subscription-revoked');
     assert.equal(
-      context.service.io.of('/').adapter.rooms.has(`tenant:${tenantId}:auction:${accepted.aggregateId}`),
+      context.service.io
+        .of('/')
+        .adapter.rooms.has(`tenant:${tenantId}:auction:${accepted.aggregateId}`),
       true,
     );
 
