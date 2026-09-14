@@ -58,6 +58,34 @@ internal static class JwtTestKeys
         return $"{input}.{Base64Url(signature)}";
     }
 
+    public static string CreateServiceToken(
+        string issuer = "dbap-live-feed-service",
+        string subject = "live-feed-service",
+        string audience = "dbap-bidding-service",
+        DateTimeOffset? issuedAt = null,
+        DateTimeOffset? expiresAt = null,
+        string keyId = "live-feed-service-v1")
+    {
+        var now = issuedAt ?? DateTimeOffset.UtcNow;
+        var header = Encode(new { alg = "RS256", typ = "JWT", kid = keyId });
+        var payload = new Dictionary<string, object?>
+        {
+            ["iss"] = issuer,
+            ["sub"] = subject,
+            ["aud"] = audience,
+            ["iat"] = now.ToUnixTimeSeconds(),
+            ["nbf"] = now.ToUnixTimeSeconds(),
+            ["exp"] = (expiresAt ?? now.AddSeconds(30)).ToUnixTimeSeconds(),
+            ["jti"] = Guid.NewGuid().ToString()
+        };
+        var input = $"{header}.{Encode(payload)}";
+        var signature = SigningKey.SignData(
+            System.Text.Encoding.UTF8.GetBytes(input),
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        return $"{input}.{Base64Url(signature)}";
+    }
+
     private static string WritePublicKey()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dbap-auth-{Guid.NewGuid():N}.pem");

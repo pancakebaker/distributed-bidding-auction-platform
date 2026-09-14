@@ -7,6 +7,7 @@ using bidding_service.Data;
 using bidding_service.Endpoints;
 using bidding_service.Options;
 using bidding_service.Security.ClientAssertions;
+using bidding_service.Security.LiveFeed;
 using bidding_service.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -76,6 +77,10 @@ builder.Services.AddScoped<IClientAssertionAdmissionService, ClientAssertionAdmi
 builder.Services.AddScoped<ClientAssertionAdmissionFilter>();
 builder.Services.AddScoped<ITenantRuntimeAccessPolicy, TenantRuntimeAccessPolicy>();
 builder.Services.AddScoped<TenantRuntimeStatusFilter>();
+builder.Services.AddOptions<LiveFeedServiceAuthenticationOptions>()
+    .Bind(builder.Configuration.GetSection(LiveFeedServiceAuthenticationOptions.SectionName));
+builder.Services.AddSingleton<ILiveFeedServiceTokenValidator, LiveFeedServiceTokenValidator>();
+builder.Services.AddScoped<LiveFeedServiceAuthenticationFilter>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 var authenticationOptions = builder.Configuration
@@ -164,6 +169,7 @@ app.MapGet("/health", () => Results.Ok(new
 .WithName("Health");
 
 app.MapAuctionEndpoints();
+app.MapLiveFeedInternalEndpoints();
 
 if (app.Environment.IsEnvironment("Testing"))
 {

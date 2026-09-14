@@ -2056,6 +2056,11 @@ public sealed class AuctionApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Authentication:BiddingService:Audience", "dbap-bidding-service");
         builder.UseSetting("Authentication:BiddingService:KeyId", "bidding-service-v1");
         builder.UseSetting("Authentication:BiddingService:PublicKeyPath", JwtTestKeys.Path);
+        builder.UseSetting("LiveFeedServiceAuthentication:Issuer", "dbap-live-feed-service");
+        builder.UseSetting("LiveFeedServiceAuthentication:Subject", "live-feed-service");
+        builder.UseSetting("LiveFeedServiceAuthentication:Audience", "dbap-bidding-service");
+        builder.UseSetting("LiveFeedServiceAuthentication:KeyId", "live-feed-service-v1");
+        builder.UseSetting("LiveFeedServiceAuthentication:PublicKeyPath", JwtTestKeys.Path);
         builder.ConfigureAppConfiguration(config =>
         {
             config.AddInMemoryCollection(new Dictionary<string, string?>

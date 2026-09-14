@@ -124,6 +124,8 @@ The Bidding Service now owns a `tenants` registry with an opaque UUID, display n
 
 MT2 bound Laravel users to the server-configured installation tenant and added `tenant_id` to Laravel-issued Bidding Service tokens. MT3 added tenant isolation for authenticated mutations; MT4 adds tenant-scoped public reads, tenant-bearing events, and tenant-aware Live Feed/portal projections. MT6.1 enforces the persisted tenant status at the Bidding Service tenant-facing boundary: `Active` permits normal reads and mutations, `Suspended` permits reads but denies mutations, and `Disabled` denies tenant-facing access while retaining data for global monitoring. MT5.1 adds the ClientApplication registry foundation; MT5.2 adds public-key credential persistence and internal lifecycle tooling, while request admission, provisioning UI, and WordPress integration remain separate concerns.
 
+MT6.2a adds a separate authenticated service-to-service decision boundary for Live Feed. Live Feed signs a short-lived RS256 service token (`sub=live-feed-service`) and calls `POST /internal/live-feed/access` with an `auctionId`. Bidding validates the dedicated service identity, resolves `Auction -> Tenant -> TenantStatus` from authoritative PostgreSQL state, and returns only an allow/deny decision: `Active` and `Suspended` are allowed, while `Disabled`, missing targets, and dependency failures are denied or fail closed. Live Feed does not receive Bidding database credentials, and TenantStatus is not placed in browser payloads, JWTs, Redis, or event contracts.
+
 ### MT3 authenticated tenant resource enforcement
 
 Authenticated Bidding Service mutations now require the canonical signed
@@ -172,6 +174,10 @@ client-application tenant binding. It is deliberately not copied into JWT or
 client-assertion claims, so status changes take effect without waiting for
 token expiry. `SystemAdministrator` and scheduler operations remain separate
 from tenant-user runtime status enforcement.
+
+The MT6.2a boundary is intentionally preparatory: MT6.2b will call the
+decision port before `socket.join`. Room admission, reconnect revalidation,
+and the policy for already-connected sockets are not changed by MT6.2a.
 
 ### MT5.1 ClientApplication registry foundation
 

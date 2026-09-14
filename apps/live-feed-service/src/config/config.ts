@@ -33,6 +33,13 @@ export type LiveFeedConfig = {
   systemAdminTokenAudience: string;
   systemAdminTokenKid: string;
   adminSessionSecret?: string;
+  biddingServiceInternalUrl?: string;
+  liveFeedServicePrivateKeyPath?: string;
+  liveFeedServiceTokenIssuer: string;
+  liveFeedServiceTokenSubject: string;
+  liveFeedServiceTokenAudience: string;
+  liveFeedServiceTokenKeyId: string;
+  liveFeedServiceTokenTtlSeconds: number;
 };
 
 function numberFromEnv(name: string, fallback: number): number {
@@ -144,6 +151,13 @@ export function loadConfig(overrides: Partial<LiveFeedConfig> = {}): LiveFeedCon
     systemAdminTokenAudience: process.env.SYSTEM_ADMIN_TOKEN_AUDIENCE ?? 'live-feed-admin',
     systemAdminTokenKid: publicKeyKid,
     adminSessionSecret: process.env.LIVE_FEED_ADMIN_SESSION_SECRET,
+    biddingServiceInternalUrl: process.env.BIDDING_SERVICE_INTERNAL_URL,
+    liveFeedServicePrivateKeyPath: process.env.LIVE_FEED_SERVICE_PRIVATE_KEY_PATH,
+    liveFeedServiceTokenIssuer: process.env.LIVE_FEED_SERVICE_TOKEN_ISSUER ?? 'dbap-live-feed-service',
+    liveFeedServiceTokenSubject: process.env.LIVE_FEED_SERVICE_TOKEN_SUBJECT ?? 'live-feed-service',
+    liveFeedServiceTokenAudience: process.env.LIVE_FEED_SERVICE_TOKEN_AUDIENCE ?? 'dbap-bidding-service',
+    liveFeedServiceTokenKeyId: process.env.LIVE_FEED_SERVICE_TOKEN_KEY_ID ?? 'live-feed-service-v1',
+    liveFeedServiceTokenTtlSeconds: numberFromEnv('LIVE_FEED_SERVICE_TOKEN_TTL_SECONDS', 30),
     ...overrides,
   };
 

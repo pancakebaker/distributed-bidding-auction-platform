@@ -63,6 +63,10 @@ public sealed record TenantRuntimeAccessDecision(
         string errorCode,
         string message) =>
         new(context, StatusCodes.Status403Forbidden, errorCode, message);
+
+    /// <summary>Creates a not-found decision.</summary>
+    public static TenantRuntimeAccessDecision NotFound(string errorCode, string message) =>
+        new(null, StatusCodes.Status404NotFound, errorCode, message);
 }
 
 /// <summary>Reads authoritative tenant state and applies runtime status semantics.</summary>
@@ -74,11 +78,34 @@ public interface ITenantRuntimeAccessPolicy
         TenantRuntimeOperation operation,
         Guid? resourceId,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Evaluates whether an auction may expose public Live Feed.</summary>
+    Task<TenantRuntimeAccessDecision> EvaluateAuctionLiveFeedAsync(
+        Guid auctionId,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>Central tenant status policy for tenant-facing runtime operations.</summary>
 public sealed class TenantRuntimeAccessPolicy(BiddingDbContext db) : ITenantRuntimeAccessPolicy
 {
+    /// <inheritdoc />
+    public async Task<TenantRuntimeAccessDecision> EvaluateAuctionLiveFeedAsync(
+        Guid auctionId,
+        CancellationToken cancellationToken = default)
+    {
+        var auction = await db.Auctions.AsNoTracking().SingleOrDefaultAsync(
+            item => item.Id == auctionId,
+            cancellationToken);
+        if (auction is null)
+            return TenantRuntimeAccessDecision.NotFound("auction_not_found", "Auction not found.");
+
+        return await EvaluateAsync(
+            auction.TenantId,
+            TenantRuntimeOperation.SubscribeLiveFeed,
+            auction.Id,
+            cancellationToken);
+    }
+
     /// <inheritdoc />
     public async Task<TenantRuntimeAccessDecision> EvaluateAsync(
         Guid tenantId,
