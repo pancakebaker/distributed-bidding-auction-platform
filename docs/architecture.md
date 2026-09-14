@@ -100,7 +100,7 @@ The Operations Portal retains the system-admin private key. Node validates with 
 
 ## Completed operations portal boundary
 
-The portal consumes the existing `auction.events` exchange through its own durable `auction-operations.activity` queue, with bindings for `auction.bid.accepted`, `auction.closed`, `auction.winner.selected`, and `auction.purchased`. Its database has an EventId uniqueness constraint, so duplicate delivery is acknowledged without duplicating rows or live notifications. `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` can share an aggregate version because EventId, not version, identifies an event.
+The portal consumes the existing `auction.events` exchange through its own durable `auction-operations.activity` queue, with bindings for `auction.bid.accepted`, `auction.closed`, `auction.winner.selected`, and `auction.purchased`. Its database has an EventId uniqueness constraint, so duplicate delivery is acknowledged without duplicating rows or live notifications. `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` can share an aggregate version because EventId, not version, identifies an event. Operations visibility labels `AuctionPurchased` as a Buy Now purchase and displays the producer-supplied fixed amount, purchaser, Tenant, and version without inferring or mutating domain state.
 
 The portal’s history query is UTC-based, bounded to a 31-day range, filtered by exact aggregate ID and known event type, and paginated in PostgreSQL. Reports use the same filters and reject more than 5,000 rows. OpenTelemetry, bounded metrics, PostgreSQL/RabbitMQ health checks, and an isolated BenchmarkDotNet project are documented in the [portal README](../apps/auction-operations-portal/README.md).
 

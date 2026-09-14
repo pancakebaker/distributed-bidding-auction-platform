@@ -27,7 +27,9 @@ else
             <tr>
                 <th>Time</th>
                 <th>Event</th>
+                <th>Tenant</th>
                 <th>Auction</th>
+                <th>Winner</th>
                 <th>Amount</th>
                 <th>Version</th>
                 <th>Correlation</th>
@@ -38,8 +40,10 @@ else
             {
                 <tr @key="activity.EventId">
                     <td>@activity.OccurredAtUtc.ToLocalTime().ToString("HH:mm:ss")</td>
-                    <td>@activity.EventType</td>
+                    <td>@activity.DisplayEventType</td>
+                    <td>@activity.TenantId</td>
                     <td>@activity.AggregateId</td>
+                    <td>@(activity.DisplayWinner ?? "—")</td>
                     <td>@(activity.Amount?.ToString("0.00") ?? "—")</td>
                     <td>@activity.AggregateVersion</td>
                     <td>@(activity.CorrelationId ?? "—")</td>

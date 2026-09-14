@@ -1,6 +1,7 @@
 // <copyright file="ActivityReportPdfRenderer.cs" company="Distributed Bidding Auction Platform">
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
+using AuctionOperationsPortal.Notifications;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
@@ -34,7 +35,11 @@ internal static class ActivityReportPdfRenderer
                 column.Item().Text($"Event type: {report.Request.EventType ?? "All"}");
                 column.Item().PaddingTop(8).Text("Summary").Bold();
                 foreach (var eventType in ActivityHistoryQueryRules.KnownEventTypes)
-                    column.Item().Text($"{eventType}: {report.Summary.Counts[eventType]}");
+                {
+                    column.Item().Text(
+                        $"{ActivityNotification.GetDisplayEventType(eventType)}: "
+                        + report.Summary.Counts[eventType]);
+                }
                 column.Item().Text($"Total: {report.Summary.TotalCount}").Bold();
                 column.Item().PaddingTop(8).Text("Activity").Bold();
                 column.Item().Table(table =>
@@ -43,7 +48,9 @@ internal static class ActivityReportPdfRenderer
                     {
                         columns.RelativeColumn(1.5f);
                         columns.RelativeColumn(1.1f);
+                        columns.RelativeColumn(1.1f);
                         columns.RelativeColumn(1.3f);
+                        columns.RelativeColumn(1.1f);
                         columns.RelativeColumn(.8f);
                         columns.RelativeColumn(.5f);
                         columns.RelativeColumn(1.2f);
@@ -52,7 +59,9 @@ internal static class ActivityReportPdfRenderer
                     {
                         header.Cell().Text("Occurred UTC").Bold();
                         header.Cell().Text("Event").Bold();
+                        header.Cell().Text("Tenant").Bold();
                         header.Cell().Text("Auction").Bold();
+                        header.Cell().Text("Winner").Bold();
                         header.Cell().Text("Amount").Bold();
                         header.Cell().Text("Version").Bold();
                         header.Cell().Text("Correlation ID").Bold();
@@ -61,8 +70,10 @@ internal static class ActivityReportPdfRenderer
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         table.Cell().Text($"{item.OccurredAtUtc:yyyy-MM-dd HH:mm:ss}");
-                        table.Cell().Text(item.EventType);
+                        table.Cell().Text(item.DisplayEventType);
+                        table.Cell().Text(item.TenantId.ToString());
                         table.Cell().Text(item.AggregateId.ToString());
+                        table.Cell().Text(item.DisplayWinner ?? "—");
                         table.Cell().Text(
                             item.Amount?.ToString(
                                 "0.00",

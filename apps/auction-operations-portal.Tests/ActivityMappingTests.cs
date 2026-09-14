@@ -81,6 +81,26 @@ public sealed class ActivityMappingTests
     }
 
     [Fact]
+    public void AuctionPurchased_UsesOperationalBuyNowLabelAndTenant()
+    {
+        var result = IntegrationEventMapper.ToActivity(Envelope("AuctionPurchased", Json(new
+        {
+            auctionId = AuctionId,
+            bidderId = "buyer-123",
+            finalPrice = 1000m,
+            purchasedAtUtc = DateTimeOffset.UtcNow,
+            auctionVersion = 16
+        })), DateTimeOffset.UtcNow);
+
+        var notification = AuctionOperationsPortal.Notifications.ActivityNotification.From(result);
+
+        Assert.Equal(Guid.Parse("aaaaaaaa-1111-4111-8111-111111111111"), notification.TenantId);
+        Assert.Equal("Buy Now purchase", notification.DisplayEventType);
+        Assert.Equal("buyer-123", notification.DisplayWinner);
+        Assert.Equal(1000m, notification.Amount);
+    }
+
+    [Fact]
     public void SameAggregateVersion_DoesNotAffectEventIdentity()
     {
         var closed = IntegrationEventMapper.ToActivity(

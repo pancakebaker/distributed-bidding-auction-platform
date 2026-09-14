@@ -106,6 +106,7 @@ public class LiveStateMergeBenchmarks
             .Select(index => new ActivityNotification(
                 index + 1,
                 GuidFromInt(duplicateOffset > 0 ? index % duplicateOffset : index),
+                Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
                 index % 2 == 0 ? "AuctionClosed" : "WinnerSelected",
                 auctionId,
                 16,
@@ -135,6 +136,7 @@ public class ReportPreparationBenchmarks
         .Select(index => new ActivityNotification(
             index + 1,
             Guid.NewGuid(),
+            Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"),
             index % 3 == 0 ? "BidAccepted" : index % 3 == 1 ? "AuctionClosed" : "WinnerSelected",
             Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
             index + 1,

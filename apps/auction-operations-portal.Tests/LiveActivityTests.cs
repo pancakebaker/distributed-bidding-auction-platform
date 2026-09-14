@@ -48,5 +48,5 @@ public sealed class LiveActivityTests
         Assert.Equal(3, state.Items[1].AggregateVersion);
     }
 
-    private static ActivityNotification Notification(Guid eventId, string eventType, Guid aggregateId, long version, DateTimeOffset occurredAt) => new(1, eventId, eventType, aggregateId, version, "correlation", occurredAt, occurredAt, "bidder", 1250m, "winner");
+    private static ActivityNotification Notification(Guid eventId, string eventType, Guid aggregateId, long version, DateTimeOffset occurredAt) => new(1, eventId, Guid.NewGuid(), eventType, aggregateId, version, "correlation", occurredAt, occurredAt, "bidder", 1250m, "winner");
 }

@@ -24,7 +24,7 @@ controls remain future deployment concerns.
 
 The portal is an independent ASP.NET Core Blazor consumer of the existing `auction.events` exchange. It owns the `auction_activity` projection in the separate `auction_operations` PostgreSQL database and does not update authoritative auction state.
 
-It consumes through the dedicated durable `auction-operations.activity` queue, bound to `auction.bid.accepted`, `auction.closed`, and `auction.winner.selected`. Invalid messages are dead-lettered through `auction-operations.dead-letter` / `auction-operations.activity.dlq`; transient failures are requeued up to the configured limit.
+It consumes through the dedicated durable `auction-operations.activity` queue, bound to `auction.bid.accepted`, `auction.purchased`, `auction.closed`, and `auction.winner.selected`. Invalid messages are dead-lettered through `auction-operations.dead-letter` / `auction-operations.activity.dlq`; transient failures are requeued up to the configured limit.
 
 `event_id` is the database-enforced idempotency key. Aggregate versions are observational metadata only: `AuctionClosed` and `WinnerSelected` may both persist at version 16 when their event IDs differ.
 
@@ -92,7 +92,9 @@ History uses server-side `AsNoTracking` projection, database-side filtering, and
 
 ## PDF activity reports
 
-The protected `GET /activity/report.pdf` endpoint and the **Download PDF** action on `/activity/history` generate a synchronous report from the same UTC filters: `from`, `to`, exact aggregate ID, and the three known event types. Reports use inclusive boundaries, the shared 31-day maximum range, chronological `occurred_at_utc ASC, id ASC` ordering, and reject matches above 5,000 rows rather than silently truncating them. The endpoint returns an attachment with a date-derived filename and does not expose raw event payloads.
+The protected `GET /activity/report.pdf` endpoint and the **Download PDF** action on `/activity/history` generate a synchronous report from the same UTC filters: `from`, `to`, exact aggregate ID, and the four known event types. Reports use inclusive boundaries, the shared 31-day maximum range, chronological `occurred_at_utc ASC, id ASC` ordering, and reject matches above 5,000 rows rather than silently truncating them. The endpoint returns an attachment with a date-derived filename and does not expose raw event payloads.
+
+`AuctionPurchased` is displayed as **Buy Now purchase** in live activity, history, and PDF reports. Its final amount and purchaser are read directly from the Bidding event; the portal does not infer purchases from bid amounts or alter auction state. The activity projection also retains the trusted Tenant identifier so global SystemAdministrators can distinguish cross-Tenant operational activity safely.
 
 Report generation uses QuestPDF `2026.8.0` under its Community License for this learning/demo deployment. The Community License is subject to QuestPDF eligibility rules; a production deployment that does not qualify must select the appropriate paid license before use. PdfSharpCore was not retained because its transitive ImageSharp version produced known vulnerability advisories during restore.
 

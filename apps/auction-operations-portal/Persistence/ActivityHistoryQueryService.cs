@@ -75,6 +75,7 @@ public sealed class ActivityHistoryQueryService(AuctionOperationsDbContext db)
                 .Select(activity => new ActivityNotification(
                     activity.Id,
                     activity.EventId,
+                    activity.TenantId,
                     activity.EventType,
                     activity.AggregateId,
                     activity.AggregateVersion,
