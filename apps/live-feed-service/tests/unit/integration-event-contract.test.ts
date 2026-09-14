@@ -21,14 +21,17 @@ void test('integration event wire values remain stable', () => {
     winnerSelected: 'WinnerSelected',
     auctionPurchased: 'AuctionPurchased',
     auctionCancelled: 'AuctionCancelled',
+    tenantStatusChanged: 'TenantStatusChanged',
   });
   assert.equal(aggregateTypes.auction, 'Auction');
+  assert.equal(aggregateTypes.tenant, 'Tenant');
   assert.deepEqual(integrationEventRoutingKeys, {
     bidAccepted: 'auction.bid.accepted',
     auctionClosed: 'auction.closed',
     winnerSelected: 'auction.winner.selected',
     auctionPurchased: 'auction.purchased',
     auctionCancelled: 'auction.cancelled',
+    tenantStatusChanged: 'tenant.status.changed',
   });
 });
 
@@ -128,5 +131,33 @@ void test('valid and malformed AuctionCancelled envelopes follow the contract', 
   assert.throws(
     () => validateLiveFeedEnvelope({ ...envelope, payload: { tenantId, auctionId: 'invalid' } }),
     /AuctionCancelled payload/,
+  );
+});
+
+void test('TenantStatusChanged envelopes preserve tenant version and status contract', () => {
+  const envelope = validateLiveFeedEnvelope({
+    eventId: '44444444-4444-4444-4444-444444444444',
+    eventType: 'TenantStatusChanged',
+    occurredAtUtc: '2026-01-01T00:00:00.000Z',
+    aggregateType: 'Tenant',
+    aggregateId: tenantId,
+    aggregateVersion: 4,
+    correlationId: 'tenant-status-correlation',
+    payload: {
+      eventId: '44444444-4444-4444-4444-444444444444',
+      tenantId,
+      previousStatus: 'Active',
+      currentStatus: 'Disabled',
+      tenantVersion: 4,
+      occurredAtUtc: '2026-01-01T00:00:00.000Z',
+    },
+  });
+
+  assert.equal(envelope.eventType, 'TenantStatusChanged');
+  assert.equal(envelope.aggregateVersion, 4);
+  assert.equal(envelope.payload.currentStatus, 'Disabled');
+  assert.throws(
+    () => validateLiveFeedEnvelope({ ...envelope, aggregateVersion: 3 }),
+    /tenantVersion/,
   );
 });

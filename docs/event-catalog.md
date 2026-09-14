@@ -169,13 +169,20 @@ A local debug queue named `auction.events.debug` may be declared and bound with 
 Delivery semantics are at-least-once. Duplicate messages are possible if the publisher crashes after RabbitMQ confirms but before PostgreSQL records `PublishedAtUtc`; consumers must be idempotent using `eventId`.
 ## Live Feed Consumer
 
-The Live Feed Service consumes `BidAccepted`, `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` from the durable queue `live-feed.bid-events`, bound to `auction.events` with their corresponding routing keys. The Auction Operations Portal consumes the same event types from its separate durable `auction-operations.activity` queue.
+The Live Feed Service consumes `BidAccepted`, `AuctionClosed`, `WinnerSelected`, `AuctionPurchased`, and `TenantStatusChanged` from the durable queue `live-feed.bid-events`, bound to `auction.events` with their corresponding routing keys. The Auction Operations Portal consumes the auction event types from its separate durable `auction-operations.activity` queue.
 
 The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale lower-version observations cannot move clients backward. New same-version lifecycle sibling events are accepted when their `eventId` has not been processed.
 
 If an event version jumps forward, the service broadcasts the newer authoritative event and logs the gap. This keeps the demo simple while making it clear that RabbitMQ delivery should be treated as at-least-once, not globally perfectly ordered.
 
 The Socket.IO events emitted to subscribed clients are `bid:accepted`, `auction:closed`, `winner:selected`, and `auction:purchased`. Internal broker metadata and outbox publish state are not exposed to browser clients.
+
+`TenantStatusChanged` is consumed only for Live Feed room revocation. Its
+`tenantVersion` is guarded atomically in Redis; duplicate or stale events are
+ACKed without repeating work, while an accepted `Disabled` event removes the
+tenant's public auction-room memberships. Redis is not the tenant-status
+authority, and the Live Feed service does not query Bidding per event. A
+RabbitMQ/Redis/Socket.IO failure is retried through the existing consumer path.
 
 For one Buy Now transition, both `auction:purchased` and `auction:closed` are
 valid same-version sibling deliveries. Lower aggregate versions are stale;

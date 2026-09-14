@@ -9,11 +9,13 @@ export const integrationEventTypes = {
   winnerSelected: 'WinnerSelected',
   auctionPurchased: 'AuctionPurchased',
   auctionCancelled: 'AuctionCancelled',
+  tenantStatusChanged: 'TenantStatusChanged',
 } as const;
 
 /** Wire-level aggregate discriminator values. */
 export const aggregateTypes = {
   auction: 'Auction',
+  tenant: 'Tenant',
 } as const;
 
 /** Identifies the integration events accepted by the live-feed consumer. */
@@ -118,6 +120,25 @@ export type AuctionCancelledEnvelope = {
   payload: { tenantId: string; auctionId: string };
 };
 
+/** Integration event published when a tenant runtime status changes. */
+export type TenantStatusChangedEnvelope = {
+  eventId: string;
+  eventType: typeof integrationEventTypes.tenantStatusChanged;
+  occurredAtUtc: string;
+  aggregateType: typeof aggregateTypes.tenant;
+  aggregateId: string;
+  aggregateVersion: number;
+  correlationId: string | null;
+  payload: {
+    eventId: string;
+    tenantId: string;
+    previousStatus: 'Active' | 'Suspended' | 'Disabled';
+    currentStatus: 'Active' | 'Suspended' | 'Disabled';
+    tenantVersion: number;
+    occurredAtUtc: string;
+  };
+};
+
 /**
  * Union of auction events that the live-feed projection is allowed to consume.
  */
@@ -126,7 +147,8 @@ export type LiveFeedEnvelope =
   | AuctionClosedEnvelope
   | WinnerSelectedEnvelope
   | AuctionPurchasedEnvelope
-  | AuctionCancelledEnvelope;
+  | AuctionCancelledEnvelope
+  | TenantStatusChangedEnvelope;
 
 /**
  * Frontend-facing payload emitted when a bid is accepted for an auction room.
@@ -253,6 +275,14 @@ export function validateLiveFeedEnvelope(value: unknown): LiveFeedEnvelope {
     throw new Error('Event payload must be an object.');
   }
 
+  if (base.eventType === integrationEventTypes.tenantStatusChanged) {
+    return validateTenantStatusChangedEnvelopeFromBase(base);
+  }
+
+  if (base.aggregateType !== aggregateTypes.auction) {
+    throw new Error('Auction event must use the Auction aggregate.');
+  }
+
   if (base.eventType === integrationEventTypes.bidAccepted) {
     return validateBidAcceptedEnvelopeFromBase(base);
   }
@@ -314,7 +344,10 @@ function validateBaseEnvelope(value: unknown): Record<string, unknown> & {
     throw new Error('Event envelope has an invalid occurredAtUtc.');
   }
 
-  if (value.aggregateType !== aggregateTypes.auction) {
+  if (
+    value.aggregateType !== aggregateTypes.auction &&
+    value.aggregateType !== aggregateTypes.tenant
+  ) {
     throw new Error('Unsupported aggregateType.');
   }
 
@@ -379,7 +412,7 @@ function validateBidAcceptedEnvelopeFromBase(
     eventId: value.eventId,
     eventType: integrationEventTypes.bidAccepted,
     occurredAtUtc: value.occurredAtUtc,
-    aggregateType: value.aggregateType,
+    aggregateType: aggregateTypes.auction,
     aggregateId: value.aggregateId,
     aggregateVersion: value.aggregateVersion,
     correlationId: value.correlationId,
@@ -434,7 +467,7 @@ function validateAuctionClosedEnvelopeFromBase(
     eventId: value.eventId,
     eventType: integrationEventTypes.auctionClosed,
     occurredAtUtc: value.occurredAtUtc,
-    aggregateType: value.aggregateType,
+    aggregateType: aggregateTypes.auction,
     aggregateId: value.aggregateId,
     aggregateVersion: value.aggregateVersion,
     correlationId: value.correlationId,
@@ -490,7 +523,7 @@ function validateWinnerSelectedEnvelopeFromBase(
     eventId: value.eventId,
     eventType: integrationEventTypes.winnerSelected,
     occurredAtUtc: value.occurredAtUtc,
-    aggregateType: value.aggregateType,
+    aggregateType: aggregateTypes.auction,
     aggregateId: value.aggregateId,
     aggregateVersion: value.aggregateVersion,
     correlationId: value.correlationId,
@@ -543,7 +576,7 @@ function validateAuctionPurchasedEnvelopeFromBase(
     eventId: value.eventId,
     eventType: integrationEventTypes.auctionPurchased,
     occurredAtUtc: value.occurredAtUtc,
-    aggregateType: value.aggregateType,
+    aggregateType: aggregateTypes.auction,
     aggregateId: value.aggregateId,
     aggregateVersion: value.aggregateVersion,
     correlationId: value.correlationId,
@@ -579,7 +612,7 @@ function validateAuctionCancelledEnvelopeFromBase(
     eventId: value.eventId,
     eventType: integrationEventTypes.auctionCancelled,
     occurredAtUtc: value.occurredAtUtc,
-    aggregateType: value.aggregateType,
+    aggregateType: aggregateTypes.auction,
     aggregateId: value.aggregateId,
     aggregateVersion: value.aggregateVersion,
     correlationId: value.correlationId,
@@ -587,11 +620,63 @@ function validateAuctionCancelledEnvelopeFromBase(
   };
 }
 
+function validateTenantStatusChangedEnvelopeFromBase(
+  value: ReturnType<typeof validateBaseEnvelope>,
+): TenantStatusChangedEnvelope {
+  if (value.aggregateType !== aggregateTypes.tenant) {
+    throw new Error('TenantStatusChanged event must use the Tenant aggregate.');
+  }
+
+  const payload = value.payload as Record<string, unknown>;
+  const statuses = ['Active', 'Suspended', 'Disabled'] as const;
+  if (!isUuid(payload.eventId) || payload.eventId !== value.eventId) {
+    throw new Error('TenantStatusChanged payload has an invalid eventId.');
+  }
+  if (!isUuid(payload.tenantId) || payload.tenantId !== value.aggregateId) {
+    throw new Error('TenantStatusChanged payload has an invalid tenantId.');
+  }
+  if (!statuses.includes(payload.previousStatus as (typeof statuses)[number])) {
+    throw new Error('TenantStatusChanged payload has an invalid previousStatus.');
+  }
+  if (!statuses.includes(payload.currentStatus as (typeof statuses)[number])) {
+    throw new Error('TenantStatusChanged payload has an invalid currentStatus.');
+  }
+  if (
+    !isPositiveInteger(payload.tenantVersion) ||
+    payload.tenantVersion !== value.aggregateVersion
+  ) {
+    throw new Error('TenantStatusChanged payload tenantVersion must match aggregateVersion.');
+  }
+  if (!isIsoDate(payload.occurredAtUtc) || payload.occurredAtUtc !== value.occurredAtUtc) {
+    throw new Error('TenantStatusChanged payload has an invalid occurredAtUtc.');
+  }
+
+  return {
+    eventId: value.eventId,
+    eventType: integrationEventTypes.tenantStatusChanged,
+    occurredAtUtc: value.occurredAtUtc,
+    aggregateType: aggregateTypes.tenant,
+    aggregateId: value.aggregateId,
+    aggregateVersion: value.aggregateVersion,
+    correlationId: value.correlationId,
+    payload: {
+      eventId: payload.eventId,
+      tenantId: payload.tenantId,
+      previousStatus:
+        payload.previousStatus as TenantStatusChangedEnvelope['payload']['previousStatus'],
+      currentStatus:
+        payload.currentStatus as TenantStatusChangedEnvelope['payload']['currentStatus'],
+      tenantVersion: payload.tenantVersion,
+      occurredAtUtc: payload.occurredAtUtc,
+    },
+  };
+}
+
 /**
  * Converts a validated integration envelope into the smaller payload exposed over Socket.IO.
  */
 export function toSocketPayload(
-  envelope: LiveFeedEnvelope,
+  envelope: Exclude<LiveFeedEnvelope, TenantStatusChangedEnvelope>,
 ):
   | BidAcceptedSocketPayload
   | AuctionClosedSocketPayload

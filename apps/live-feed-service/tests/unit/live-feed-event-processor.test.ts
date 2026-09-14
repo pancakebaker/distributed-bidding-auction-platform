@@ -18,6 +18,7 @@ import type {
   AuctionPurchasedEnvelope,
   AuctionCancelledEnvelope,
   BidAcceptedEnvelope,
+  TenantStatusChangedEnvelope,
 } from '../../src/domain/events.js';
 
 const tenantId = 'aaaaaaaa-1111-4111-8111-111111111111';
@@ -97,6 +98,31 @@ function cancelledEvent(auctionId = randomUUID()): AuctionCancelledEnvelope {
     aggregateVersion: 13,
     correlationId: 'cancel-correlation',
     payload: { tenantId, auctionId },
+  };
+}
+
+function tenantStatusEvent(
+  currentStatus: TenantStatusChangedEnvelope['payload']['currentStatus'] = 'Disabled',
+  tenantVersion = 4,
+): TenantStatusChangedEnvelope {
+  const eventId = randomUUID();
+  const occurredAtUtc = new Date().toISOString();
+  return {
+    eventId,
+    eventType: 'TenantStatusChanged',
+    occurredAtUtc,
+    aggregateType: 'Tenant',
+    aggregateId: tenantId,
+    aggregateVersion: tenantVersion,
+    correlationId: 'tenant-status-correlation',
+    payload: {
+      eventId,
+      tenantId,
+      previousStatus: currentStatus === 'Disabled' ? 'Active' : 'Disabled',
+      currentStatus,
+      tenantVersion,
+      occurredAtUtc,
+    },
   };
 }
 
@@ -237,4 +263,64 @@ void test('state-store errors propagate through the application boundary', async
     () => processor.process(event()),
     (error: unknown) => error === failure,
   );
+});
+
+void test('accepted Disabled status evicts tenant rooms and duplicate delivery is ignored', async () => {
+  const evicted: string[] = [];
+  let calls = 0;
+  const envelope = tenantStatusEvent();
+  const processor = new LiveFeedEventProcessor(
+    { publish: () => assert.fail('tenant status must not broadcast as an auction event') },
+    {
+      acceptEvent: () => Promise.reject(new Error('not an auction event')),
+      acceptTenantStatusEvent: () => {
+        calls++;
+        return Promise.resolve({
+          status: calls === 1 ? ('accepted' as const) : ('duplicate' as const),
+          previousVersion: calls === 1 ? 3 : 4,
+        });
+      },
+    },
+    undefined,
+    { evictTenantRooms: (value) => Promise.resolve(evicted.push(value)) },
+  );
+
+  assert.equal((await processor.process(envelope)).action, 'status-applied');
+  assert.equal((await processor.process(envelope)).action, 'ignored');
+  assert.deepEqual(evicted, [tenantId]);
+});
+
+void test('accepted Active and Suspended status events do not evict rooms', async () => {
+  const evicted: string[] = [];
+  const processor = new LiveFeedEventProcessor(
+    { publish: () => assert.fail('tenant status must not broadcast') },
+    {
+      acceptEvent: () => Promise.reject(new Error('not an auction event')),
+      acceptTenantStatusEvent: () =>
+        Promise.resolve({ status: 'accepted' as const, previousVersion: null }),
+    },
+    undefined,
+    { evictTenantRooms: (value) => Promise.resolve(evicted.push(value)) },
+  );
+
+  await processor.process(tenantStatusEvent('Active', 5));
+  await processor.process(tenantStatusEvent('Suspended', 6));
+  assert.deepEqual(evicted, []);
+});
+
+void test('tenant status Redis failure prevents room eviction', async () => {
+  const evicted: string[] = [];
+  const failure = new Error('Redis unavailable');
+  const processor = new LiveFeedEventProcessor(
+    { publish: () => assert.fail('tenant status must not broadcast') },
+    {
+      acceptEvent: () => Promise.reject(new Error('not an auction event')),
+      acceptTenantStatusEvent: () => Promise.reject(failure),
+    },
+    undefined,
+    { evictTenantRooms: (value) => Promise.resolve(evicted.push(value)) },
+  );
+
+  await assert.rejects(() => processor.process(tenantStatusEvent()), failure);
+  assert.deepEqual(evicted, []);
 });

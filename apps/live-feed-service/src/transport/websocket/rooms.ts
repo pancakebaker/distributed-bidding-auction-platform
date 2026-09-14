@@ -10,6 +10,11 @@ export function auctionRoom(tenantId: string, auctionId: string): string {
   return `tenant:${tenantId}:auction:${auctionId}`;
 }
 
+/** Returns the exact prefix shared by all public auction rooms for a tenant. */
+export function auctionRoomPrefix(tenantId: string): string {
+  return `tenant:${tenantId}:auction:`;
+}
+
 /**
  * Extracts a syntactically valid auction ID from a client subscription request.
  */

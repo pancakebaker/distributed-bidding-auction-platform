@@ -35,6 +35,7 @@ const routingKeys = {
   WinnerSelected: integrationEventRoutingKeys.winnerSelected,
   AuctionPurchased: integrationEventRoutingKeys.auctionPurchased,
   AuctionCancelled: integrationEventRoutingKeys.auctionCancelled,
+  TenantStatusChanged: integrationEventRoutingKeys.tenantStatusChanged,
 } as const;
 
 type TestContext = {
@@ -47,6 +48,34 @@ type TestContext = {
   redis: RedisClientType;
   adminCookie: string;
 };
+
+function tenantStatusChanged(
+  overrides: Partial<{
+    tenantVersion: number;
+    currentStatus: 'Active' | 'Suspended' | 'Disabled';
+  }> = {},
+) {
+  const eventId = randomUUID();
+  const occurredAtUtc = new Date().toISOString();
+  const tenantVersion = overrides.tenantVersion ?? 1;
+  return {
+    eventId,
+    eventType: 'TenantStatusChanged',
+    occurredAtUtc,
+    aggregateType: 'Tenant',
+    aggregateId: tenantId,
+    aggregateVersion: tenantVersion,
+    correlationId: randomUUID(),
+    payload: {
+      eventId,
+      tenantId,
+      previousStatus: overrides.currentStatus === 'Active' ? 'Disabled' : 'Active',
+      currentStatus: overrides.currentStatus ?? 'Disabled',
+      tenantVersion,
+      occurredAtUtc,
+    },
+  };
+}
 
 function bidAccepted(overrides: Partial<BidAcceptedEnvelope> = {}): BidAcceptedEnvelope {
   const auctionId = overrides.aggregateId ?? randomUUID();
@@ -376,6 +405,56 @@ void test('valid BidAccepted event is consumed, ACKed, broadcast, and recorded i
     );
   } finally {
     client.disconnect();
+    await cleanup(context);
+  }
+});
+
+void test('accepted Disabled tenant event revokes existing auction-room membership', async () => {
+  const context = await createContext();
+  const accepted = bidAccepted();
+  const client = await connectClient(context, accepted.aggregateId);
+
+  try {
+    const revoked = once<{ code: string }>(client, 'auction:subscription-revoked', 1500);
+    const disabled = tenantStatusChanged();
+    publish(context, disabled);
+    assert.deepEqual(await revoked, { code: 'live_feed_unavailable' });
+    publish(context, disabled);
+    await expectNoEvent(client, 'auction:subscription-revoked');
+    await waitFor(() => {
+      assert.equal(
+        context.service.io
+          .of('/')
+          .adapter.rooms.has(`tenant:${tenantId}:auction:${accepted.aggregateId}`),
+        false,
+      );
+    });
+  } finally {
+    client.close();
+    await cleanup(context);
+  }
+});
+
+void test('stale tenant status versions do not revoke rooms before a newer Disabled event', async () => {
+  const context = await createContext();
+  const accepted = bidAccepted();
+  const client = await connectClient(context, accepted.aggregateId);
+
+  try {
+    publish(context, tenantStatusChanged({ tenantVersion: 2, currentStatus: 'Active' }));
+    await delay(150);
+    publish(context, tenantStatusChanged({ tenantVersion: 1, currentStatus: 'Disabled' }));
+    await expectNoEvent(client, 'auction:subscription-revoked');
+    assert.equal(
+      context.service.io.of('/').adapter.rooms.has(`tenant:${tenantId}:auction:${accepted.aggregateId}`),
+      true,
+    );
+
+    const revoked = once<{ code: string }>(client, 'auction:subscription-revoked', 1500);
+    publish(context, tenantStatusChanged({ tenantVersion: 3, currentStatus: 'Disabled' }));
+    assert.deepEqual(await revoked, { code: 'live_feed_unavailable' });
+  } finally {
+    client.close();
     await cleanup(context);
   }
 });

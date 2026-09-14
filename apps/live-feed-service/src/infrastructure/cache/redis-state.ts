@@ -2,12 +2,13 @@
  * Redis-backed idempotency and aggregate-version state for live-feed event processing.
  */
 import type { RedisClientType } from 'redis';
-import type { LiveFeedEnvelope } from '../../domain/events.js';
+import type { LiveFeedEnvelope, TenantStatusChangedEnvelope } from '../../domain/events.js';
 import type {
   EventAcceptanceResult,
   EventAcceptanceStatus,
   LiveAuctionProjection,
   LiveStateStore,
+  TenantStatusAcceptanceResult,
 } from '../../application/ports/live-state-store.js';
 import { integrationEventTypes } from '../../domain/events.js';
 
@@ -97,6 +98,39 @@ end
 return {status, currentVersion or ''}
 `;
 
+const acceptTenantStatusEventScript = `
+local eventKey = KEYS[1]
+local versionKey = KEYS[2]
+local incomingVersion = tonumber(ARGV[1])
+local eventId = ARGV[2]
+local currentVersion = redis.call('GET', versionKey)
+local numericCurrentVersion = currentVersion and tonumber(currentVersion) or nil
+
+if redis.call('EXISTS', eventKey) == 1 then
+  return {'duplicate', currentVersion or ''}
+end
+
+if numericCurrentVersion and incomingVersion <= numericCurrentVersion then
+  return {'stale', currentVersion}
+end
+
+redis.call('SET', versionKey, tostring(incomingVersion))
+redis.call('SET', eventKey, eventId)
+return {'accepted', currentVersion or ''}
+`;
+
+const rollbackTenantStatusEventScript = `
+local eventKey = KEYS[1]
+local versionKey = KEYS[2]
+local eventId = ARGV[1]
+local version = ARGV[2]
+if redis.call('GET', eventKey) == eventId and redis.call('GET', versionKey) == version then
+  redis.call('DEL', eventKey)
+  redis.call('DEL', versionKey)
+end
+return 1
+`;
+
 /**
  * Stores processed event IDs and highest auction versions in Redis using one atomic script.
  */
@@ -109,7 +143,9 @@ export class LiveFeedStateStore implements LiveStateStore {
   /**
    * Accepts an event only when it is new and does not regress the auction aggregate version.
    */
-  public async acceptEvent(envelope: LiveFeedEnvelope): Promise<EventAcceptanceResult> {
+  public async acceptEvent(
+    envelope: Exclude<LiveFeedEnvelope, TenantStatusChangedEnvelope>,
+  ): Promise<EventAcceptanceResult> {
     const result = await this.redis.eval(acceptEventScript, {
       keys: [
         this.processedEventKey(envelope.eventId),
@@ -126,6 +162,48 @@ export class LiveFeedStateStore implements LiveStateStore {
     });
 
     return this.parseAcceptanceResult(result);
+  }
+
+  /** Atomically accepts a newer tenant status version and deduplicates its event ID. */
+  public async acceptTenantStatusEvent(
+    envelope: TenantStatusChangedEnvelope,
+  ): Promise<TenantStatusAcceptanceResult> {
+    const result = await this.redis.eval(acceptTenantStatusEventScript, {
+      keys: [
+        this.tenantStatusEventKey(envelope.eventId),
+        this.tenantStatusVersionKey(envelope.aggregateId),
+      ],
+      arguments: [String(envelope.aggregateVersion), envelope.eventId],
+    });
+
+    if (
+      !Array.isArray(result) ||
+      result.length !== 2 ||
+      typeof result[0] !== 'string' ||
+      typeof result[1] !== 'string'
+    ) {
+      throw new Error('Unexpected Redis tenant status acceptance result.');
+    }
+
+    if (result[0] !== 'accepted' && result[0] !== 'duplicate' && result[0] !== 'stale') {
+      throw new Error(`Unexpected Redis tenant status acceptance status: ${result[0]}`);
+    }
+
+    return {
+      status: result[0],
+      previousVersion: result[1] ? Number(result[1]) : null,
+    };
+  }
+
+  /** Rolls back an accepted tenant event reservation after a failed room eviction. */
+  public async rollbackTenantStatusEvent(envelope: TenantStatusChangedEnvelope): Promise<void> {
+    await this.redis.eval(rollbackTenantStatusEventScript, {
+      keys: [
+        this.tenantStatusEventKey(envelope.eventId),
+        this.tenantStatusVersionKey(envelope.aggregateId),
+      ],
+      arguments: [envelope.eventId, String(envelope.aggregateVersion)],
+    });
   }
 
   /**
@@ -150,6 +228,16 @@ export class LiveFeedStateStore implements LiveStateStore {
   /** Returns the Redis mapping key for an auction's authoritative tenant. */
   public auctionTenantKey(auctionId: string): string {
     return `live-feed:v2:auction-tenant:${auctionId}`;
+  }
+
+  /** Returns the durable tenant status event marker key. */
+  public tenantStatusEventKey(eventId: string): string {
+    return `live-feed:v2:tenant-status-event:${eventId}`;
+  }
+
+  /** Returns the durable highest accepted tenant status version key. */
+  public tenantStatusVersionKey(tenantId: string): string {
+    return `live-feed:v2:tenant:${tenantId}:status-version`;
   }
 
   /** Reads the latest projected auction state, if one has been accepted. */
@@ -200,7 +288,9 @@ export class LiveFeedStateStore implements LiveStateStore {
     };
   }
 
-  private projectionArguments(envelope: LiveFeedEnvelope): string[] {
+  private projectionArguments(
+    envelope: Exclude<LiveFeedEnvelope, TenantStatusChangedEnvelope>,
+  ): string[] {
     if (envelope.eventType === integrationEventTypes.bidAccepted) {
       return [
         envelope.payload.bidderId,

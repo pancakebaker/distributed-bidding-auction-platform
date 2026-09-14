@@ -7,6 +7,7 @@ import { auctionSocketEvents } from '../../domain/transport.js';
 import type { ActivityRecorder } from '../ports/activity-recorder.js';
 import type { LiveFeedPublisher } from '../ports/live-feed-publisher.js';
 import type { LiveStateStore } from '../ports/live-state-store.js';
+import type { TenantRoomEvictor } from '../ports/tenant-room-evictor.js';
 
 /**
  * Result of handling a validated live-feed event, used by the RabbitMQ adapter for ACK decisions.
@@ -25,6 +26,12 @@ export type ProcessResult =
       eventId: string;
       aggregateId: string;
       aggregateVersion: number;
+    }
+  | {
+      action: 'status-applied';
+      eventId: string;
+      aggregateId: string;
+      aggregateVersion: number;
     };
 
 /**
@@ -36,13 +43,19 @@ export class LiveFeedEventProcessor {
     private readonly publisher: LiveFeedPublisher,
     private readonly stateStore: LiveStateStore,
     private readonly activityRecorder?: ActivityRecorder,
+    private readonly tenantRoomEvictor?: TenantRoomEvictor,
   ) {}
 
   /**
    * Processes one validated event through state checks and the live-feed publisher port.
    */
   public async process(envelope: LiveFeedEnvelope): Promise<ProcessResult> {
-    const acceptance = await this.stateStore.acceptEvent(envelope);
+    if (envelope.eventType === integrationEventTypes.tenantStatusChanged) {
+      return this.processTenantStatusChanged(envelope);
+    }
+
+    const auctionEnvelope = envelope;
+    const acceptance = await this.stateStore.acceptEvent(auctionEnvelope);
 
     if (acceptance.status === 'duplicate' || acceptance.status === 'stale') {
       console.info('Ignoring duplicate or stale live-feed event.', {
@@ -62,7 +75,7 @@ export class LiveFeedEventProcessor {
         aggregateId: envelope.aggregateId,
         aggregateVersion: envelope.aggregateVersion,
       };
-      this.recordActivity(envelope, acceptance.status === 'stale' ? 'stale' : 'ignored');
+      this.recordActivity(auctionEnvelope, acceptance.status === 'stale' ? 'stale' : 'ignored');
       return result;
     }
 
@@ -77,8 +90,8 @@ export class LiveFeedEventProcessor {
       });
     }
 
-    const socketEvent = socketEventName(envelope.eventType);
-    const payload = toSocketPayload(envelope);
+    const socketEvent = socketEventName(auctionEnvelope.eventType);
+    const payload = toSocketPayload(auctionEnvelope);
     this.publisher.publish({
       tenantId: payload.tenantId,
       auctionId: payload.auctionId,
@@ -102,15 +115,69 @@ export class LiveFeedEventProcessor {
       aggregateId: envelope.aggregateId,
       aggregateVersion: envelope.aggregateVersion,
     };
-    this.recordActivity(envelope, 'applied');
+    this.recordActivity(auctionEnvelope, 'applied');
     return result;
+  }
+
+  private async processTenantStatusChanged(
+    envelope: Extract<LiveFeedEnvelope, { eventType: 'TenantStatusChanged' }>,
+  ): Promise<ProcessResult> {
+    if (!this.stateStore.acceptTenantStatusEvent) {
+      throw new Error('Tenant status event processing is not configured.');
+    }
+
+    const acceptance = await this.stateStore.acceptTenantStatusEvent(envelope);
+    if (acceptance.status !== 'accepted') {
+      console.info('Ignoring duplicate or stale tenant status event.', {
+        eventId: envelope.eventId,
+        tenantId: envelope.payload.tenantId,
+        tenantVersion: envelope.payload.tenantVersion,
+        currentVersion: acceptance.previousVersion,
+        status: acceptance.status,
+        correlationId: envelope.correlationId,
+      });
+      return {
+        action: 'ignored',
+        reason: acceptance.status === 'duplicate' ? 'duplicate' : 'stale',
+        eventId: envelope.eventId,
+        aggregateId: envelope.aggregateId,
+        aggregateVersion: envelope.aggregateVersion,
+      };
+    }
+
+    if (envelope.payload.currentStatus === 'Disabled') {
+      if (!this.tenantRoomEvictor) {
+        throw new Error('Tenant room eviction is not configured.');
+      }
+      try {
+        await this.tenantRoomEvictor.evictTenantRooms(envelope.payload.tenantId);
+      } catch (error) {
+        await this.stateStore.rollbackTenantStatusEvent?.(envelope);
+        throw error;
+      }
+    }
+
+    console.info('Applied tenant status event to live-feed admission state.', {
+      eventId: envelope.eventId,
+      tenantId: envelope.payload.tenantId,
+      tenantVersion: envelope.payload.tenantVersion,
+      currentStatus: envelope.payload.currentStatus,
+      correlationId: envelope.correlationId,
+    });
+
+    return {
+      action: 'status-applied',
+      eventId: envelope.eventId,
+      aggregateId: envelope.aggregateId,
+      aggregateVersion: envelope.aggregateVersion,
+    };
   }
 
   /**
    * Records operational metadata without allowing observation to affect processing.
    */
   private recordActivity(
-    envelope: LiveFeedEnvelope,
+    envelope: Exclude<LiveFeedEnvelope, { eventType: 'TenantStatusChanged' }>,
     outcome: 'applied' | 'stale' | 'ignored',
   ): void {
     try {

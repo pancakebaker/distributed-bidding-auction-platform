@@ -198,7 +198,7 @@ function contextFromMessage(body: Buffer): AsyncContext {
     return {
       correlationId: envelope.correlationId ?? undefined,
       eventId: envelope.eventId,
-      auctionId: envelope.payload.auctionId,
+      auctionId: 'auctionId' in envelope.payload ? envelope.payload.auctionId : undefined,
     };
   } catch {
     return {};

@@ -126,9 +126,11 @@ MT2 bound Laravel users to the server-configured installation tenant and added `
 
 MT6.2a adds a separate authenticated service-to-service decision boundary for Live Feed. Live Feed signs a short-lived RS256 service token (`sub=live-feed-service`) and calls `POST /internal/live-feed/access` with an `auctionId`. Bidding validates the dedicated service identity, resolves `Auction -> Tenant -> TenantStatus` from authoritative PostgreSQL state, and returns only an allow/deny decision: `Active` and `Suspended` are allowed, while `Disabled`, missing targets, and dependency failures are denied or fail closed. Live Feed does not receive Bidding database credentials, and TenantStatus is not placed in browser payloads, JWTs, Redis, or event contracts.
 
-MT6.2b applies that trusted decision before a public Socket.IO auction-room join. Every `auction:subscribe` request validates its `auctionId`, asks Bidding for a fresh decision, and calls `socket.join` only for an allowed result; denied, missing, unauthorized, unavailable, timed-out, and network-failed decisions do not join. Suspended tenants remain readable through Live Feed, while Disabled tenants cannot newly join. Existing sockets are not proactively evicted when status changes; reconnect and later subscription requests are rechecked, with real-time revocation deferred to MT6.3. Admin-room admission and unsubscribe remain separate, and Live Feed continues to use Redis only for its non-authoritative projection and event state.
+MT6.2b applies that trusted decision before a public Socket.IO auction-room join. Every `auction:subscribe` request validates its `auctionId`, asks Bidding for a fresh decision, and calls `socket.join` only for an allowed result; denied, missing, unauthorized, unavailable, timed-out, and network-failed decisions do not join. Suspended tenants remain readable through Live Feed, while Disabled tenants cannot newly join. Reconnect and later subscription requests are rechecked. Admin-room admission and unsubscribe remain separate, and Live Feed continues to use Redis only for its non-authoritative projection and event state.
 
 MT6.3a establishes the authoritative tenant lifecycle mutation boundary. A `SystemAdministrator` holding the dedicated `bidding-service-admin` audience and `system.tenant.status` permission may call `PATCH /api/system/tenants/{tenantId}/status` with a target status and `expectedVersion`. Bidding validates that optimistic-concurrency version, changes the persisted tenant state only for an actual transition, increments the tenant's monotonic `Version`, and inserts `TenantStatusChanged` into the PostgreSQL outbox in the same EF transaction. The event carries its immutable event ID, prior/current status, new tenant version, and UTC occurrence time; it routes as `tenant.status.changed`. RabbitMQ delivery is eventual: a broker outage leaves the committed status and durable outbox row intact, so MT6.1 HTTP checks and MT6.2b new-room admission reflect the database immediately. Existing Live Feed room memberships are not consumed or revoked in MT6.3a; that future consumer remains deferred.
+
+MT6.3 consumes `TenantStatusChanged` in Live Feed for admission revocation. The consumer validates the Bidding-owned event, atomically accepts only a higher per-tenant `tenantVersion` in Redis, and evicts public `tenant:{tenantId}:auction:{auctionId}` room memberships only for an accepted `Disabled` transition. Duplicate and stale events are ACKed without repeating eviction; Redis or Socket.IO failures are retried through the existing RabbitMQ NACK path. This is admission revocation only: already-connected sockets are removed from affected rooms, but the transport remains connected, no polling or per-event Bidding lookup is introduced, and future subscription admission remains governed by the MT6.2a decision boundary.
 
 ### MT3 authenticated tenant resource enforcement
 
@@ -181,9 +183,11 @@ token expiry. `SystemAdministrator` and scheduler operations remain separate
 from tenant-user runtime status enforcement.
 
 MT6.2b applies the decision port before `socket.join` and rechecks every new
-subscription, including client-triggered reconnect subscriptions. It does not
-proactively evict already-connected sockets; real-time revocation remains a
-future MT6.3 concern.
+subscription, including client-triggered reconnect subscriptions. MT6.3
+consumes the authoritative `TenantStatusChanged` event and removes public
+auction-room memberships after an accepted `Disabled` transition. This is not
+forced transport disconnect: the socket remains connected, and future
+real-time lease/revalidation designs remain a later phase.
 
 ### MT5.1 ClientApplication registry foundation
 
@@ -393,13 +397,13 @@ For a bid-versus-close race, PostgreSQL transaction ordering decides the seriali
 
 The Live Feed Service never decides whether a bid is valid. It only broadcasts accepted events that originated from the authoritative Bidding Service and arrived through RabbitMQ.
 
-It consumes from one durable shared queue, `live-feed.bid-events`, bound to `auction.events` with `auction.bid.accepted`, `auction.closed`, `auction.winner.selected`, and `auction.purchased`. Manual acknowledgement is used: valid messages are ACKed after validation, Redis idempotency/order checks, and Socket.IO fan-out. Malformed messages are NACKed without requeue and dead-lettered to `live-feed.bid-events.dlq`; transient processing failures are NACKed with requeue.
+It consumes from one durable shared queue, `live-feed.bid-events`, bound to `auction.events` with the auction routing keys and `tenant.status.changed`. Manual acknowledgement is used: valid messages are ACKed after validation, Redis idempotency/order checks, and Socket.IO fan-out or tenant-room eviction. Malformed messages are NACKed without requeue and dead-lettered to `live-feed.bid-events.dlq`; transient processing failures are NACKed with requeue.
 
-Redis supports live-feed behavior, not auction authority. It powers the Socket.IO Redis adapter for multi-instance fan-out, stores short-lived event idempotency keys by `eventId`, and stores the highest observed `aggregateVersion` per auction. The version update is atomic in Redis so competing live-feed instances do not race through a naive read-then-write path.
+Redis supports live-feed behavior, not auction authority. It powers the Socket.IO Redis adapter for multi-instance fan-out, stores short-lived event idempotency keys by `eventId`, stores the highest observed `aggregateVersion` per auction, and stores the highest accepted tenant status version for revocation ordering. These version updates are atomic in Redis so competing live-feed instances do not race through a naive read-then-write path.
 
 The service ignores duplicate event IDs and stale lower-version observations. `eventId` provides event uniqueness; `aggregateVersion` represents the resulting aggregate state version. Because one aggregate transition can produce multiple events, a new `AuctionClosed v16`, `WinnerSelected v16`, or `AuctionPurchased v16` is accepted when its event ID is new. If an event advances from version 42 to 44, the service accepts and broadcasts the newer authoritative state while logging the gap; it does not fabricate missing events or run a replay engine in this demo phase.
 
-Socket.IO rooms are constructed server-side as `auction:{auctionId}` after validating that the client supplied a syntactically valid UUID. The frontend-facing events are `bid:accepted`, `auction:closed`, `winner:selected`, and `auction:purchased`. The purchase event exposes the buyer, authoritative final price, aggregate version, purchase time, and correlation ID; broker metadata stays internal.
+Socket.IO rooms are constructed server-side as `tenant:{tenantId}:auction:{auctionId}` after validating that the client supplied a syntactically valid UUID and resolving the tenant from the authoritative projection. The frontend-facing events are `bid:accepted`, `auction:closed`, `winner:selected`, and `auction:purchased`; a disabled-tenant eviction may emit the generic `auction:subscription-revoked` notification before leaving the room. The purchase event exposes the buyer, authoritative final price, aggregate version, purchase time, and correlation ID; broker metadata stays internal.
 ### Live Feed Node Phase 1 structure and runtime diagnostics
 
 The Node live-feed source is organized by its current responsibilities rather than by speculative abstractions:
@@ -598,7 +602,10 @@ rather than embedding Node Cluster workers inside one container. No Cluster mode
 
 RabbitMQ carries durable integration events between services. Consumers must be idempotent because at-least-once delivery must be assumed. Duplicate event delivery, redelivery after failures, and out-of-order observations are expected operational realities.
 
-RabbitMQ publishing is implemented for outbox `BidAccepted`, `AuctionClosed`, `WinnerSelected`, and `AuctionPurchased` messages. The Live Feed Service consumes all four for real-time auction UI projection.
+RabbitMQ publishing is implemented for outbox `BidAccepted`, `AuctionClosed`,
+`WinnerSelected`, `AuctionPurchased`, and `TenantStatusChanged` messages. The
+Live Feed Service consumes the auction events for real-time UI projection and
+uses `TenantStatusChanged` for Disabled-tenant room revocation.
 
 ## Server Time
 

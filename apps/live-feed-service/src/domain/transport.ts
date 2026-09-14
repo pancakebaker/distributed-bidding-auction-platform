@@ -5,6 +5,7 @@ export const integrationEventRoutingKeys = {
   winnerSelected: 'auction.winner.selected',
   auctionPurchased: 'auction.purchased',
   auctionCancelled: 'auction.cancelled',
+  tenantStatusChanged: 'tenant.status.changed',
 } as const;
 
 /** Browser-facing auction Socket.IO events and subscription controls. */

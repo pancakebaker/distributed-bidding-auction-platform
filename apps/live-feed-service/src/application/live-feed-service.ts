@@ -49,6 +49,7 @@ import { BiddingLiveFeedAccessClient } from '../infrastructure/bidding/bidding-l
 import { ServiceTokenIssuer } from '../infrastructure/auth/service-token-issuer.js';
 import { LiveFeedSubscriptionAuthorizer } from './live-feed-subscription-authorizer.js';
 import { registerAuctionSubscriptionHandlers } from '../transport/websocket/auction-subscription-handler.js';
+import { SocketIoTenantRoomEvictor } from '../transport/websocket/socketio-tenant-room-evictor.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -104,6 +105,7 @@ export function createLiveFeedService(
   const adminTokenReplayConsumer = new RedisAdminTokenReplayConsumer(redis);
   const adminHandoffStore = new RedisAdminHandoffStore(redis);
   const publisher = new SocketIoLiveFeedPublisher(io);
+  const tenantRoomEvictor = new SocketIoTenantRoomEvictor(io);
   const recentActivity = new RecentActivityStore(50);
   const adminPublisher = new SocketIoAdminLiveFeedPublisher(io);
   const historyStore = createLiveFeedHistoryStore(config);
@@ -112,7 +114,12 @@ export function createLiveFeedService(
     adminPublisher,
     historyStore,
   );
-  const processor = new LiveFeedEventProcessor(publisher, stateStore, activityObserver);
+  const processor = new LiveFeedEventProcessor(
+    publisher,
+    stateStore,
+    activityObserver,
+    tenantRoomEvictor,
+  );
   const adminAuth = new AdminAuth({ secret: config.adminSessionSecret });
   const systemAdminTokenVerifier = new SystemAdminJwtTokenVerifier({
     publicKeyPath: config.systemAdminTokenPublicKeyPath,
