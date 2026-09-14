@@ -231,7 +231,7 @@ function auctionCancelled(
   };
 }
 
-async function createContext(): Promise<TestContext> {
+async function createContext(redisDatabase = 1): Promise<TestContext> {
   const suffix = randomUUID();
   const queue = `live-feed.bid-events.test.${suffix}`;
   const dlq = `${queue}.dlq`;
@@ -244,13 +244,15 @@ async function createContext(): Promise<TestContext> {
   await rabbitChannel.deleteQueue(dlq).catch(() => undefined);
   await rabbitChannel.deleteExchange(dlx).catch(() => undefined);
 
-  const redis = createClient({ url: redisUrl }) as RedisClientType;
+  const contextRedisUrl = new URL(redisUrl);
+  contextRedisUrl.pathname = `/${redisDatabase}`;
+  const redis = createClient({ url: contextRedisUrl.toString() }) as RedisClientType;
   await redis.connect();
   await redis.flushDb();
 
   const config: Partial<LiveFeedConfig> = {
     port: 0,
-    redisUrl,
+    redisUrl: contextRedisUrl.toString(),
     rabbitMqUrl,
     rabbitMqExchange: exchange,
     rabbitMqQueue: queue,
@@ -657,6 +659,59 @@ void test('same-version purchase and close siblings both emit in either order an
       client.disconnect();
       await cleanup(context);
     }
+  }
+});
+
+void test('same-version threshold Buy Now events converge in every delivery order', async () => {
+  const permutations = [
+    ['bid', 'purchase', 'close'],
+    ['bid', 'close', 'purchase'],
+    ['purchase', 'bid', 'close'],
+    ['purchase', 'close', 'bid'],
+    ['close', 'bid', 'purchase'],
+    ['close', 'purchase', 'bid'],
+  ] as const;
+
+  const context = await createContext(2);
+  try {
+    for (const order of permutations) {
+      const auctionId = randomUUID();
+      const purchase = auctionPurchased({ aggregateId: auctionId, aggregateVersion: 12 });
+      const bid = bidAccepted({
+        aggregateId: auctionId,
+        aggregateVersion: 12,
+        payload: { amount: purchase.payload.finalPrice, auctionVersion: 12 },
+      });
+      const closed = auctionClosed({
+        aggregateId: auctionId,
+        aggregateVersion: 12,
+        payload: { finalBidAmount: null, finalBidderId: null, auctionVersion: 12 },
+      });
+      const events = { bid, purchase, close: closed };
+
+      for (const eventName of order) {
+        const event = events[eventName];
+        publish(context, event);
+        await waitFor(async () => {
+          assert.equal(
+            await context.redis.get(`live-feed:v2:processed-event:${event.eventId}`),
+            '1',
+          );
+        });
+      }
+
+      await waitFor(async () => {
+        const projection = await context.redis.hGetAll(
+          `live-feed:v2:tenant:${tenantId}:auction:${auctionId}`,
+        );
+        assert.equal(projection.status, 'Closed');
+        assert.equal(projection.finalWinnerId, 'buyer-123');
+        assert.equal(projection.finalPrice, '1000');
+        assert.equal(projection.aggregateVersion, '12');
+      });
+    }
+  } finally {
+    await cleanup(context);
   }
 });
 

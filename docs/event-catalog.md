@@ -173,7 +173,7 @@ Delivery semantics are at-least-once. Duplicate messages are possible if the pub
 
 The Live Feed Service consumes `BidAccepted`, `AuctionClosed`, `WinnerSelected`, `AuctionPurchased`, and `TenantStatusChanged` from the durable queue `live-feed.bid-events`, bound to `auction.events` with their corresponding routing keys. The Auction Operations Portal consumes the auction event types from its separate durable `auction-operations.activity` queue.
 
-The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale lower-version observations cannot move clients backward. New same-version lifecycle sibling events are accepted when their `eventId` has not been processed.
+The Live Feed Service validates the full envelope before fan-out. It uses `eventId` as a Redis idempotency key so duplicate RabbitMQ deliveries are ACKed but not rebroadcast. It uses `aggregateVersion` as the highest observed auction version so stale lower-version observations cannot move clients backward. New same-version lifecycle sibling events are accepted when their `eventId` has not been processed. For a Buy Now transition, `BidAccepted`, `AuctionPurchased`, and `AuctionClosed` may all share one version; the Redis projection merges those companions atomically and preserves the purchase winner/final price once `AuctionPurchased` has been applied.
 
 If an event version jumps forward, the service broadcasts the newer authoritative event and logs the gap. This keeps the demo simple while making it clear that RabbitMQ delivery should be treated as at-least-once, not globally perfectly ordered.
 

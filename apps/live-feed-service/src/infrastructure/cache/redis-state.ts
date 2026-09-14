@@ -31,6 +31,7 @@ local tenantId = ARGV[9]
 local currentVersion = redis.call('GET', versionKey)
 local numericCurrentVersion =
   currentVersion and tonumber(currentVersion) or nil
+local hasPurchase = redis.call('HEXISTS', projectionKey, 'purchasedAtUtc') == 1
 
 if redis.call('EXISTS', processedKey) == 1 then
   return {'duplicate', currentVersion or ''}
@@ -51,15 +52,17 @@ if numericCurrentVersion then
       redis.call('HSET', projectionKey, 'currentBidderId', currentBidderId, 'currentBidAmount', currentBidAmount)
     elseif eventType == 'AuctionClosed' then
       redis.call('HSET', projectionKey, 'status', 'Closed')
-      if finalPrice ~= '' then
+      if finalPrice ~= '' and not hasPurchase then
         redis.call('HSET', projectionKey, 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
-      else
-        redis.call('HDEL', projectionKey, 'finalWinnerId', 'finalPrice')
       end
     elseif eventType == 'WinnerSelected' then
-      redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
+      if not hasPurchase then
+        redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
+      end
     elseif eventType == 'AuctionPurchased' then
-      redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice, 'purchasedAtUtc', occurredAtUtc)
+      if not hasPurchase then
+        redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice, 'purchasedAtUtc', occurredAtUtc)
+      end
     elseif eventType == 'AuctionCancelled' then
       redis.call('HSET', projectionKey, 'status', 'Cancelled')
     end
@@ -82,15 +85,17 @@ if eventType == 'BidAccepted' then
   redis.call('HSET', projectionKey, 'currentBidderId', currentBidderId, 'currentBidAmount', currentBidAmount)
 elseif eventType == 'AuctionClosed' then
   redis.call('HSET', projectionKey, 'status', 'Closed')
-  if finalPrice ~= '' then
+  if finalPrice ~= '' and not hasPurchase then
     redis.call('HSET', projectionKey, 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
-  else
-    redis.call('HDEL', projectionKey, 'finalWinnerId', 'finalPrice')
   end
 elseif eventType == 'WinnerSelected' then
-  redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
+  if not hasPurchase then
+    redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice)
+  end
 elseif eventType == 'AuctionPurchased' then
-  redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice, 'purchasedAtUtc', occurredAtUtc)
+  if not hasPurchase then
+    redis.call('HSET', projectionKey, 'status', 'Closed', 'finalWinnerId', finalWinnerId, 'finalPrice', finalPrice, 'purchasedAtUtc', occurredAtUtc)
+  end
 elseif eventType == 'AuctionCancelled' then
   redis.call('HSET', projectionKey, 'status', 'Cancelled')
 end
