@@ -729,6 +729,16 @@ describe('auction UI', () => {
             auctionVersion: 12,
             correlationId: 'purchase',
         });
+        await waitForSocketHandler(liveFeedSocketEvents.winnerSelected);
+        liveWinner({
+            auctionId: macBook.id,
+            winningBidId: 'winner-bid',
+            winnerId: 'erin',
+            amount: 1500,
+            selectedAtUtc: new Date().toISOString(),
+            auctionVersion: 12,
+            correlationId: 'purchase',
+        });
 
         expect(await screen.findByText('Final price $2,000')).toBeInTheDocument();
         expect(screen.getAllByText('Winner: buyer-b').length).toBeGreaterThan(0);
@@ -776,7 +786,7 @@ describe('auction UI', () => {
         expect(purchaseRequests).toBe(1);
     });
 
-    it('stale bids do not regress a purchase and a ceiling leaves Buy Now available', async () => {
+    it('stale bids do not regress a purchase and threshold bids remain available', async () => {
         renderAt(`/auctions/${macBook.id}`);
         await screen.findByRole('heading', { name: 'MacBook Pro' });
         await waitForSocketHandler(liveFeedSocketEvents.auctionPurchased);
@@ -809,10 +819,56 @@ describe('auction UI', () => {
             return json(auctions);
         });
         renderAt(`/auctions/${macBook.id}`);
-        expect(
-            await screen.findByRole('button', { name: 'Bidding ceiling reached' }),
-        ).toBeDisabled();
+        expect(await screen.findByRole('button', { name: 'Place bid' })).toBeEnabled();
         expect(screen.getByRole('button', { name: 'Buy Now' })).toBeEnabled();
+    });
+
+    it('submits an over-threshold bid for Bidding to normalize authoritatively', async () => {
+        const user = userEvent.setup();
+        const fetchMock = vi.mocked(fetch);
+        fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+            const url = String(input);
+            if (url.endsWith(`/api/auctions/${macBook.id}/bids`)) {
+                if (init?.method === 'POST') {
+                    return json(
+                        {
+                            bidId: 'threshold-bid',
+                            auctionId: macBook.id,
+                            bidderId: 'alice',
+                            amount: 2000,
+                            currentBidAmount: 2000,
+                            currentBidderId: 'alice',
+                            nextMinimumBid: 2010,
+                            auctionVersion: 12,
+                            createdAtUtc: new Date().toISOString(),
+                            correlationId: 'threshold',
+                        },
+                        201,
+                    );
+                }
+
+                return json(bids);
+            }
+            if (url.endsWith(`/api/auctions/${macBook.id}`)) {
+                return json(auctionAndBuyNowWithBid);
+            }
+            return json(auctions);
+        });
+
+        renderAt(`/auctions/${macBook.id}`);
+        await screen.findByRole('heading', { name: 'MacBook Pro' });
+        const input = screen.getByLabelText('Bid amount');
+        await user.clear(input);
+        await user.type(input, '2500');
+        expect(
+            screen.getByText(
+                'This bid will purchase the auction immediately at the Buy Now price of $2,000.',
+            ),
+        ).toBeInTheDocument();
+        await user.click(screen.getByRole('button', { name: 'Place bid' }));
+
+        expect(await screen.findByText('Your bid was accepted.')).toBeInTheDocument();
+        expect(fetchMock.mock.calls.some((call) => String(call[0]).endsWith('/bids'))).toBe(true);
     });
 
     it('REST-loaded Closed auction starts with bidding disabled', async () => {

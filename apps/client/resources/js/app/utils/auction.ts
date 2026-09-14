@@ -88,6 +88,14 @@ export function applyAuctionClosed(
         return current;
     }
 
+    if (current.buyNowOutcome) {
+        return {
+            ...current,
+            status: 'Closed',
+            version: Math.max(current.version, event.auctionVersion),
+        };
+    }
+
     return {
         ...current,
         currentBidAmount:
@@ -122,11 +130,16 @@ export function applyAuctionPurchased(
         return current;
     }
 
+    if (current.buyNowOutcome && event.auctionVersion <= current.version) {
+        return current;
+    }
+
     return {
         ...current,
         status: 'Closed',
         finalWinnerId: event.bidderId,
         finalPrice: event.finalPrice,
+        buyNowOutcome: true,
         version: Math.max(current.version, event.auctionVersion),
         updatedAtUtc: event.purchasedAtUtc,
     };

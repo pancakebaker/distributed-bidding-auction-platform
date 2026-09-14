@@ -29,6 +29,7 @@ type WinnerState = {
     amount: number;
     selectedAtUtc?: string;
     auctionVersion: number;
+    isBuyNow?: boolean;
 };
 
 function loginHref(): string {
@@ -162,6 +163,10 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         return current;
                     }
 
+                    if (current.buyNowOutcome && event.auctionVersion <= current.version) {
+                        return current;
+                    }
+
                     return {
                         ...current,
                         currentBidAmount: event.amount,
@@ -175,7 +180,11 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                     };
                 });
                 setWinner((current) => {
-                    if (current && event.auctionVersion < current.auctionVersion) {
+                    if (
+                        current &&
+                        (event.auctionVersion < current.auctionVersion ||
+                            (current.isBuyNow && event.auctionVersion <= current.auctionVersion))
+                    ) {
                         return current;
                     }
 
@@ -207,6 +216,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                         amount: event.finalPrice,
                         selectedAtUtc: event.purchasedAtUtc,
                         auctionVersion: event.auctionVersion,
+                        isBuyNow: true,
                     };
                 });
                 setFormMessage({
@@ -249,16 +259,13 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         auction.status === 'Open' &&
         now >= new Date(auction.startTimeUtc).getTime() &&
         now < new Date(auction.endTimeUtc).getTime();
-    const biddingAtCeiling =
+    const biddingUnavailable =
+        !auth.authenticated || !auction || !timeEligible || auction.status !== 'Open';
+    const thresholdBidWarning =
         auction?.saleMode === 'AuctionAndBuyNow' &&
         auction.buyNowPrice !== null &&
-        minimumBid >= auction.buyNowPrice;
-    const biddingUnavailable =
-        !auth.authenticated ||
-        !auction ||
-        !timeEligible ||
-        auction.status !== 'Open' ||
-        biddingAtCeiling;
+        Number.isFinite(Number(amount)) &&
+        Number(amount) >= auction.buyNowPrice;
     const buyNowUnavailable =
         !auth.authenticated ||
         !auction ||
@@ -295,18 +302,6 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
         const numericAmount = Number(amount);
         if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
             setFormMessage({ tone: 'error', text: 'Enter a positive bid amount.' });
-            return;
-        }
-
-        if (
-            auction.saleMode === 'AuctionAndBuyNow' &&
-            auction.buyNowPrice !== null &&
-            numericAmount >= auction.buyNowPrice
-        ) {
-            setFormMessage({
-                tone: 'error',
-                text: 'Ordinary bids must be below the Buy Now price.',
-            });
             return;
         }
 
@@ -369,6 +364,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                           status: 'Closed',
                           finalWinnerId: response.bidderId,
                           finalPrice: response.finalPrice,
+                          buyNowOutcome: true,
                           version: response.auctionVersion,
                           updatedAtUtc: response.purchasedAtUtc,
                       }
@@ -379,6 +375,7 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                 amount: response.finalPrice,
                 selectedAtUtc: response.purchasedAtUtc,
                 auctionVersion: response.auctionVersion,
+                isBuyNow: true,
             });
             setFormMessage({ tone: 'success', text: 'Your Buy Now purchase was completed.' });
             setActivity((current) =>
@@ -583,28 +580,27 @@ export function AuctionDetailPage({ auctionId }: { auctionId: string }) {
                                             onChange={(event) => setAmount(event.target.value)}
                                         />
                                     </label>
+                                    {thresholdBidWarning && auction.buyNowPrice !== null && (
+                                        <p className="muted">
+                                            This bid will purchase the auction immediately at the
+                                            Buy Now price of {formatMoney(auction.buyNowPrice)}.
+                                        </p>
+                                    )}
                                     <button
                                         className="primary-button"
                                         disabled={submitting || biddingUnavailable}
                                         type="submit"
                                     >
                                         {biddingUnavailable
-                                            ? biddingAtCeiling
-                                                ? 'Bidding ceiling reached'
-                                                : terminal
-                                                  ? auction.status === 'Cancelled'
-                                                      ? 'Auction cancelled'
-                                                      : 'Auction closed'
-                                                  : 'Bidding unavailable'
+                                            ? terminal
+                                                ? auction.status === 'Cancelled'
+                                                    ? 'Auction cancelled'
+                                                    : 'Auction closed'
+                                                : 'Bidding unavailable'
                                             : submitting
                                               ? 'Placing bid...'
                                               : 'Place bid'}
                                     </button>
-                                    {biddingAtCeiling && (
-                                        <p className="muted">
-                                            No legal ordinary bid remains below the Buy Now price.
-                                        </p>
-                                    )}
                                 </>
                             )}
                             {auction.saleMode === 'BuyNowOnly' && (

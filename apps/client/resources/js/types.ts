@@ -21,6 +21,8 @@ export type AuctionSummary = {
     endTimeUtc: string;
     version: number;
     tenantId: string;
+    /** Client-side marker set only after an authoritative Buy Now event/response. */
+    buyNowOutcome?: boolean;
 };
 
 /** Enumerates the server-authoritative sale modes. */
