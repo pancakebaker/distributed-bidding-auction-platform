@@ -1253,17 +1253,13 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
     }
 
     [Fact]
-    public async Task AuctionAndBuyNow_AcceptsBelowPriceAndRejectsAtOrAbovePrice()
+    public async Task AuctionAndBuyNow_AcceptsBelowPrice()
     {
         var auctionId = await AddBuyNowAuctionAsync(SaleMode.AuctionAndBuyNow);
 
         var accepted = await PlaceBidAsync(auctionId, "bidder-123", 1250m);
-        var equal = await PlaceBidAsync(auctionId, "bidder-456", 1500m);
-        var above = await PlaceBidAsync(auctionId, "bidder-789", 1501m);
 
         Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
-        await AssertBidRejectedAsync(equal, "bid_at_or_above_buy_now_price", HttpStatusCode.BadRequest);
-        await AssertBidRejectedAsync(above, "bid_at_or_above_buy_now_price", HttpStatusCode.BadRequest);
 
         var auction = await GetAuctionAsync(auctionId);
         Assert.Equal(1250m, auction.CurrentBidAmount);
@@ -1271,6 +1267,41 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
         Assert.Equal(2, auction.Version);
         Assert.Single(await GetBidsAsync(auctionId));
         Assert.Single(await GetOutboxMessagesAsync(auctionId));
+    }
+
+    [Theory]
+    [InlineData(1500)]
+    [InlineData(1501)]
+    public async Task AuctionAndBuyNow_BidAtOrAbovePrice_NormalizesAndCloses(decimal submittedAmount)
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.AuctionAndBuyNow);
+
+        var response = await PlaceBidAsync(auctionId, "bidder-123", submittedAmount);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+        var bidResponse = await response.Content.ReadFromJsonAsync<PlaceBidResponse>(JsonOptions);
+        Assert.NotNull(bidResponse);
+        Assert.Equal(1500m, bidResponse.Amount);
+        Assert.Equal(1500m, bidResponse.CurrentBidAmount);
+
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(1500m, auction.CurrentBidAmount);
+        Assert.Equal("bidder-123", auction.CurrentBidderId);
+        Assert.Equal("bidder-123", auction.FinalWinnerId);
+        Assert.Equal(1500m, auction.FinalPrice);
+        Assert.Equal(2, auction.Version);
+
+        var bids = await GetBidsAsync(auctionId);
+        var bid = Assert.Single(bids);
+        Assert.Equal(1500m, bid.Amount);
+
+        var messages = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal(3, messages.Count);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.BidAccepted);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionPurchased);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionClosed);
+        Assert.All(messages, message => Assert.Equal(2, message.AggregateVersion));
     }
 
     [Fact]
@@ -1287,12 +1318,42 @@ public sealed class AuctionApiTests : IClassFixture<AuctionApiFactory>, IAsyncLi
 
         var response = await PlaceBidAsync(auctionId, "bidder-123", 550m);
 
-        await AssertBidRejectedAsync(response, "bid_at_or_above_buy_now_price", HttpStatusCode.BadRequest);
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
         var auction = await GetAuctionAsync(auctionId);
-        Assert.Equal("Open", auction.Status);
+        Assert.Equal("Closed", auction.Status);
+        Assert.Equal(3, auction.Version);
+        Assert.Equal(500m, auction.CurrentBidAmount);
+        Assert.Equal("bidder-123", auction.FinalWinnerId);
+        Assert.Equal(500m, auction.FinalPrice);
+        Assert.Single(await GetBidsAsync(auctionId));
+        Assert.Equal(3, (await GetOutboxMessagesAsync(auctionId)).Count);
+    }
+
+    [Fact]
+    public async Task ConcurrentBuyNowThresholdBidsCommitOneNormalizedPurchase()
+    {
+        var auctionId = await AddBuyNowAuctionAsync(SaleMode.AuctionAndBuyNow);
+
+        var responses = await Task.WhenAll(
+            PlaceBidAsync(auctionId, "bidder-1", 1500m),
+            PlaceBidAsync(auctionId, "bidder-2", 1600m));
+
+        Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Created);
+        var rejected = Assert.Single(responses, response => response.StatusCode != HttpStatusCode.Created);
+        var rejectedError = await rejected.Content.ReadFromJsonAsync<ApiErrorResponse>(JsonOptions);
+        Assert.True(rejectedError?.Code is "auction_not_open" or "auction_concurrency_conflict");
+
+        var auction = await GetAuctionAsync(auctionId);
+        Assert.Equal("Closed", auction.Status);
         Assert.Equal(2, auction.Version);
-        Assert.Equal(450m, auction.CurrentBidAmount);
-        Assert.Empty(await GetOutboxMessagesAsync(auctionId));
+        Assert.Equal(1500m, auction.FinalPrice);
+        Assert.Single(await GetBidsAsync(auctionId));
+
+        var messages = await GetOutboxMessagesAsync(auctionId);
+        Assert.Equal(3, messages.Count);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.BidAccepted);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionPurchased);
+        Assert.Single(messages, message => message.EventType == IntegrationEventTypes.AuctionClosed);
     }
 
     [Fact]

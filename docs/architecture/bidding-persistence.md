@@ -300,8 +300,10 @@ POST /api/auctions/{id}/buy-now
 ```
 
 The request identifies the buyer but does not submit a price. The service reads
-the authoritative `BuyNowPrice` from BiddingDb. A bid at or above
-`BuyNowPrice` never means Buy Now and is rejected as an ordinary bid.
+the authoritative `BuyNowPrice` from BiddingDb. For `AuctionAndBuyNow`, an
+ordinary bid at or above `BuyNowPrice` is accepted at exactly `BuyNowPrice`,
+records the normalized bid, and completes the auction as a Buy Now purchase.
+The caller never overpays the configured price.
 
 The command is eligible only for `BuyNowOnly` and `AuctionAndBuyNow` auctions
 that are open, started, unexpired, correctly priced, and not already in a
@@ -347,9 +349,8 @@ provided.
 Stable API error codes include `invalid_bidder`, `auction_not_found`,
 `auction_not_started`, `auction_ended`, `auction_not_open`,
 `buy_now_not_available`, `auction_concurrency_conflict`,
-`bidding_not_available`, and `bid_at_or_above_buy_now_price`. Ordinary bids at
-or above `BuyNowPrice` never trigger a purchase. The server remains authoritative
-for mode, price, identity, state, and concurrency outcomes.
+`bidding_not_available`. The server remains authoritative for mode, price,
+identity, state, normalization, and concurrency outcomes.
 
 No authentication or authorization middleware currently reaches these command
 endpoints, and neither is an admin-only route. The temporary request identity

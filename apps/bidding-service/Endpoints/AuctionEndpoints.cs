@@ -617,6 +617,13 @@ public static class AuctionEndpoints
                     : TypedResults.BadRequest(validationError.Error);
             }
 
+            var isBuyNowThreshold = auction.SaleMode == SaleMode.AuctionAndBuyNow
+                && auction.BuyNowPrice.HasValue
+                && request.Amount >= auction.BuyNowPrice.Value;
+            var acceptedAmount = isBuyNowThreshold
+                ? auction.BuyNowPrice!.Value
+                : request.Amount;
+
             if (options.Value.ArtificialProcessingDelayMilliseconds > 0)
             {
                 await Task.Delay(
@@ -629,18 +636,42 @@ public static class AuctionEndpoints
                 Id = Guid.NewGuid(),
                 AuctionId = auction.Id,
                 BidderId = bidderId,
-                Amount = request.Amount,
+                Amount = acceptedAmount,
                 CreatedAtUtc = now
             };
 
             db.Bids.Add(bid);
-            auction.CurrentBidAmount = request.Amount;
+            auction.CurrentBidAmount = acceptedAmount;
             auction.CurrentBidderId = bid.BidderId;
+
+            if (isBuyNowThreshold)
+            {
+                auction.FinalWinnerId = bidderId;
+                auction.FinalPrice = acceptedAmount;
+                auction.Status = AuctionStatus.Closed;
+            }
+
             auction.Version += 1;
             auction.UpdatedAtUtc = now;
 
             var outboxMessage = OutboxMessageFactory.BidAccepted(bid, auction, correlationId, now);
             db.OutboxMessages.Add(outboxMessage);
+
+            OutboxMessage? purchasedMessage = null;
+            OutboxMessage? closedMessage = null;
+            if (isBuyNowThreshold)
+            {
+                purchasedMessage = OutboxMessageFactory.AuctionPurchased(
+                    auction,
+                    bidderId,
+                    correlationId,
+                    now);
+                closedMessage = OutboxMessageFactory.AuctionClosed(
+                    auction,
+                    correlationId,
+                    now.AddMilliseconds(1));
+                db.OutboxMessages.AddRange(purchasedMessage, closedMessage);
+            }
 
             try
             {
@@ -648,8 +679,9 @@ public static class AuctionEndpoints
                 await transaction.CommitAsync(cancellationToken);
 
                 logger.LogInformation(
-                    "Accepted bid for auction {AuctionId}. Version advanced to {AuctionVersion}. OutboxMessageId: {OutboxMessageId}. CorrelationId: {CorrelationId}",
+                    "Accepted bid for auction {AuctionId}. BuyNowThreshold: {BuyNowThreshold}. Version advanced to {AuctionVersion}. OutboxMessageId: {OutboxMessageId}. CorrelationId: {CorrelationId}",
                     auction.Id,
+                    isBuyNowThreshold,
                     auction.Version,
                     outboxMessage.Id,
                     correlationId);
@@ -762,20 +794,11 @@ public static class AuctionEndpoints
                         "Buy Now is not correctly configured for this auction.",
                         ToBidRuleDetails(auction)));
             }
-
-            if (amount >= auction.BuyNowPrice.Value)
-            {
-                return new BidValidationError(
-                    StatusCodes.Status400BadRequest,
-                    new ApiErrorResponse(
-                        "bid_at_or_above_buy_now_price",
-                        "Ordinary bids must be below the Buy Now price.",
-                        ToBidRuleDetails(auction)));
-            }
         }
 
         var minimumValidBid = BidRules.GetMinimumValidBid(auction);
-        if (amount < minimumValidBid)
+        if (amount < minimumValidBid
+            && (auction.BuyNowPrice is null || amount < auction.BuyNowPrice.Value))
         {
             return new BidValidationError(
                 StatusCodes.Status400BadRequest,

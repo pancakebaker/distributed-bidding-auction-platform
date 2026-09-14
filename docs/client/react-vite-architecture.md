@@ -186,7 +186,7 @@ Phase 17 adds a focused cleanup test for the live-feed Socket.IO subscription. I
 
 ## Bidding Boundary
 
-The client keeps Laravel as the Blade/web boundary and does not own authoritative auction behavior. Buy Now is an explicit action and is never inferred from a bid amount; ordinary bids remain strictly below BuyNowPrice. CurrentBid* represents ordinary bidding, while Final* represents terminal outcome. Conflict responses refresh authoritative state without automatically replaying a purchase command.
+The client keeps Laravel as the Blade/web boundary and does not own authoritative auction behavior. Buy Now is an explicit action, while a bid at or above `BuyNowPrice` in `AuctionAndBuyNow` is normalized by Bidding to the fixed price and completes the purchase. CurrentBid* represents bid history, while Final* represents terminal outcome. Conflict responses refresh authoritative state without automatically replaying a purchase command.
 
 ## Auction Management Boundary
 

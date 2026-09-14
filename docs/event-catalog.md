@@ -109,9 +109,11 @@ Stored in the same close transaction only when the auction has a winning accepte
 
 Producer: Bidding Service
 
-Stored when an explicit Buy Now command completes an auction. It is a purchase
-event, not a bid event, and is persisted with its sibling `AuctionClosed` event
-at the same resulting aggregate version.
+Stored when an explicit Buy Now command, or a threshold bid in
+`AuctionAndBuyNow`, completes an auction. It is a purchase event and is
+persisted with its sibling `AuctionClosed` event at the same resulting
+aggregate version. A threshold bid also emits its normalized `BidAccepted`
+event at that same version.
 
 ```json
 {
@@ -146,7 +148,7 @@ reserved for an ordinary winner derived from accepted bid history.
 | BidRejected | Bidding Service | Announces a rejected bid attempt when useful for workflows or audit | Deferred |
 | AuctionClosed | Auction Scheduler | Announces bidding has closed | Persisted and published to RabbitMQ |
 | WinnerSelected | Auction Scheduler | Announces the selected winning bid | Persisted and published to RabbitMQ |
-| AuctionPurchased | Bidding Service | Announces an explicit Buy Now purchase | Persisted and published to RabbitMQ |
+| AuctionPurchased | Bidding Service | Announces a Buy Now purchase, including a normalized threshold bid | Persisted and published to RabbitMQ |
 | PaymentRequested | Billing Worker | Announces that payment collection has started | Deferred |
 | PaymentSucceeded | Billing Worker | Announces successful payment | Deferred |
 | PaymentFailed | Billing Worker | Announces failed payment | Deferred |
