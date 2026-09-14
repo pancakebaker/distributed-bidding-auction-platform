@@ -48,6 +48,10 @@ const projection = {
   getProjection: () => Promise.resolve({ tenantId, auctionId, aggregateVersion: 1 }),
 };
 
+const missingProjection = {
+  getProjection: () => Promise.resolve(null),
+};
+
 void test('allowed subscriptions authorize before joining and acknowledge success', async () => {
   const requested: string[] = [];
   const { handlers, joined, socket } = createSocket();
@@ -111,6 +115,25 @@ void test('invalid payloads are rejected before the trusted decision boundary', 
   assert.deepEqual(requested, []);
   assert.deepEqual(joined, []);
   assert.deepEqual(response, { ok: false, error: 'invalid_auction_id' });
+});
+
+void test('authorized subscriptions fail closed when projection tenant ownership is unavailable', async () => {
+  const requested: string[] = [];
+  const { handlers, joined, socket } = createSocket();
+  registerAuctionSubscriptionHandlers(
+    socket as never,
+    missingProjection,
+    createAuthorizer(['allowed'], requested),
+  );
+
+  let response: Record<string, unknown> | undefined;
+  await handlers.get('auction:subscribe')?.({ auctionId, tenantId }, (value) => {
+    response = value;
+  });
+
+  assert.deepEqual(requested, [auctionId]);
+  assert.deepEqual(joined, []);
+  assert.deepEqual(response, { ok: false, error: 'live_feed_unavailable' });
 });
 
 void test('each subscription rechecks access and unsubscribe does not authorize', async () => {

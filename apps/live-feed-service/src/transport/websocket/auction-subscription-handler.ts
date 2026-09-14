@@ -45,6 +45,7 @@ export function registerAuctionSubscriptionHandlers(
           stateStore,
           subscription.auctionId,
           subscription.tenantId,
+          false,
         );
         if (!room) {
           acknowledge?.({ ok: false, error: 'live_feed_unavailable' });
@@ -74,6 +75,7 @@ export function registerAuctionSubscriptionHandlers(
           stateStore,
           subscription.auctionId,
           subscription.tenantId,
+          true,
         );
         if (!room) {
           acknowledge?.({ ok: false, error: 'auction_not_found' });
@@ -92,6 +94,7 @@ async function resolveSubscriptionRoom(
   stateStore: Pick<LiveFeedStateStore, 'getProjection'>,
   auctionId: string,
   requestedTenantId?: string,
+  allowRequestedTenantFallback = false,
 ): Promise<string | null> {
   const projection = await stateStore.getProjection(auctionId);
   if (projection) {
@@ -100,9 +103,12 @@ async function resolveSubscriptionRoom(
       : null;
   }
 
-  // Bidding is authoritative for existence and status; the client tenant is used only
-  // to preserve the established room name when this non-authoritative projection lags.
-  return requestedTenantId ? auctionRoom(requestedTenantId, auctionId) : null;
+  // A subscription must fail closed while the non-authoritative projection is missing.
+  // The browser-supplied tenantId may remain a compatibility hint for unsubscribe, but
+  // it must never select the room for an authorized public join.
+  return allowRequestedTenantFallback && requestedTenantId
+    ? auctionRoom(requestedTenantId, auctionId)
+    : null;
 }
 
 function subscriptionError(

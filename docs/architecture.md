@@ -6,6 +6,9 @@ This project demonstrates a distributed bidding architecture with clear service 
 
 The repository-level [README](../README.md) is the concise overview. The completed platform has two independent event consumers and two PostgreSQL ownership boundaries:
 
+The finalized identity, ownership, isolation, deployment, and future split rules
+are maintained in the [multi-tenancy architecture reference](multi-tenancy.md).
+
 ```mermaid
 flowchart LR
     U[Bidder / Admin User] --> C[Laravel + React Client]
