@@ -50,6 +50,26 @@ public sealed class TenantAdministrationClientTests
         Assert.Contains("\"expectedVersion\":4", handler.RequestBody);
     }
 
+    [Fact]
+    public async Task LoadsDescendingTenantHistoryWithCursor()
+    {
+        var tenantId = Guid.NewGuid();
+        var handler = new RecordingHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(
+                $"[{{\"transitionId\":\"{Guid.NewGuid()}\",\"tenantId\":\"{tenantId}\",\"previousStatus\":\"Active\",\"currentStatus\":\"Suspended\",\"tenantVersion\":2,\"changedAtUtc\":\"2026-01-01T00:00:00Z\",\"changedBySubject\":\"admin\",\"correlationId\":\"corr\"}}]",
+                Encoding.UTF8,
+                "application/json")
+        });
+        var client = CreateClient(handler);
+
+        var history = await client.GetStatusHistoryAsync(Principal(), tenantId, 25, 7);
+
+        Assert.Single(history);
+        Assert.Equal(TenantLifecycleStatus.Suspended, history[0].CurrentStatus);
+        Assert.Equal($"/api/system/tenants/{tenantId:D}/status-history?limit=25&beforeVersion=7", handler.RequestPath);
+    }
+
     private static TenantAdministrationClient CreateClient(RecordingHandler handler) =>
         new(
             new HttpClient(handler) { BaseAddress = new Uri("http://bidding.test") },
@@ -70,12 +90,14 @@ public sealed class TenantAdministrationClientTests
     {
         public string Authorization { get; private set; } = string.Empty;
         public string RequestBody { get; private set; } = string.Empty;
+        public string RequestPath { get; private set; } = string.Empty;
 
         protected override async Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
         {
             Authorization = request.Headers.Authorization?.ToString() ?? string.Empty;
+            RequestPath = request.RequestUri?.PathAndQuery ?? string.Empty;
             RequestBody = request.Content is null
                 ? string.Empty
                 : await request.Content.ReadAsStringAsync(cancellationToken);

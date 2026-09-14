@@ -32,6 +32,17 @@ public sealed record TenantLifecycleState(
     long Version,
     DateTimeOffset UpdatedAtUtc);
 
+/// <summary>One committed tenant lifecycle transition.</summary>
+public sealed record TenantLifecycleTransition(
+    Guid TransitionId,
+    Guid TenantId,
+    TenantLifecycleStatus PreviousStatus,
+    TenantLifecycleStatus CurrentStatus,
+    long TenantVersion,
+    DateTimeOffset ChangedAtUtc,
+    string ChangedBySubject,
+    string CorrelationId);
+
 /// <summary>Server-side client for the Bidding SystemAdministrator tenant API.</summary>
 public interface ITenantAdministrationClient
 {
@@ -46,6 +57,14 @@ public interface ITenantAdministrationClient
         Guid tenantId,
         TenantLifecycleStatus status,
         long expectedVersion,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>Loads a bounded, descending tenant lifecycle history page.</summary>
+    Task<IReadOnlyList<TenantLifecycleTransition>> GetStatusHistoryAsync(
+        ClaimsPrincipal principal,
+        Guid tenantId,
+        int limit = 25,
+        long? beforeVersion = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -93,6 +112,23 @@ public sealed class TenantAdministrationClient(
         await EnsureSuccessAsync(response);
         return await response.Content.ReadFromJsonAsync<TenantLifecycleState>(JsonOptions, cancellationToken)
             ?? throw new TenantAdministrationClientException(HttpStatusCode.BadGateway);
+    }
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<TenantLifecycleTransition>> GetStatusHistoryAsync(
+        ClaimsPrincipal principal,
+        Guid tenantId,
+        int limit = 25,
+        long? beforeVersion = null,
+        CancellationToken cancellationToken = default)
+    {
+        var path = $"{options.Value.TenantEndpoint}/{tenantId:D}/status-history?limit={limit}";
+        if (beforeVersion.HasValue)
+            path += $"&beforeVersion={beforeVersion.Value}";
+        using var response = await SendAsync(principal, HttpMethod.Get, path, cancellationToken);
+        await EnsureSuccessAsync(response);
+        return await response.Content.ReadFromJsonAsync<List<TenantLifecycleTransition>>(JsonOptions, cancellationToken)
+            ?? [];
     }
 
     private async Task<HttpResponseMessage> SendAsync(

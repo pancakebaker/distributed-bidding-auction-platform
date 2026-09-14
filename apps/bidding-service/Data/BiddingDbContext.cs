@@ -27,6 +27,8 @@ public sealed class BiddingDbContext(
     /// Gets the authoritative tenants.
     /// </summary>
     public DbSet<Tenant> Tenants => Set<Tenant>();
+    /// <summary>Gets the durable tenant lifecycle history.</summary>
+    public DbSet<TenantStatusTransition> TenantStatusTransitions => Set<TenantStatusTransition>();
     /// <summary>
     /// Gets the registered client applications.
     /// </summary>
@@ -141,6 +143,41 @@ public sealed class BiddingDbContext(
             tenant.HasMany(t => t.ClientApplications)
                 .WithOne()
                 .HasForeignKey(application => application.TenantId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<TenantStatusTransition>(transition =>
+        {
+            transition.ToTable("tenant_status_transitions");
+            transition.HasKey(item => item.Id);
+            transition.Property(item => item.Id).HasColumnName("id");
+            transition.Property(item => item.TenantId).HasColumnName("tenant_id").IsRequired();
+            transition.Property(item => item.PreviousStatus)
+                .HasColumnName("previous_status")
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+            transition.Property(item => item.CurrentStatus)
+                .HasColumnName("current_status")
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .IsRequired();
+            transition.Property(item => item.TenantVersion).HasColumnName("tenant_version").IsRequired();
+            transition.Property(item => item.ChangedAtUtc).HasColumnName("changed_at_utc").IsRequired();
+            transition.Property(item => item.ChangedBySubject)
+                .HasColumnName("changed_by_subject")
+                .HasMaxLength(200)
+                .IsRequired();
+            transition.Property(item => item.CorrelationId)
+                .HasColumnName("correlation_id")
+                .HasMaxLength(128)
+                .IsRequired();
+            transition.HasIndex(item => new { item.TenantId, item.TenantVersion })
+                .IsUnique()
+                .HasDatabaseName("ux_tenant_status_transitions_tenant_version");
+            transition.HasOne<Tenant>()
+                .WithMany()
+                .HasForeignKey(item => item.TenantId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

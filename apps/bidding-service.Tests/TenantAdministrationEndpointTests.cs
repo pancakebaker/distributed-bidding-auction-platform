@@ -70,6 +70,14 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
         Assert.Equal(2, payload.RootElement.GetProperty("tenantVersion").GetInt64());
         Assert.True(payload.RootElement.GetProperty("tenantId").GetGuid() != Guid.Empty);
         Assert.Equal(message.Id, payload.RootElement.GetProperty("eventId").GetGuid());
+
+        var history = await client.GetFromJsonAsync<List<TenantStatusTransitionResponse>>(
+            $"/api/system/tenants/{TenantDefaults.DemoTenantId:D}/status-history");
+        var transition = Assert.Single(history!);
+        Assert.Equal(TenantStatus.Active, transition.PreviousStatus);
+        Assert.Equal(TenantStatus.Suspended, transition.CurrentStatus);
+        Assert.Equal(2, transition.TenantVersion);
+        Assert.Equal("system-admin-test-subject", transition.ChangedBySubject);
     }
 
     [Theory]
@@ -115,6 +123,36 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
         Assert.NotNull(body);
         Assert.Equal(1, body.Version);
         Assert.Empty(await ReadOutboxAsync());
+        Assert.Empty(await ReadHistoryAsync());
+    }
+
+    [Fact]
+    public async Task HistoryIsDescendingAndSupportsVersionCursor()
+    {
+        await TransitionAsync("Suspended", 1);
+        await TransitionAsync("Disabled", 2);
+        await TransitionAsync("Active", 3);
+
+        var first = await client.GetFromJsonAsync<List<TenantStatusTransitionResponse>>(
+            $"/api/system/tenants/{TenantDefaults.DemoTenantId:D}/status-history?limit=2");
+        Assert.Equal([4L, 3L], first!.Select(item => item.TenantVersion));
+
+        var second = await client.GetFromJsonAsync<List<TenantStatusTransitionResponse>>(
+            $"/api/system/tenants/{TenantDefaults.DemoTenantId:D}/status-history?limit=2&beforeVersion=3");
+        Assert.Equal([2L], second!.Select(item => item.TenantVersion));
+    }
+
+    [Fact]
+    public async Task HistoryRejectsInvalidPagingAndUnknownTenant()
+    {
+        UseSystemAdminToken();
+        var invalid = await client.GetAsync(
+            $"/api/system/tenants/{TenantDefaults.DemoTenantId:D}/status-history?limit=101");
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+
+        var missing = await client.GetAsync(
+            "/api/system/tenants/11111111-2222-4333-8444-555555555555/status-history");
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 
     [Fact]
@@ -184,6 +222,9 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
     {
         var anonymous = await client.PatchAsJsonAsync(Endpoint, new { status = "Disabled", expectedVersion = 1 });
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        var anonymousHistory = await client.GetAsync(
+            $"/api/system/tenants/{TenantDefaults.DemoTenantId:D}/status-history");
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymousHistory.StatusCode);
 
         client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
             "Bearer",
@@ -204,6 +245,9 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
             Endpoint,
             new { status = "Disabled", expectedVersion = 1 });
         Assert.Equal(HttpStatusCode.Forbidden, unprivilegedSystemToken.StatusCode);
+        var forbiddenHistory = await client.GetAsync(
+            $"/api/system/tenants/{TenantDefaults.DemoTenantId:D}/status-history");
+        Assert.Equal(HttpStatusCode.Forbidden, forbiddenHistory.StatusCode);
     }
 
     [Fact]
@@ -234,6 +278,7 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
         Assert.Single(responses, response => response.StatusCode == HttpStatusCode.Conflict);
         var message = Assert.Single(await ReadOutboxAsync());
         Assert.Equal(2, message.AggregateVersion);
+        Assert.Single(await ReadHistoryAsync());
     }
 
     [Fact]
@@ -268,6 +313,7 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
             TenantDefaults.DemoTenantId,
             TenantStatus.Disabled,
             1,
+            "system-admin-test-subject",
             "atomicity-test"));
 
         using var verifyScope = factory.Services.CreateScope();
@@ -277,6 +323,7 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
         Assert.Equal(TenantStatus.Active, tenant.Status);
         Assert.Equal(1, tenant.Version);
         Assert.Empty(await ReadOutboxAsync());
+        Assert.Empty(await ReadHistoryAsync());
     }
 
     private void UseSystemAdminToken() =>
@@ -308,12 +355,29 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
         return await db.OutboxMessages.AsNoTracking().ToListAsync();
     }
 
+    private async Task<List<TenantStatusTransition>> ReadHistoryAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        return await db.TenantStatusTransitions.AsNoTracking().ToListAsync();
+    }
+
     private sealed record TenantStatusResponse(
         Guid TenantId,
         string Name,
         TenantStatus Status,
         long Version,
         DateTimeOffset UpdatedAtUtc);
+
+    private sealed record TenantStatusTransitionResponse(
+        Guid TransitionId,
+        Guid TenantId,
+        TenantStatus PreviousStatus,
+        TenantStatus CurrentStatus,
+        long TenantVersion,
+        DateTimeOffset ChangedAtUtc,
+        string ChangedBySubject,
+        string CorrelationId);
 
     private sealed class UnexpectedAdministrationService : ITenantStatusAdministrationService
     {
@@ -323,6 +387,7 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
             Guid tenantId,
             TenantStatus requestedStatus,
             long expectedVersion,
+            string changedBySubject,
             string correlationId,
             CancellationToken cancellationToken = default)
         {

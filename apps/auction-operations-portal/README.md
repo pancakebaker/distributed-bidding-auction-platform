@@ -155,3 +155,13 @@ dotnet run --no-restore --project apps/auction-operations-portal --urls http://l
 ```
 
 The existing `scripts/start-demo.ps1` starts the Bidding Service, Outbox Publisher, Auction Scheduler, Live Feed, Laravel, Vite/client, and this portal process. It launches the portal with `dotnet run --no-restore`, skips startup when port `5099` is already listening, and waits for `/health` to become ready. Sign in directly at `http://localhost:5099/login`; operational routes are `/activity/live`, `/activity/history`, and `/health` on port `5099`.
+
+## Tenant lifecycle visibility
+
+The protected `/admin/tenants` page reads current tenant state and bounded
+lifecycle history from the Bidding Service. SystemAdministrators can expand a
+tenant row, refresh its history, and load older transitions using the
+`beforeVersion` cursor. Status changes continue to use the existing optimistic
+`expectedVersion` command; the page does not optimistically change current state,
+poll, read Bidding's database, or consume outbox events. Current state, durable
+history, and delivery-oriented outbox messages are intentionally distinct.

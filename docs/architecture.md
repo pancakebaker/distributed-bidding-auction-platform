@@ -708,3 +708,27 @@ overlap. Forwarded headers are honored only from explicitly trusted proxy IPs.
 TLS, WebSocket upgrades, clock synchronization, and shared state are deployment
 requirements; external OIDC, MFA, centralized secret management, and edge DDoS
 controls remain deferred.
+
+## MT6.5 tenant lifecycle history and visibility
+
+The authoritative tenant lifecycle command remains the Bidding Service
+`PATCH /api/system/tenants/{tenantId}/status`, protected by the
+`SystemAdminTenantStatus` policy. Each actual SystemAdministrator transition
+updates `Tenant.Status`, `Tenant.Version`, and `UpdatedAtUtc`, inserts one
+`tenant_status_transitions` history row, and inserts the existing
+`TenantStatusChanged` outbox message in the same database transaction. No-op,
+invalid, stale, and failed transitions create neither history nor outbox rows.
+
+SystemAdministrators can query bounded descending history through
+`GET /api/system/tenants/{tenantId}/status-history?limit=25&beforeVersion=...`.
+The unique `(tenant_id, tenant_version)` key provides deterministic per-tenant
+ordering and cursor pagination. History records the prior/current status,
+committed version, UTC time, actor subject, and correlation ID. Current tenant
+state, durable lifecycle history, and the delivery-oriented outbox are separate
+concepts; the Operations Portal reads current state and history from Bidding and
+does not read Bidding's database or consume lifecycle events.
+
+MT6.1 and MT6.2b continue to enforce the current database state immediately for
+HTTP requests and new Live Feed subscriptions. Future MT6.3 revocation consumes
+the existing `TenantStatusChanged` event; MT6.5 does not add that consumer,
+polling, Redis status authority, or forced eviction behavior.

@@ -98,6 +98,13 @@ nav a:focus-visible {
   border-collapse: collapse;
   width: 100%;
 }
+.tenant-history {
+  margin: 0.5rem 0;
+  overflow-x: auto;
+}
+.tenant-history code {
+  font-size: 0.8rem;
+}
 .activity-table th,
 .activity-table td {
   border-bottom: 1px solid #e5e7eb;

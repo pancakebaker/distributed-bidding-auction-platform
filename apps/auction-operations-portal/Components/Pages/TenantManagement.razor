@@ -53,6 +53,10 @@ else
                     <td>Version @tenant.Version</td>
                     <td>@tenant.UpdatedAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</td>
                     <td>
+                        <button type="button" @onclick="() => ToggleHistoryAsync(tenant.TenantId)"
+                            aria-expanded="@expandedTenantIds.Contains(tenant.TenantId)">
+                            @(expandedTenantIds.Contains(tenant.TenantId) ? "Hide history" : "View history")
+                        </button>
                         @foreach (var target in AvailableTransitions(tenant.Status))
                         {
                             <button type="button" @onclick="() => BeginTransition(tenant, target)"
@@ -62,6 +66,51 @@ else
                         }
                     </td>
                 </tr>
+                @if (expandedTenantIds.Contains(tenant.TenantId))
+                {
+                    <tr @key="@($"history-{tenant.TenantId}")">
+                        <td colspan="5">
+                            @if (historyLoading.Contains(tenant.TenantId))
+                            {
+                                <p>Loading lifecycle history…</p>
+                            }
+                            else if (historyErrors.TryGetValue(tenant.TenantId, out var historyError))
+                            {
+                                <p class="error-message" role="alert">@historyError</p>
+                                <button type="button" @onclick="() => LoadHistoryAsync(tenant.TenantId, false)">Retry</button>
+                            }
+                            else if (!histories.TryGetValue(tenant.TenantId, out var history) || history.Count == 0)
+                            {
+                                <p class="muted">No status transitions recorded.</p>
+                            }
+                            else
+                            {
+                                <div class="tenant-history">
+                                    <table class="activity-table">
+                                        <thead><tr><th>UTC</th><th>Transition</th><th>Version</th><th>Actor</th><th>Correlation</th></tr></thead>
+                                        <tbody>
+                                            @foreach (var transition in history)
+                                            {
+                                                <tr>
+                                                    <td>@transition.ChangedAtUtc.ToUniversalTime().ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</td>
+                                                    <td>@transition.PreviousStatus → @transition.CurrentStatus</td>
+                                                    <td>@transition.TenantVersion</td>
+                                                    <td>@transition.ChangedBySubject</td>
+                                                    <td><code>@transition.CorrelationId</code></td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                    @if (history.Count == HistoryPageSize)
+                                    {
+                                        <button type="button" @onclick="() => LoadHistoryAsync(tenant.TenantId, true)">Load more</button>
+                                    }
+                                    <button type="button" @onclick="() => LoadHistoryAsync(tenant.TenantId, false)">Refresh history</button>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
             }
         </tbody>
     </table>
@@ -92,6 +141,12 @@ else
     private string? error;
     private string? feedback;
     private ClaimsPrincipal principal = new();
+    private const int HistoryPageSize = 25;
+    private readonly HashSet<Guid> expandedTenantIds = [];
+    private readonly HashSet<Guid> historyLoading = [];
+    private readonly Dictionary<Guid, IReadOnlyList<TenantLifecycleTransition>> histories = [];
+    private readonly Dictionary<Guid, long?> historyCursors = [];
+    private readonly Dictionary<Guid, string> historyErrors = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -132,6 +187,51 @@ else
 
     private void CancelTransition() => confirmation = null;
 
+    private async Task ToggleHistoryAsync(Guid tenantId)
+    {
+        if (!expandedTenantIds.Add(tenantId))
+        {
+            expandedTenantIds.Remove(tenantId);
+            return;
+        }
+
+        await LoadHistoryAsync(tenantId, false);
+    }
+
+    private async Task LoadHistoryAsync(Guid tenantId, bool append)
+    {
+        if (!historyLoading.Add(tenantId))
+            return;
+
+        historyErrors.Remove(tenantId);
+        try
+        {
+            var beforeVersion = append && historyCursors.TryGetValue(tenantId, out var cursor)
+                ? cursor
+                : null;
+            var page = await TenantClient.GetStatusHistoryAsync(
+                principal,
+                tenantId,
+                HistoryPageSize,
+                beforeVersion,
+                lifetime.Token);
+            histories[tenantId] = append && histories.TryGetValue(tenantId, out var existing)
+                ? existing.Concat(page).ToList()
+                : page;
+            historyCursors[tenantId] = page.Count == HistoryPageSize
+                ? page.Min(item => item.TenantVersion)
+                : null;
+        }
+        catch (TenantAdministrationClientException)
+        {
+            historyErrors[tenantId] = "Unable to load lifecycle history. Please try again.";
+        }
+        finally
+        {
+            historyLoading.Remove(tenantId);
+        }
+    }
+
     private async Task ConfirmTransitionAsync()
     {
         if (confirmation is null || pendingTenantId is not null)
@@ -152,6 +252,7 @@ else
                 lifetime.Token);
             tenants = tenants.Select(item => item.TenantId == updated.TenantId ? updated : item).ToList();
             feedback = $"{updated.Name} is now {updated.Status} at Version {updated.Version}.";
+            await LoadHistoryAsync(updated.TenantId, false);
         }
         catch (TenantAdministrationClientException exception)
         {
@@ -159,6 +260,7 @@ else
             {
                 error = "This tenant changed since the page was loaded. The authoritative state has been refreshed; review and submit again.";
                 await RefreshAsync();
+                await LoadHistoryAsync(tenant.TenantId, false);
             }
             else if (exception.StatusCode == System.Net.HttpStatusCode.NotFound)
             {

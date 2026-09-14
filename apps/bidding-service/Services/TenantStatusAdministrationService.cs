@@ -21,6 +21,7 @@ public interface ITenantStatusAdministrationService
         Guid tenantId,
         TenantStatus requestedStatus,
         long expectedVersion,
+        string changedBySubject,
         string correlationId,
         CancellationToken cancellationToken = default);
 }
@@ -35,6 +36,7 @@ public sealed class TenantStatusAdministrationService(
         Guid tenantId,
         TenantStatus requestedStatus,
         long expectedVersion,
+        string changedBySubject,
         string correlationId,
         CancellationToken cancellationToken = default)
     {
@@ -53,12 +55,24 @@ public sealed class TenantStatusAdministrationService(
 
         tenant.Status = requestedStatus;
         tenant.Version++;
-        tenant.UpdatedAtUtc = timeProvider.GetUtcNow();
+        var changedAtUtc = timeProvider.GetUtcNow();
+        tenant.UpdatedAtUtc = changedAtUtc;
+        db.TenantStatusTransitions.Add(new TenantStatusTransition
+        {
+            Id = Guid.NewGuid(),
+            TenantId = tenant.Id,
+            PreviousStatus = previousStatus,
+            CurrentStatus = requestedStatus,
+            TenantVersion = tenant.Version,
+            ChangedAtUtc = changedAtUtc,
+            ChangedBySubject = changedBySubject,
+            CorrelationId = correlationId
+        });
         db.OutboxMessages.Add(OutboxMessageFactory.TenantStatusChanged(
             tenant,
             previousStatus,
             correlationId,
-            tenant.UpdatedAtUtc));
+            changedAtUtc));
 
         try
         {

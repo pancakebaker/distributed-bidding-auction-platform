@@ -1,6 +1,7 @@
 // <copyright file="TenantAdministrationEndpoints.cs" company="Distributed Bidding Auction Platform">
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
+using System.Security.Claims;
 using bidding_service.Contracts;
 using bidding_service.Data;
 using bidding_service.Domain;
@@ -11,6 +12,17 @@ namespace bidding_service.Endpoints;
 
 /// <summary>Request for an optimistic-concurrency-protected tenant status change.</summary>
 public sealed record ChangeTenantStatusRequest(string? Status, long ExpectedVersion);
+
+/// <summary>Durable tenant lifecycle transition returned to SystemAdministrators.</summary>
+public sealed record TenantStatusTransitionResponse(
+    Guid TransitionId,
+    Guid TenantId,
+    TenantStatus PreviousStatus,
+    TenantStatus CurrentStatus,
+    long TenantVersion,
+    DateTimeOffset ChangedAtUtc,
+    string ChangedBySubject,
+    string CorrelationId);
 
 /// <summary>Maps system-administrator tenant lifecycle endpoints.</summary>
 public static class TenantAdministrationEndpoints
@@ -39,6 +51,51 @@ public static class TenantAdministrationEndpoints
             .WithTags("System administration")
             .ExcludeFromDescription();
 
+        app.MapGet("/api/system/tenants/{tenantId:guid}/status-history", async (
+                Guid tenantId,
+                int? limit,
+                long? beforeVersion,
+                BiddingDbContext db,
+                CancellationToken cancellationToken) =>
+            {
+                var pageSize = limit ?? 25;
+                if (pageSize is < 1 or > 100 || beforeVersion is <= 0)
+                {
+                    return Results.BadRequest(new ApiErrorResponse(
+                        "invalid_tenant_history_paging",
+                        "limit must be between 1 and 100 and beforeVersion must be positive."));
+                }
+
+                if (!await db.Tenants.AsNoTracking().AnyAsync(item => item.Id == tenantId, cancellationToken))
+                {
+                    return Results.NotFound(new ApiErrorResponse("tenant_not_found", "Tenant not found."));
+                }
+
+                var query = db.TenantStatusTransitions
+                    .AsNoTracking()
+                    .Where(item => item.TenantId == tenantId);
+                if (beforeVersion.HasValue)
+                    query = query.Where(item => item.TenantVersion < beforeVersion.Value);
+
+                var history = await query
+                    .OrderByDescending(item => item.TenantVersion)
+                    .Take(pageSize)
+                    .Select(item => new TenantStatusTransitionResponse(
+                        item.Id,
+                        item.TenantId,
+                        item.PreviousStatus,
+                        item.CurrentStatus,
+                        item.TenantVersion,
+                        item.ChangedAtUtc,
+                        item.ChangedBySubject,
+                        item.CorrelationId))
+                    .ToListAsync(cancellationToken);
+                return Results.Ok(history);
+            })
+            .RequireAuthorization("SystemAdminTenantStatus")
+            .WithTags("System administration")
+            .ExcludeFromDescription();
+
         app.MapPatch("/api/system/tenants/{tenantId:guid}/status", async (
                 Guid tenantId,
                 ChangeTenantStatusRequest request,
@@ -62,6 +119,11 @@ public static class TenantAdministrationEndpoints
                     || correlationId.Any(char.IsControl))
                     correlationId = Guid.NewGuid().ToString("N");
 
+                var changedBySubject = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? context.User.FindFirstValue("sub");
+                if (string.IsNullOrWhiteSpace(changedBySubject))
+                    return Results.Forbid();
+
                 TenantStatusTransitionResult? result;
                 try
                 {
@@ -69,6 +131,7 @@ public static class TenantAdministrationEndpoints
                         tenantId,
                         status,
                         request.ExpectedVersion,
+                        changedBySubject,
                         correlationId,
                         cancellationToken);
                 }
@@ -80,7 +143,9 @@ public static class TenantAdministrationEndpoints
                 }
 
                 if (result is null)
+                {
                     return Results.NotFound(new ApiErrorResponse("tenant_not_found", "Tenant not found."));
+                }
 
                 return Results.Ok(new TenantStatusResponse(
                     result.Tenant.Id,
