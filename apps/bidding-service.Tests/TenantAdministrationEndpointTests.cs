@@ -126,6 +126,43 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
         Assert.Empty(await ReadOutboxAsync());
     }
 
+    [Theory]
+    [InlineData("999")]
+    [InlineData("0")]
+    [InlineData("1")]
+    [InlineData("2")]
+    [InlineData("Archived")]
+    [InlineData("disabled")]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData(null)]
+    public async Task InvalidStatusNamesAreRejectedBeforeAdministration(string? status)
+    {
+        var administration = new UnexpectedAdministrationService();
+        using var testHost = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+                services.AddSingleton<ITenantStatusAdministrationService>(administration)));
+        using var requestClient = testHost.CreateClient();
+        requestClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Bearer", JwtTestKeys.CreateSystemAdminToken());
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BiddingDbContext>();
+        var before = await db.Tenants.AsNoTracking().SingleAsync(
+            item => item.Id == TenantDefaults.DemoTenantId);
+
+        var response = await requestClient.PatchAsJsonAsync(
+            Endpoint, new { status, expectedVersion = before.Version });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal(0, administration.Calls);
+        var after = await db.Tenants.AsNoTracking().SingleAsync(
+            item => item.Id == TenantDefaults.DemoTenantId);
+        Assert.Equal(before.Status, after.Status);
+        Assert.Equal(before.Version, after.Version);
+        Assert.Equal(before.UpdatedAtUtc, after.UpdatedAtUtc);
+        Assert.Empty(await ReadOutboxAsync());
+    }
+
     [Fact]
     public async Task NonSystemAdminIdentitiesAreRejected()
     {
@@ -260,6 +297,22 @@ public sealed class TenantAdministrationEndpointTests : IClassFixture<AuctionApi
         TenantStatus Status,
         long Version,
         DateTimeOffset UpdatedAtUtc);
+
+    private sealed class UnexpectedAdministrationService : ITenantStatusAdministrationService
+    {
+        public int Calls { get; private set; }
+
+        public Task<TenantStatusTransitionResult?> ChangeStatusAsync(
+            Guid tenantId,
+            TenantStatus requestedStatus,
+            long expectedVersion,
+            string correlationId,
+            CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw new InvalidOperationException("Invalid status reached administration.");
+        }
+    }
 
     private sealed class ThrowOnOutboxSaveInterceptor : SaveChangesInterceptor
     {

@@ -24,6 +24,7 @@ public static class TenantAdministrationEndpoints
                 CancellationToken cancellationToken) =>
             {
                 if (request.Status is null
+                    || !Enum.GetNames<TenantStatus>().Contains(request.Status, StringComparer.Ordinal)
                     || !Enum.TryParse<TenantStatus>(request.Status, ignoreCase: false, out var status)
                     || request.ExpectedVersion < 1)
                 {
