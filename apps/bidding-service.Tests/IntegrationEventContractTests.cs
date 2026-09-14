@@ -17,12 +17,15 @@ public sealed class IntegrationEventContractTests
         Assert.Equal("WinnerSelected", IntegrationEventTypes.WinnerSelected);
         Assert.Equal("AuctionPurchased", IntegrationEventTypes.AuctionPurchased);
         Assert.Equal("AuctionCancelled", IntegrationEventTypes.AuctionCancelled);
+        Assert.Equal("TenantStatusChanged", IntegrationEventTypes.TenantStatusChanged);
         Assert.Equal("Auction", AggregateTypes.Auction);
+        Assert.Equal("Tenant", AggregateTypes.Tenant);
         Assert.Equal("auction.bid.accepted", IntegrationEventRoutingKeys.BidAccepted);
         Assert.Equal("auction.closed", IntegrationEventRoutingKeys.AuctionClosed);
         Assert.Equal("auction.winner.selected", IntegrationEventRoutingKeys.WinnerSelected);
         Assert.Equal("auction.purchased", IntegrationEventRoutingKeys.AuctionPurchased);
         Assert.Equal("auction.cancelled", IntegrationEventRoutingKeys.AuctionCancelled);
+        Assert.Equal("tenant.status.changed", IntegrationEventRoutingKeys.TenantStatusChanged);
     }
 
     [Fact]
@@ -89,5 +92,32 @@ public sealed class IntegrationEventContractTests
         Assert.Equal(auction.Id, payload.AuctionId);
         Assert.Equal(IntegrationEventTypes.AuctionCancelled, message.EventType);
         Assert.Equal(4, message.AggregateVersion);
+    }
+
+    [Fact]
+    public void TenantStatusChangedPayloadCarriesTheNewMonotonicVersion()
+    {
+        var tenant = Tenant.Create(
+            Guid.NewGuid(),
+            "Contract tenant",
+            TenantStatus.Disabled,
+            DateTimeOffset.UtcNow);
+        tenant.Version = 7;
+
+        var message = OutboxMessageFactory.TenantStatusChanged(
+            tenant,
+            TenantStatus.Active,
+            "correlation-tenant",
+            DateTimeOffset.UtcNow);
+        using var payload = JsonDocument.Parse(message.Payload);
+
+        Assert.Equal(IntegrationEventTypes.TenantStatusChanged, message.EventType);
+        Assert.Equal(AggregateTypes.Tenant, message.AggregateType);
+        Assert.Equal(7, message.AggregateVersion);
+        Assert.Equal(message.Id, payload.RootElement.GetProperty("eventId").GetGuid());
+        Assert.Equal(tenant.Id, payload.RootElement.GetProperty("tenantId").GetGuid());
+        Assert.Equal("Active", payload.RootElement.GetProperty("previousStatus").GetString());
+        Assert.Equal("Disabled", payload.RootElement.GetProperty("currentStatus").GetString());
+        Assert.Equal(7, payload.RootElement.GetProperty("tenantVersion").GetInt64());
     }
 }

@@ -86,6 +86,36 @@ internal static class JwtTestKeys
         return $"{input}.{Base64Url(signature)}";
     }
 
+    public static string CreateSystemAdminToken(
+        string issuer = "dbap-system-admin",
+        string audience = "bidding-service-admin",
+        string role = "SystemAdministrator",
+        string[]? permissions = null,
+        string keyId = "system-admin-test-v1")
+    {
+        var now = DateTimeOffset.UtcNow;
+        var header = Encode(new { alg = "RS256", typ = "JWT", kid = keyId });
+        var payload = new Dictionary<string, object?>
+        {
+            ["iss"] = issuer,
+            ["aud"] = audience,
+            ["sub"] = "system-admin-test-subject",
+            ["role"] = role,
+            ["permission"] = permissions ?? ["system.tenant.status"],
+            ["iat"] = now.ToUnixTimeSeconds(),
+            ["nbf"] = now.ToUnixTimeSeconds(),
+            ["exp"] = now.AddMinutes(5).ToUnixTimeSeconds(),
+            ["jti"] = Guid.NewGuid().ToString()
+        };
+
+        var input = $"{header}.{Encode(payload)}";
+        var signature = SigningKey.SignData(
+            System.Text.Encoding.UTF8.GetBytes(input),
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        return $"{input}.{Base64Url(signature)}";
+    }
+
     private static string WritePublicKey()
     {
         var path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"dbap-auth-{Guid.NewGuid():N}.pem");

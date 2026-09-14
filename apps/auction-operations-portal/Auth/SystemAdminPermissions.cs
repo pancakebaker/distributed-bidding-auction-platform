@@ -15,10 +15,13 @@ public static class SystemAdminPermissions
     /// <summary>Uses protected system diagnostics.</summary>
     public const string Diagnostics = "system.diagnostics";
 
+    /// <summary>Changes authoritative tenant lifecycle status.</summary>
+    public const string TenantStatus = "system.tenant.status";
+
     /// <summary>Gets permissions for a system administrator role.</summary>
     public static IReadOnlyList<string> ForRole(string role) =>
         string.Equals(role, SystemAdminRoles.SystemAdministrator, StringComparison.Ordinal)
-            ? [Monitor, LiveFeedAdmin, Diagnostics]
+            ? [Monitor, LiveFeedAdmin, Diagnostics, TenantStatus]
             : [];
 }
 

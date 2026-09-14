@@ -131,6 +131,11 @@ public sealed class BiddingDbContext(
                 .HasConversion<string>()
                 .HasMaxLength(20)
                 .IsRequired();
+            tenant.Property(t => t.Version)
+                .HasColumnName("version")
+                .HasDefaultValue(1L)
+                .IsConcurrencyToken()
+                .IsRequired();
             tenant.Property(t => t.CreatedAtUtc).HasColumnName("created_at_utc").IsRequired();
             tenant.Property(t => t.UpdatedAtUtc).HasColumnName("updated_at_utc").IsRequired();
             tenant.HasMany(t => t.ClientApplications)

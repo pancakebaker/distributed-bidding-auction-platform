@@ -2,6 +2,7 @@
 // Copyright (c) Distributed Bidding Auction Platform. Licensed under the MIT license.
 // </copyright>
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using bidding_service.Domain;
 using DistributedBidding.IntegrationContracts;
 
@@ -12,7 +13,10 @@ namespace bidding_service.Services;
 /// </summary>
 public static class OutboxMessageFactory
 {
-    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     /// <summary>
     /// Creates a BidAccepted outbox message for a committed bid.
@@ -114,6 +118,39 @@ public static class OutboxMessageFactory
             correlationId,
             occurredAtUtc,
             payload);
+    }
+
+    /// <summary>Creates a tenant status transition outbox message.</summary>
+    public static OutboxMessage TenantStatusChanged(
+        Tenant tenant,
+        TenantStatus previousStatus,
+        string correlationId,
+        DateTimeOffset occurredAtUtc)
+    {
+        var eventId = Guid.NewGuid();
+        var payload = new TenantStatusChangedPayload(
+            eventId,
+            tenant.Id,
+            previousStatus.ToString(),
+            tenant.Status.ToString(),
+            tenant.Version,
+            occurredAtUtc);
+
+        return new OutboxMessage
+        {
+            Id = eventId,
+            EventType = IntegrationEventTypes.TenantStatusChanged,
+            AggregateType = AggregateTypes.Tenant,
+            AggregateId = tenant.Id,
+            AggregateVersion = tenant.Version,
+            OccurredAtUtc = occurredAtUtc,
+            CorrelationId = correlationId,
+            Payload = JsonSerializer.Serialize(payload, JsonOptions),
+            CreatedAtUtc = occurredAtUtc,
+            PublishedAtUtc = null,
+            PublishAttempts = 0,
+            LastError = null
+        };
     }
 
     private static OutboxMessage CreateLifecycleMessage<TPayload>(

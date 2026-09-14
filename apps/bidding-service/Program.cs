@@ -27,6 +27,8 @@ builder.Services.Configure<BidPlacementOptions>(
     builder.Configuration.GetSection(BidPlacementOptions.SectionName));
 builder.Services.Configure<BiddingAuthenticationOptions>(
     builder.Configuration.GetSection(BiddingAuthenticationOptions.SectionName));
+builder.Services.Configure<SystemAdminAuthenticationOptions>(
+    builder.Configuration.GetSection(SystemAdminAuthenticationOptions.SectionName));
 builder.Services.AddOptions<ClientAssertionAdmissionOptions>()
     .Bind(builder.Configuration.GetSection(ClientAssertionAdmissionOptions.SectionName))
     .ValidateOnStart();
@@ -77,6 +79,7 @@ builder.Services.AddScoped<IClientAssertionAdmissionService, ClientAssertionAdmi
 builder.Services.AddScoped<ClientAssertionAdmissionFilter>();
 builder.Services.AddScoped<ITenantRuntimeAccessPolicy, TenantRuntimeAccessPolicy>();
 builder.Services.AddScoped<TenantRuntimeStatusFilter>();
+builder.Services.AddScoped<ITenantStatusAdministrationService, TenantStatusAdministrationService>();
 builder.Services.AddOptions<LiveFeedServiceAuthenticationOptions>()
     .Bind(builder.Configuration.GetSection(LiveFeedServiceAuthenticationOptions.SectionName));
 builder.Services.AddSingleton<ILiveFeedServiceTokenValidator, LiveFeedServiceTokenValidator>();
@@ -101,6 +104,22 @@ if (requiresConfiguredAuthentication
     throw new InvalidOperationException(
         "Bidding Service authentication requires a configured issuer, audience, and public RSA key.");
 }
+var systemAdminAuthenticationOptions = builder.Configuration
+    .GetSection(SystemAdminAuthenticationOptions.SectionName)
+    .Get<SystemAdminAuthenticationOptions>() ?? new();
+var systemAdminPublicKeyPath = Path.IsPathRooted(systemAdminAuthenticationOptions.PublicKeyPath)
+    ? systemAdminAuthenticationOptions.PublicKeyPath
+    : Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, systemAdminAuthenticationOptions.PublicKeyPath));
+if (requiresConfiguredAuthentication
+    && (string.IsNullOrWhiteSpace(systemAdminAuthenticationOptions.Issuer)
+        || string.IsNullOrWhiteSpace(systemAdminAuthenticationOptions.Audience)
+        || string.IsNullOrWhiteSpace(systemAdminAuthenticationOptions.KeyId)
+        || string.IsNullOrWhiteSpace(systemAdminAuthenticationOptions.PublicKeyPath)
+        || !File.Exists(systemAdminPublicKeyPath)))
+{
+    throw new InvalidOperationException(
+        "Bidding Service system-admin authentication requires a configured issuer, audience, and public RSA key.");
+}
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -123,6 +142,26 @@ builder.Services
             NameClaimType = "name",
             RoleClaimType = "role"
         };
+    })
+    .AddJwtBearer("SystemAdmin", options =>
+    {
+        var signingKey = LoadPublicKey(systemAdminPublicKeyPath);
+        signingKey.KeyId = systemAdminAuthenticationOptions.KeyId;
+        options.MapInboundClaims = false;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKeyResolver = (_, _, kid, _) =>
+                kid == systemAdminAuthenticationOptions.KeyId ? [signingKey] : [],
+            ValidateIssuer = true,
+            ValidIssuer = systemAdminAuthenticationOptions.Issuer,
+            ValidateAudience = true,
+            ValidAudience = systemAdminAuthenticationOptions.Audience,
+            ValidateLifetime = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+            NameClaimType = "sub",
+            RoleClaimType = "role"
+        };
     });
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy("AuctionBid", policy => policy
@@ -136,7 +175,12 @@ builder.Services.AddAuthorizationBuilder()
         .RequireClaim("permissions", "auction.manage"))
     .AddPolicy("AuctionRead", policy => policy
         .RequireAuthenticatedUser()
-        .RequireClaim("permissions", "auction.read"));
+        .RequireClaim("permissions", "auction.read"))
+    .AddPolicy("SystemAdminTenantStatus", policy => policy
+        .AddAuthenticationSchemes("SystemAdmin")
+        .RequireAuthenticatedUser()
+        .RequireRole("SystemAdministrator")
+        .RequireClaim("permission", "system.tenant.status"));
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("LocalClient", policy =>
@@ -170,6 +214,7 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.MapAuctionEndpoints();
 app.MapLiveFeedInternalEndpoints();
+app.MapTenantAdministrationEndpoints();
 
 if (app.Environment.IsEnvironment("Testing"))
 {

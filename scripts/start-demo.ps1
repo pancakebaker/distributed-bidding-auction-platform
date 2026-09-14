@@ -197,7 +197,7 @@ foreach ($definition in $infrastructure) {
     [void](Ensure-CompatibleContainer -Definition $definition)
 }
 
-Start-DemoProcess -Title 'DBAP Bidding Service' -WorkingDirectory $root -Command 'dotnet run --project apps/bidding-service/bidding-service.csproj --launch-profile http'
+Start-DemoProcess -Title 'DBAP Bidding Service' -WorkingDirectory $root -Command "`$env:Authentication__SystemAdmin__PublicKeyPath = '$publicKeyPath'; dotnet run --project apps/bidding-service/bidding-service.csproj --launch-profile http"
 Start-DemoProcess -Title 'DBAP Outbox Publisher' -WorkingDirectory $root -Command 'dotnet run --project workers/outbox-publisher/outbox-publisher.csproj'
 Start-DemoProcess -Title 'DBAP Auction Scheduler' -WorkingDirectory $root -Command 'dotnet run --project workers/auction-scheduler/auction-scheduler.csproj'
 Start-DemoProcess -Title 'DBAP Live Feed Service' -WorkingDirectory (Join-Path $root 'apps/live-feed-service') -Command "`$env:SYSTEM_ADMIN_TOKEN_PUBLIC_KEY_PATH = '$publicKeyPath'; npm run dev"

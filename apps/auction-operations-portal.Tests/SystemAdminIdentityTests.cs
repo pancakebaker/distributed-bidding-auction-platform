@@ -21,7 +21,7 @@ public sealed class SystemAdminIdentityTests : IDisposable
         var permissions = SystemAdminPermissions.ForRole(SystemAdminRoles.SystemAdministrator);
 
         Assert.Equal(
-            ["system.monitor", "livefeed.admin", "system.diagnostics"],
+            ["system.monitor", "livefeed.admin", "system.diagnostics", "system.tenant.status"],
             permissions);
         Assert.DoesNotContain("auction.manage", permissions);
         Assert.DoesNotContain("auction.bid", permissions);

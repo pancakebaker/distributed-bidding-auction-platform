@@ -24,10 +24,12 @@ casually renamed:
 - `WinnerSelected`
 - `AuctionPurchased`
 - `AuctionCancelled`
+- `TenantStatusChanged`
 
 ### Aggregate type
 
 - `Auction`
+- `Tenant`
 
 ### RabbitMQ routing keys
 
@@ -36,6 +38,7 @@ casually renamed:
 - `auction.winner.selected`
 - `auction.purchased`
 - `auction.cancelled`
+- `tenant.status.changed`
 
 The RabbitMQ exchange name, `auction.events`, is deliberately not owned here.
 It remains deployment and service configuration because environments may
@@ -52,6 +55,13 @@ producers and consumers:
 - the scheduler produces `AuctionClosed` and `WinnerSelected`;
 - the outbox publisher transports those events;
 - the Operations Portal and live-feed service consume them.
+
+`TenantStatusChanged` is produced only by Bidding's authoritative
+SystemAdministrator lifecycle command. Its payload carries an immutable event
+ID, tenant ID, previous/current status strings, the newly committed monotonic
+tenant version, and UTC occurrence time. Future consumers must use the tenant
+version to reject stale delivery; the event is a durable notification, not a
+replacement for Bidding's authoritative tenant state.
 
 The contract defines what these messages are called on the wire. Application
 services still own when events are produced, payload creation, persistence,

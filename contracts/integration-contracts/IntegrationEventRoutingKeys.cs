@@ -20,4 +20,7 @@ public static class IntegrationEventRoutingKeys
 
     /// <summary>Routes explicit auction cancellation events.</summary>
     public const string AuctionCancelled = "auction.cancelled";
+
+    /// <summary>Routes tenant status transitions.</summary>
+    public const string TenantStatusChanged = "tenant.status.changed";
 }

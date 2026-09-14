@@ -44,6 +44,9 @@ public sealed class Tenant
     /// <summary>Gets or sets the persisted lifecycle status.</summary>
     public TenantStatus Status { get; set; }
 
+    /// <summary>Gets or sets the monotonic status-transition version.</summary>
+    public long Version { get; set; } = 1;
+
     /// <summary>Gets or sets the creation timestamp.</summary>
     public DateTimeOffset CreatedAtUtc { get; set; }
 

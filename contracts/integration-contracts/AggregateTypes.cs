@@ -8,4 +8,7 @@ public static class AggregateTypes
 {
     /// <summary>Identifies the auction aggregate.</summary>
     public const string Auction = "Auction";
+
+    /// <summary>Identifies the tenant aggregate.</summary>
+    public const string Tenant = "Tenant";
 }

@@ -20,4 +20,7 @@ public static class IntegrationEventTypes
 
     /// <summary>Identifies an explicit auction cancellation event.</summary>
     public const string AuctionCancelled = "AuctionCancelled";
+
+    /// <summary>Identifies a committed tenant status transition.</summary>
+    public const string TenantStatusChanged = "TenantStatusChanged";
 }

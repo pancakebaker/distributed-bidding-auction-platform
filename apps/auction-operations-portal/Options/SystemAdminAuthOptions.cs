@@ -20,7 +20,7 @@ public sealed class SystemAdminAuthOptions
 
     /// <summary>Gets or sets the permitted downstream audiences.</summary>
     public List<string> AllowedAudiences { get; set; } =
-        ["auction-operations-portal", "live-feed-admin"];
+        ["auction-operations-portal", "live-feed-admin", "bidding-service-admin"];
 
     /// <summary>Gets or sets the token lifetime in seconds.</summary>
     public int TokenLifetimeSeconds { get; set; } = 300;
