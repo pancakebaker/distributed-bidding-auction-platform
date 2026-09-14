@@ -9,6 +9,9 @@ The repository-level [README](../README.md) is the concise overview. The complet
 The finalized identity, ownership, isolation, deployment, and future split rules
 are maintained in the [multi-tenancy architecture reference](multi-tenancy.md).
 
+The final Buy Now ownership, sale-mode, event-ordering, and cross-layer closure
+rules are maintained in the [Buy Now architecture reference](buy-now-architecture.md).
+
 ```mermaid
 flowchart LR
     U[Bidder / Admin User] --> C[Laravel + React Client]
