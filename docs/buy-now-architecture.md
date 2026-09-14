@@ -5,6 +5,9 @@ the ownership boundaries, event contract, terminal-state rules, and failure
 semantics that are already implemented in the monorepo. It does not introduce
 payment processing, an order system, or a second Buy Now domain model.
 
+The shared integration-contract ownership and versioning policy is maintained
+in [contracts/integration-contracts/README.md](../contracts/integration-contracts/README.md).
+
 ## Sale-mode truth table
 
 | Sale mode | Ordinary bid | Explicit Buy Now | Buy Now price | Terminal event set |

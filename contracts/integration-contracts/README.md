@@ -1,5 +1,13 @@
 # Distributed Bidding Integration Contracts
 
+This is the canonical ownership and compatibility policy for the integration
+surface. Event detail is in [`docs/event-catalog.md`](../../docs/event-catalog.md),
+system topology is in [`docs/architecture.md`](../../docs/architecture.md), and
+Buy Now semantics are in [`docs/buy-now-architecture.md`](../../docs/buy-now-architecture.md).
+
+This documents the current monorepo and future split boundaries. It does not
+extract, publish, or generate a package.
+
 ## Purpose
 
 This project defines stable wire-level identifiers used across the distributed
@@ -11,6 +19,25 @@ clients/services.
 
 This is a deliberately small contract project, not a general-purpose shared
 utilities library.
+
+## Contract categories and authority
+
+| Surface | Authority | Consumer/owner rule |
+| --- | --- | --- |
+| Event names, aggregate types, routing keys | `contracts/integration-contracts` | Producers own meaning; consumers validate and project. |
+| Event payloads and envelope population | Producing service | The shared project does not own domain decisions or persistence. |
+| Bidding REST API | Bidding Service | Laravel is the tenant-bound BFF; Operations Portal uses protected system APIs. |
+| Authentication and assertion claims | `contracts/auth-contracts` plus issuer | Claims are verified at the boundary; browser values are never authority. |
+| RabbitMQ exchange, queues, retry/DLQ | Deployment and consuming services | Routing-key compatibility is required; topology is not domain authority. |
+| Live Feed Socket.IO events and rooms | Live Feed | Public state is a projection of trusted Bidding events. |
+| Redis projections and idempotency keys | Live Feed | Internal delivery state only; never Tenant or price authority. |
+| Operations activity/history/report DTOs | Operations Portal | Local observer models; never producer contracts. |
+| PostgreSQL schemas | Owning service | No service reads another service's tables. |
+| Environment/configuration | Deployment and each service | Names and required/optional behavior are documented; secrets are not. |
+
+The authoritative data path is Bidding domain and PostgreSQL state ->
+transactional outbox -> publisher/RabbitMQ -> consumer-owned projections or UI.
+An integration contract carries a fact; it does not transfer write authority.
 
 ## Current contracts
 
@@ -253,6 +280,167 @@ or validate .NET and TypeScript contracts.
 
 That toolchain is intentionally not implemented yet because the current
 contract surface does not justify its additional complexity.
+
+## Maintenance principles
+
+## Canonical contract inventory
+
+### Events
+
+| Event | Producer | Routing key | Consumers | Semantic owner |
+| --- | --- | --- | --- | --- |
+| `BidAccepted` | Bidding | `auction.bid.accepted` | Live Feed, Operations | Bidding accepted amount and version |
+| `AuctionPurchased` | Bidding | `auction.purchased` | Live Feed, Operations | Bidding Buy Now winner and fixed final price |
+| `AuctionCancelled` | Bidding | `auction.cancelled` | Live Feed, Operations | Bidding cancellation |
+| `AuctionClosed` | Scheduler | `auction.closed` | Live Feed, Operations | Scheduler lifecycle close |
+| `WinnerSelected` | Scheduler | `auction.winner.selected` | Live Feed, Operations | Scheduler winner selection |
+| `TenantStatusChanged` | Bidding | `tenant.status.changed` | Live Feed, Operations | Bidding Tenant authority |
+
+The shared envelope is `eventId`, `eventType`, `occurredAtUtc`, `aggregateType`,
+`aggregateId`, `aggregateVersion`, `correlationId`, and `payload`. `eventId` is
+the at-least-once delivery idempotency key. `aggregateVersion` is producer-owned
+ordering metadata. Lower versions are stale; equal-version events with distinct
+event IDs are legitimate companions when the event semantics allow them; higher
+versions advance the projection. A correlation ID is opaque tracing metadata,
+not authorization or identity proof.
+
+Current payload authorities are deliberately explicit: Bidding supplies the
+accepted bid amount, purchase winner, fixed final price, Tenant ID, and auction
+version; the Scheduler supplies ordinary close and winner-selection facts. A
+consumer must not calculate a winner, cap a price, or select a Tenant from a
+browser request.
+
+### REST contracts
+
+| Route | Owner | Consumers and boundary |
+| --- | --- | --- |
+| `GET /api/auctions`, `GET /api/auctions/{id}`, `GET /api/auctions/{id}/bids` | Bidding | Laravel BFF/public tenant client |
+| `POST /api/auctions/{id}/bids` | Bidding | Laravel BFF; human JWT plus Tenant/ClientApplication assertion |
+| `POST /api/auctions/{id}/buy-now` | Bidding | Laravel BFF; server reads BuyNowPrice |
+| `GET /api/system/tenants` and status history | Bidding | SystemAdministrator Operations Portal |
+| `PATCH /api/system/tenants/{tenantId}/status` | Bidding | SystemAdministrator only |
+| `POST /internal/live-feed/access` | Bidding | Live Feed service identity only; not a public contract |
+
+The Laravel routes retain session/CSRF protection and call Bidding through the
+existing client abstraction. The browser supplies intent, never authoritative
+price, winner, closure, or Tenant identity. Bidding owns OpenAPI/Swagger
+description for its HTTP surface; this repository does not currently publish a
+separate checked-in OpenAPI artifact.
+
+### Authentication contracts
+
+Human access uses the existing server-issued RS256 JWT and Tenant-bound
+ClientApplication assertion flow. The assertion currently carries `iss`/client
+identity, `kid`, `aud=dbap-bidding-service`, `tenant_id`, `jti`, `iat`, `nbf`,
+and `exp`; replay protection and signature verification remain service
+responsibilities. The Live Feed service uses its service identity at the
+internal access boundary and is not a tenant human or SystemAdministrator.
+SystemAdministrator permissions are a separate global control-plane boundary.
+No secret, private key, raw token, or authorization header belongs in an event,
+activity record, or shared contract.
+
+### Transport and local projections
+
+RabbitMQ uses the configured `auction.events` exchange, separate consumer
+queues, at-least-once delivery, publisher confirms, and existing retry/DLQ
+behavior. Queue names and bindings are deployment/consumer configuration, not
+domain payload fields. `AuctionPurchased` is bound alongside the existing
+auction events; adding a consumer must not change producer semantics.
+
+Live Feed owns the Socket.IO public surface: `bid:accepted`, `auction:closed`,
+`winner:selected`, `auction:purchased`, and `auction:cancelled`, plus the
+`auction:subscribe`/`auction:unsubscribe` controls. Public rooms use
+`tenant:{tenantId}:auction:{auctionId}`. Admission requires Bidding's decision
+and authoritative projection ownership; browser `tenantId` is non-authoritative.
+Redis keys, Lua guards, projection fields, processed-event markers, and
+tenant-version markers are internal implementation details of Live Feed.
+
+Operations Portal consumes trusted events into its own activity/history/report
+models. It uses `eventId` for duplicate suppression and retains distinct
+same-version event IDs when its event-history model represents them. It does
+not read Bidding PostgreSQL or become a Buy Now authority. Scheduler owns
+background lifecycle processing; the Outbox Publisher owns delivery, not event
+meaning.
+
+## Ownership and dependency matrix
+
+| Contract or data | Producer/authority | Consumers | Future repository home |
+| --- | --- | --- | --- |
+| Auction/Tenant domain and PostgreSQL | Bidding | Bidding APIs, outbox | `dotnet-bidding-service` |
+| Scheduler lifecycle command | Scheduler | Bidding persistence/events | `dotnet-bidding-service` or its worker boundary |
+| Outbox rows and publication state | Bidding + Outbox Publisher | RabbitMQ | `dotnet-bidding-service` / `docker-dbap-platform` deployment |
+| Integration event names/envelope | Contract project, with payload meaning owned by producers | All event consumers | versioned contract repository/package |
+| Live Feed projection and Socket.IO | Live Feed | browser clients, admin diagnostics | `nodejs-live-feed` |
+| Laravel BFF and React client | Laravel deployment | tenant users | `laravel-react-auction-web` |
+| Operations activity/history/report | Operations Portal | SystemAdministrators | `dotnet-blazor-operations-portal` |
+| Exchange/queue/Redis/runtime infrastructure | Deployment | services | `docker-dbap-platform` |
+
+Dependency direction is producer -> contract -> consumer. Consumers may depend
+on stable wire facts, but producers must not depend on consumer projections or
+browser state. The future split should preserve that direction and must not
+create shared database dependencies.
+
+## Versioning and compatibility policy
+
+Wire values, routing keys, aggregate types, ID meanings, money semantics,
+Tenant semantics, and aggregate-version behavior are stable contracts. A
+backward-compatible change is additive: a new event/routing key, optional field,
+or consumer that tolerates an absent field. Renames, removals, changed meaning,
+changed type/scale, changed ID authority, changed routing key, or new required
+fields are breaking changes.
+
+Breaking event changes require a new event version/type or a parallel route,
+coordinated producer/consumer deployment, fixture updates, and a documented
+deprecation window. Keep old consumers able to read the transition window;
+do not rewrite historical outbox or Operations records. REST breaking changes
+use a versioned route or compatibility period. SemVer guidance for a future
+package is patch for non-wire documentation/tooling, minor for additive wire
+surface, and major for incompatible wire changes.
+
+Money is producer-owned fixed-precision decimal data; consumers format it and
+never recompute it. IDs are opaque strings on the wire (normally UUIDs where
+the producer uses UUIDs). Times are UTC ISO-8601 values produced server-side.
+`occurredAtUtc` describes event occurrence; payload-specific timestamps retain
+their own meaning. Correlation IDs are opaque tracing strings.
+
+## Contract testing and future extraction
+
+Current tests assert routing-key/event-type stability, payload parsing,
+same-version convergence, idempotency, authorization, and consumer behavior.
+Before extraction, add a small versioned set of JSON golden fixtures covering
+each event, optional/null fields, duplicate delivery, stale/equal/higher
+versions, and representative REST error responses. C# should consume a future
+NuGet package; Node should consume generated TypeScript or validate against a
+language-neutral JSON Schema/AsyncAPI artifact. Do not maintain hand-copied
+source definitions with divergent semantics.
+
+The repository currently uses C# `ProjectReference` dependencies for Bidding,
+Scheduler, Outbox, and Operations Portal. TypeScript has a deliberately
+checked counterpart in Live Feed. The first split should be documentation and
+contract-fixture preparation, not a source move. A practical split order is:
+
+1. Laravel/React deployment-bound application.
+2. Live Feed projection/delivery service.
+3. Operations Portal global control plane.
+4. Bidding authority and scheduler/outbox boundary.
+5. Infrastructure/deployment repository.
+
+Before physical extraction, the main SHOULD-FIX items are generated or
+language-neutral fixture publication, explicit deployment ownership for queue
+and environment configuration, and a package compatibility pipeline. Physical
+repository separation, generated client artifacts, AsyncAPI/JSON Schema
+publication, and queue-topology packaging can happen after the boundaries are
+accepted. No current blocker requires extraction now.
+
+## Contract change checklist
+
+Before merging a contract change, identify producer and every consumer; state
+the authority and compatibility window; update C# and TypeScript contract
+tests/fixtures; verify event ID, aggregate version, Tenant, money, and UTC
+semantics; check RabbitMQ bindings and ACK/NACK/DLQ behavior; verify REST and
+Socket.IO compatibility where applicable; update the event catalog and this
+ownership policy; run the affected focused tests and CI gates; and record any
+deprecation or package-version requirement.
 
 ## Maintenance principles
 

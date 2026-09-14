@@ -2,6 +2,9 @@
 
 This catalog documents the integration event contracts currently published by the Bidding Service and Auction Scheduler. The Outbox Publisher sends them to RabbitMQ, where the Node Live Feed and .NET Auction Operations Portal consume them through separate queues. No shared event package is introduced.
 
+For canonical producer/consumer ownership, compatibility rules, and future
+repository boundaries, see [Integration Contract Ownership](../contracts/integration-contracts/README.md).
+
 ## Event Envelope
 
 ```json

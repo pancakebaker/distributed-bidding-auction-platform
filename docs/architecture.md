@@ -12,6 +12,10 @@ are maintained in the [multi-tenancy architecture reference](multi-tenancy.md).
 The final Buy Now ownership, sale-mode, event-ordering, and cross-layer closure
 rules are maintained in the [Buy Now architecture reference](buy-now-architecture.md).
 
+The canonical integration-contract ownership, versioning, and future split
+policy is maintained in
+[contracts/integration-contracts/README.md](../contracts/integration-contracts/README.md).
+
 ```mermaid
 flowchart LR
     U[Bidder / Admin User] --> C[Laravel + React Client]
