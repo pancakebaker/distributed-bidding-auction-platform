@@ -126,6 +126,8 @@ MT2 bound Laravel users to the server-configured installation tenant and added `
 
 MT6.2a adds a separate authenticated service-to-service decision boundary for Live Feed. Live Feed signs a short-lived RS256 service token (`sub=live-feed-service`) and calls `POST /internal/live-feed/access` with an `auctionId`. Bidding validates the dedicated service identity, resolves `Auction -> Tenant -> TenantStatus` from authoritative PostgreSQL state, and returns only an allow/deny decision: `Active` and `Suspended` are allowed, while `Disabled`, missing targets, and dependency failures are denied or fail closed. Live Feed does not receive Bidding database credentials, and TenantStatus is not placed in browser payloads, JWTs, Redis, or event contracts.
 
+MT6.2b applies that trusted decision before a public Socket.IO auction-room join. Every `auction:subscribe` request validates its `auctionId`, asks Bidding for a fresh decision, and calls `socket.join` only for an allowed result; denied, missing, unauthorized, unavailable, timed-out, and network-failed decisions do not join. Suspended tenants remain readable through Live Feed, while Disabled tenants cannot newly join. Existing sockets are not proactively evicted when status changes; reconnect and later subscription requests are rechecked, with real-time revocation deferred to MT6.3. Admin-room admission and unsubscribe remain separate, and Live Feed continues to use Redis only for its non-authoritative projection and event state.
+
 ### MT3 authenticated tenant resource enforcement
 
 Authenticated Bidding Service mutations now require the canonical signed
@@ -165,9 +167,10 @@ updates to `tenant:{tenantId}:auction:{auctionId}` rooms. The Operations Portal
 persists `tenant_id` on activity records and backfills existing activity to the
 local demo tenant. Tenant runtime status is enforced by the Bidding Service for
 tenant-facing HTTP routes. Live Feed's public auction Socket.IO subscription
-remains anonymous and is an explicit MT6.2 follow-up because the current Node
-service has no authoritative tenant-status source; system-admin Live Feed
-channels remain independently authenticated.
+remains browser-anonymous, but each room admission now calls the trusted
+Bidding decision boundary before joining. The Node service still has no direct
+Bidding database access; system-admin Live Feed channels remain independently
+authenticated.
 
 Tenant status is read from the authoritative `tenants` row after bearer and
 client-application tenant binding. It is deliberately not copied into JWT or
@@ -175,9 +178,10 @@ client-assertion claims, so status changes take effect without waiting for
 token expiry. `SystemAdministrator` and scheduler operations remain separate
 from tenant-user runtime status enforcement.
 
-The MT6.2a boundary is intentionally preparatory: MT6.2b will call the
-decision port before `socket.join`. Room admission, reconnect revalidation,
-and the policy for already-connected sockets are not changed by MT6.2a.
+MT6.2b applies the decision port before `socket.join` and rechecks every new
+subscription, including client-triggered reconnect subscriptions. It does not
+proactively evict already-connected sockets; real-time revocation remains a
+future MT6.3 concern.
 
 ### MT5.1 ClientApplication registry foundation
 

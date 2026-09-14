@@ -15,8 +15,7 @@ import type { LiveFeedConfig } from '../config/config.js';
 import { loadConfig } from '../config/config.js';
 import { LiveFeedEventProcessor } from './processors/live-feed-event-processor.js';
 import { LiveFeedRabbitMqConsumer } from '../infrastructure/messaging/rabbitmq-consumer.js';
-import { auctionRoom, parseAuctionSubscription } from '../transport/websocket/rooms.js';
-import { adminSocketEvents, adminSocketRooms, auctionSocketEvents } from '../domain/transport.js';
+import { adminSocketEvents, adminSocketRooms } from '../domain/transport.js';
 import { LiveFeedStateStore } from '../infrastructure/cache/redis-state.js';
 import { RedisAdminTokenReplayConsumer } from '../infrastructure/cache/redis-admin-token-replay-consumer.js';
 import { RedisAdminHandoffStore } from '../infrastructure/cache/redis-admin-handoff-store.js';
@@ -45,6 +44,11 @@ import { registerRuntimeThreadPoolRoute } from '../transport/http/runtime-thread
 import { registerRuntimeChildProcessRoute } from '../transport/http/runtime-child-process-route.js';
 import { createLiveFeedHistoryStore } from '../infrastructure/database/live-feed-history-store-factory.js';
 import { requireAdminAuthorization } from '../transport/http/admin/admin-security.js';
+import type { LiveFeedAccessPort } from './ports/live-feed-access.js';
+import { BiddingLiveFeedAccessClient } from '../infrastructure/bidding/bidding-live-feed-access-client.js';
+import { ServiceTokenIssuer } from '../infrastructure/auth/service-token-issuer.js';
+import { LiveFeedSubscriptionAuthorizer } from './live-feed-subscription-authorizer.js';
+import { registerAuctionSubscriptionHandlers } from '../transport/websocket/auction-subscription-handler.js';
 
 /**
  * Runtime handle returned by the live-feed composition root for startup, shutdown, and tests.
@@ -59,11 +63,19 @@ export type LiveFeedService = {
   consumer: LiveFeedRabbitMqConsumer;
 };
 
+/** Optional collaborators used to replace external dependencies in tests. */
+export type LiveFeedServiceDependencies = {
+  liveFeedAccess?: LiveFeedAccessPort;
+};
+
 /**
  * Creates the live-feed HTTP server, Socket.IO server, Redis adapter, state store,
  * and RabbitMQ consumer.
  */
-export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): LiveFeedService {
+export function createLiveFeedService(
+  overrides: Partial<LiveFeedConfig> = {},
+  dependencies: LiveFeedServiceDependencies = {},
+): LiveFeedService {
   const config = loadConfig(overrides);
   const app = express();
   const httpServer = createServer(app);
@@ -112,6 +124,8 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   const consumer = new LiveFeedRabbitMqConsumer(config, processor);
   const eventLoopMonitor = new EventLoopMonitor();
   const activityCalculator = new WorkerActivityCalculator();
+  const liveFeedAccess = dependencies.liveFeedAccess ?? createLiveFeedAccess(config);
+  const subscriptionAuthorizer = new LiveFeedSubscriptionAuthorizer(liveFeedAccess);
 
   app.use((request, _response, next) => {
     const requestId = request.get('x-request-id') ?? undefined;
@@ -220,60 +234,7 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
       message: 'connected',
     });
 
-    socket.on(
-      auctionSocketEvents.subscribe,
-      async (
-        value,
-        acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void,
-      ) => {
-        const subscription = parseAuctionSubscription(value);
-
-        if (!subscription) {
-          acknowledge?.({ ok: false, error: 'invalid_auction_id' });
-          socket.emit(adminSocketEvents.subscriptionError, { code: 'invalid_auction_id' });
-          return;
-        }
-
-        const room = await resolveSubscriptionRoom(
-          stateStore,
-          subscription.auctionId,
-          subscription.tenantId,
-        );
-        if (!room) {
-          acknowledge?.({ ok: false, error: 'auction_not_found' });
-          return;
-        }
-        void socket.join(room);
-        acknowledge?.({ ok: true, room });
-      },
-    );
-
-    socket.on(
-      auctionSocketEvents.unsubscribe,
-      async (
-        value,
-        acknowledge?: (response: { ok: boolean; room?: string; error?: string }) => void,
-      ) => {
-        const subscription = parseAuctionSubscription(value);
-
-        if (!subscription) {
-          acknowledge?.({ ok: false, error: 'invalid_auction_id' });
-          return;
-        }
-
-        const room = await resolveSubscriptionRoom(
-          stateStore,
-          subscription.auctionId,
-          subscription.tenantId,
-        );
-        if (!room) {
-          acknowledge?.({ ok: false, error: 'auction_not_found' });
-          return;
-        }
-        void socket.leave(room);
-        acknowledge?.({ ok: true, room });
-      },
-    );
+    registerAuctionSubscriptionHandlers(socket, stateStore, subscriptionAuthorizer);
   });
 
   app.use(createHttpErrorHandler());
@@ -326,18 +287,26 @@ export function createLiveFeedService(overrides: Partial<LiveFeedConfig> = {}): 
   };
 }
 
-async function resolveSubscriptionRoom(
-  stateStore: LiveFeedStateStore,
-  auctionId: string,
-  requestedTenantId?: string,
-): Promise<string | null> {
-  const projection = await stateStore.getProjection(auctionId);
-  if (projection) {
-    return !requestedTenantId || requestedTenantId === projection.tenantId
-      ? auctionRoom(projection.tenantId, auctionId)
-      : null;
+function createLiveFeedAccess(config: LiveFeedConfig): LiveFeedAccessPort {
+  if (!config.biddingServiceInternalUrl || !config.liveFeedServicePrivateKeyPath) {
+    return {
+      canExposeAuctionLiveFeed: () => Promise.resolve({ kind: 'unavailable' as const }),
+    };
   }
-  return requestedTenantId ? auctionRoom(requestedTenantId, auctionId) : null;
+
+  const issuer = new ServiceTokenIssuer({
+    privateKeyPath: config.liveFeedServicePrivateKeyPath,
+    issuer: config.liveFeedServiceTokenIssuer,
+    subject: config.liveFeedServiceTokenSubject,
+    audience: config.liveFeedServiceTokenAudience,
+    keyId: config.liveFeedServiceTokenKeyId,
+    ttlSeconds: config.liveFeedServiceTokenTtlSeconds,
+  });
+
+  return new BiddingLiveFeedAccessClient({
+    baseUrl: config.biddingServiceInternalUrl,
+    issuer,
+  });
 }
 
 async function closeSocketServer(io: Server): Promise<void> {

@@ -233,7 +233,11 @@ async function createContext(): Promise<TestContext> {
     adminSessionSecret: 'integration-test-admin-session-secret-0123456789',
   };
 
-  const service = createLiveFeedService(config);
+  const service = createLiveFeedService(config, {
+    liveFeedAccess: {
+      canExposeAuctionLiveFeed: () => Promise.resolve({ kind: 'allowed' as const }),
+    },
+  });
   await service.start();
 
   const adminCookie = new AdminAuth({
