@@ -1,5 +1,8 @@
 /** Queries Bidding Service for authoritative Live Feed admission decisions. */
-import type { LiveFeedAccessDecision, LiveFeedAccessPort } from '../../application/ports/live-feed-access.js';
+import type {
+  LiveFeedAccessDecision,
+  LiveFeedAccessPort,
+} from '../../application/ports/live-feed-access.js';
 import { getContext } from '../../infrastructure/runtime/async-context.js';
 import type { ServiceTokenIssuer } from '../auth/service-token-issuer.js';
 
@@ -27,16 +30,19 @@ export class BiddingLiveFeedAccessClient implements LiveFeedAccessPort {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
       const context = getContext();
-      const response = await this.fetchImpl(`${this.options.baseUrl.replace(/\/$/, '')}/internal/live-feed/access`, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${this.options.issuer.issue()}`,
-          'content-type': 'application/json',
-          ...(context?.correlationId ? { 'x-correlation-id': context.correlationId } : {}),
+      const response = await this.fetchImpl(
+        `${this.options.baseUrl.replace(/\/$/, '')}/internal/live-feed/access`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${this.options.issuer.issue()}`,
+            'content-type': 'application/json',
+            ...(context?.correlationId ? { 'x-correlation-id': context.correlationId } : {}),
+          },
+          body: JSON.stringify({ auctionId }),
+          signal: controller.signal,
         },
-        body: JSON.stringify({ auctionId }),
-        signal: controller.signal,
-      });
+      );
       if (response.status === 200) return { kind: 'allowed' };
       if (response.status === 403) return { kind: 'denied' };
       if (response.status === 404) return { kind: 'not_found' };

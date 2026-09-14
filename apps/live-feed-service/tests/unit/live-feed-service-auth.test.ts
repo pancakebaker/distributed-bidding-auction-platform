@@ -31,8 +31,14 @@ void test('service token issuer emits short-lived RS256 tokens with required cla
       ttlSeconds: 30,
     });
     const [header, payload] = issuer.issue().split('.');
-    const decodedHeader = JSON.parse(Buffer.from(header, 'base64url').toString('utf8')) as Record<string, unknown>;
-    const decodedPayload = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<string, unknown>;
+    const decodedHeader = JSON.parse(Buffer.from(header, 'base64url').toString('utf8')) as Record<
+      string,
+      unknown
+    >;
+    const decodedPayload = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as Record<
+      string,
+      unknown
+    >;
 
     assert.equal(decodedHeader.alg, 'RS256');
     assert.equal(decodedHeader.kid, 'live-feed-service-v1');
@@ -57,13 +63,16 @@ void test('Bidding access client sends a fresh bearer token and maps decisions',
     const client = new BiddingLiveFeedAccessClient({
       baseUrl: 'http://bidding.internal/',
       issuer,
-        fetchImpl: (input, init) => {
+      fetchImpl: (input, init) => {
         request = new Request(input, init);
         return new Response(JSON.stringify({ allowed: true }), { status: 200 });
       },
     });
 
-    assert.deepEqual(await client.canExposeAuctionLiveFeed('11111111-1111-1111-1111-111111111111'), { kind: 'allowed' });
+    assert.deepEqual(
+      await client.canExposeAuctionLiveFeed('11111111-1111-1111-1111-111111111111'),
+      { kind: 'allowed' },
+    );
     assert.equal(request?.url, 'http://bidding.internal/internal/live-feed/access');
     assert.match(request?.headers.get('authorization') ?? '', /^Bearer [^.]+\.[^.]+\.[^.]+$/);
     assert.ok(request);
@@ -89,9 +98,12 @@ void test('Bidding access client fails closed for denied, missing, and unavailab
         issuer,
         fetchImpl: () => Promise.resolve(new Response(null, { status })),
       });
-      assert.deepEqual(await client.canExposeAuctionLiveFeed('11111111-1111-1111-1111-111111111111'), {
-        kind: status === 403 ? 'denied' : status === 404 ? 'not_found' : 'unavailable',
-      });
+      assert.deepEqual(
+        await client.canExposeAuctionLiveFeed('11111111-1111-1111-1111-111111111111'),
+        {
+          kind: status === 403 ? 'denied' : status === 404 ? 'not_found' : 'unavailable',
+        },
+      );
     }
   });
 });

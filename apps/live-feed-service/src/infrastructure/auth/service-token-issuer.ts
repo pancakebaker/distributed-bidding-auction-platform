@@ -26,7 +26,11 @@ export class ServiceTokenIssuer {
   public constructor(options: ServiceTokenIssuerOptions) {
     this.key = createPrivateKey(readFileSync(options.privateKeyPath));
     const details = this.key.asymmetricKeyDetails;
-    if (this.key.asymmetricKeyType !== 'rsa' || !details?.modulusLength || details.modulusLength < 2048) {
+    if (
+      this.key.asymmetricKeyType !== 'rsa' ||
+      !details?.modulusLength ||
+      details.modulusLength < 2048
+    ) {
       throw new Error('Live Feed service token key must be an RSA key of at least 2048 bits.');
     }
     const ttlSeconds = options.ttlSeconds ?? 30;
@@ -40,15 +44,17 @@ export class ServiceTokenIssuer {
   public issue(): string {
     const issuedAt = Math.floor(this.options.now().getTime() / 1000);
     const header = base64Url(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: this.options.keyId }));
-    const payload = base64Url(JSON.stringify({
-      iss: this.options.issuer,
-      sub: this.options.subject,
-      aud: this.options.audience,
-      jti: randomUUID(),
-      iat: issuedAt,
-      nbf: issuedAt,
-      exp: issuedAt + this.options.ttlSeconds,
-    }));
+    const payload = base64Url(
+      JSON.stringify({
+        iss: this.options.issuer,
+        sub: this.options.subject,
+        aud: this.options.audience,
+        jti: randomUUID(),
+        iat: issuedAt,
+        nbf: issuedAt,
+        exp: issuedAt + this.options.ttlSeconds,
+      }),
+    );
     const input = `${header}.${payload}`;
     const signature = createSign('RSA-SHA256').update(input).sign(this.key);
     return `${input}.${base64Url(signature)}`;
